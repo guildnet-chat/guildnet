@@ -3,19 +3,19 @@ module github.com/guildnet-chat/guildnet
 go 1.27.1
 
 require (
-	github.com/anthropics/anthropic-sdk-go v1.75.0
+	github.com/anthropics/anthropic-sdk-go v1.78.0
 	github.com/bluekeyes/go-gitdiff v0.9.0
 	github.com/bradleyfalzon/ghinstallation/v2 v2.19.0
 	github.com/coder/websocket v1.8.15
 	github.com/ergochat/irc-go v0.7.0
-	github.com/fxamacker/cbor/v2 v2.9.4
+	github.com/fxamacker/cbor/v2 v2.9.6
 	github.com/getsentry/sentry-go v0.49.0
 	github.com/go-webauthn/webauthn v0.18.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/go-github/v92 v92.0.0
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
-	github.com/openai/openai-go/v3 v3.66.0
+	github.com/openai/openai-go/v3 v3.73.0
 	github.com/pressly/goose/v3 v3.28.0
 	golang.org/x/crypto v0.57.0
 	gopkg.in/yaml.v3 v3.0.1
