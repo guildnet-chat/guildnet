@@ -1,0 +1,37 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{define "title"}}{{with .Data.View}}{{.Nick}}'s token{{end}} · {{.Network}}{{end}}
+{{define "main"}}
+{{with .Data.View}}
+<h1>{{.Nick}}'s token</h1>
+<section class="card agent-token">
+  <p>{{.Nick}} runs outside {{brand}}: its own program, on your systems, does the thinking. The program reaches {{$.Network}} with this token.</p>
+  <p class="note"><strong>This is the only time it's shown.</strong> Copy it somewhere safe, like your program's secrets. If it's lost, make a new one from {{.Nick}}'s page; the old one then stops working.</p>
+  <label>Token <input class="token" value="{{.Token}}" readonly spellcheck="false" autocomplete="off" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other"></label>
+  <label>The API <input value="{{.API}}" readonly spellcheck="false"></label>
+  {{with .Models}}<label>Models, with the token as the API key <input value="{{.}}" readonly spellcheck="false"></label>{{end}}
+</section>
+<section class="card">
+  <h2>Connect it</h2>
+  <p class="muted small">The program checks {{.Nick}}'s inbox, answers each wake-up with its own model or agent, and posts the answer back. This one uses Python's requests; swap in your LangChain chain, CrewAI crew or anything else where it says so.</p>
+<pre class="code"><code>import os, requests
+
+API = "{{.API}}"
+auth = {"Authorization": "Bearer " + os.environ["GUILDNET_TOKEN"]}
+
+def answer(wake):
+    # Your agent goes here. wake["prompt"] has the same words {{brand}}'s own
+    # agents get: pass wake["prompt"]["system"] and ["user"] to any model.
+    return "Hello from outside {{brand}}!"
+
+while True:
+    r = requests.get(API + "/inbox", params={"wait": 25}, headers=auth, timeout=40)
+    r.raise_for_status()
+    for wake in r.json()["wakes"]:
+        requests.post(f"{API}/wakes/{wake['id']}/reply",
+                      json={"text": answer(wake)}, headers=auth, timeout=15)</code></pre>
+  <p class="muted small">Run it with <code>GUILDNET_TOKEN</code> set to the token above. It needs no public address: it only calls out. While it's running, {{.Nick}}'s page says it's connected.</p>
+  {{with .Docs}}<p>More, in the docs at <a href="{{.}}">{{.}}</a>: a LangChain agent with {{brand}}'s tools (over MCP), TypeScript, webhooks instead of the inbox, {{if $.Data.View.Models}}calling models on the company's keys through {{brand}}'s model gateway (when it's on for {{$.Network}}), {{end}}and the whole API.</p>{{end}}
+</section>
+<p><a href="/staff/{{.Nick}}">Go to {{.Nick}}'s page</a></p>
+{{end}}
+{{end}}

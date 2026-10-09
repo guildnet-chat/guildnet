@@ -1,0 +1,47 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# For restoring a backup (backup.sh's, from Compose or here) into GKE
+# (docs/self-host/gke.md#restoring-a-backup): with the StatefulSet scaled
+# to none, this pod has its disk and reaches Cloud SQL as the console's and
+# the runner's logins, and the backup's files are copied in and put back
+# from it. Deleted afterwards. Not part of kustomization.yaml:
+#   kubectl -n guildnet apply -f restore.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: guildnet-restore
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  enableServiceLinks: false
+  securityContext:
+    seccompProfile: {type: RuntimeDefault}
+  containers:
+    - name: restore
+      image: ghcr.io/guildnet-chat/postgres:26.10.0
+      command: [sleep, "3600"]
+      env:
+        - {name: PGHOST, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_DB_HOST}}}
+        - {name: PGSSLMODE, value: verify-ca}
+        - {name: PGSSLROOTCERT, value: /etc/cloudsql/server-ca.pem}
+        - {name: PLATFORM_DB_PASSWORD, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_PLATFORM_DB_PASSWORD}}}
+        - {name: RUNNER_DB_PASSWORD, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_RUNNER_DB_PASSWORD}}}
+      securityContext:
+        # tar keeps who owns Ergo's and the runner's files.
+        runAsUser: 0
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities: {drop: [ALL], add: [CHOWN, FOWNER, DAC_OVERRIDE]}
+      resources:
+        requests: {cpu: 100m, memory: 256Mi}
+      volumeMounts:
+        - {name: disk, mountPath: /disk}
+        - {name: backup, mountPath: /backup}
+        - {name: cloudsql-ca, mountPath: /etc/cloudsql, readOnly: true}
+  volumes:
+    - name: disk
+      persistentVolumeClaim: {claimName: disk-guildnet-0}
+    - name: backup
+      emptyDir: {}
+    - name: cloudsql-ca
+      configMap: {name: cloudsql-ca}

@@ -1,0 +1,570 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# GuildNet on AWS Fargate (docs/self-host/fargate.md): the stack in one ECS
+# task (Caddy, the console, the network's Ergo and runner), Postgres on RDS,
+# Ergo's and the runner's files on EFS, behind a Network Load Balancer on
+# Elastic IPs. Untested: written from AWS's documentation.
+#
+# One task, never two (the service stops the old before starting the new):
+# one network has nothing to scale, and two Ergos would split it. In one
+# task every container shares localhost, so the stack's addresses
+# (platform:8080, ergo:6667, ...) are localhost's here.
+AWSTemplateFormatVersion: "2010-09-09"
+Description: GuildNet on Fargate, one task, with RDS and EFS (untested)
+
+Parameters:
+  Release:
+    Type: String
+    Default: "26.10.0"
+    AllowedPattern: '^\d\d\.(0[1-9]|1[0-2])\.(0|[1-9]\d*)$'
+    Description: the GuildNet release whose images run (YY.0M.N)
+  Registry:
+    Type: String
+    Default: ghcr.io/guildnet-chat
+    Description: where the images come from
+  Domain:
+    Type: String
+    Description: the home page's domain, e.g. chat.example.com
+  Network:
+    Type: String
+    Default: hq
+    AllowedPattern: '^[a-z][a-z0-9]*(-[a-z0-9]+)*$'
+    Description: the network's name
+  SettingsSecret:
+    Type: String
+    Description: the ARN of the Secrets Manager secret holding the install's settings, as JSON (docs/self-host/fargate.md#2-settings)
+  Running:
+    Type: Number
+    Default: 0
+    AllowedValues: [0, 1]
+    Description: whether the task runs (1), once the database is set up (fargate.md, step 4); never more than one
+  AllowExec:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: lets whoever may use ECS Exec run commands in the task (reset-owner, sandbox-cert); on only while needed
+  PostgresVersion:
+    Type: String
+    Default: "17"
+    AllowedValues: ["17", "18"]
+    Description: RDS for PostgreSQL's major version (18 where RDS offers it)
+
+Conditions:
+  Exec: !Equals [!Ref AllowExec, "true"]
+
+Resources:
+  # The network: two public subnets (the task, with a public address for
+  # its way out, and the load balancer) and two private ones (RDS and EFS).
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.42.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags: [{Key: Name, Value: guildnet}]
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+  GatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties: {VpcId: !Ref Vpc, InternetGatewayId: !Ref InternetGateway}
+  PublicRoutes:
+    Type: AWS::EC2::RouteTable
+    Properties: {VpcId: !Ref Vpc}
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: GatewayAttachment
+    Properties: {RouteTableId: !Ref PublicRoutes, DestinationCidrBlock: 0.0.0.0/0, GatewayId: !Ref InternetGateway}
+  PublicA:
+    Type: AWS::EC2::Subnet
+    Properties: {VpcId: !Ref Vpc, CidrBlock: 10.42.0.0/24, AvailabilityZone: !Select [0, !GetAZs ""], MapPublicIpOnLaunch: false}
+  PublicB:
+    Type: AWS::EC2::Subnet
+    Properties: {VpcId: !Ref Vpc, CidrBlock: 10.42.1.0/24, AvailabilityZone: !Select [1, !GetAZs ""], MapPublicIpOnLaunch: false}
+  PublicARoutes:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: {SubnetId: !Ref PublicA, RouteTableId: !Ref PublicRoutes}
+  PublicBRoutes:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: {SubnetId: !Ref PublicB, RouteTableId: !Ref PublicRoutes}
+  PrivateA:
+    Type: AWS::EC2::Subnet
+    Properties: {VpcId: !Ref Vpc, CidrBlock: 10.42.10.0/24, AvailabilityZone: !Select [0, !GetAZs ""]}
+  PrivateB:
+    Type: AWS::EC2::Subnet
+    Properties: {VpcId: !Ref Vpc, CidrBlock: 10.42.11.0/24, AvailabilityZone: !Select [1, !GetAZs ""]}
+
+  # Who reaches what: the internet only the task's 80, 443 and 6697 (the
+  # load balancer keeps visitors' addresses, so they're the sources); the
+  # database and the files only from the task.
+  TaskGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: GuildNet task
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - {IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIp: 0.0.0.0/0}
+        - {IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: 0.0.0.0/0}
+        - {IpProtocol: tcp, FromPort: 6697, ToPort: 6697, CidrIp: 0.0.0.0/0}
+  DatabaseGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: GuildNet database
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - {IpProtocol: tcp, FromPort: 5432, ToPort: 5432, SourceSecurityGroupId: !Ref TaskGroup}
+  FilesGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: GuildNet files
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - {IpProtocol: tcp, FromPort: 2049, ToPort: 2049, SourceSecurityGroupId: !Ref TaskGroup}
+
+  # Postgres: the admin's password is the settings' GUILDNET_DB_PASSWORD;
+  # TLS is required (rds.force_ssl), and checked against RDS's CA.
+  DatabaseSubnets:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: GuildNet database
+      SubnetIds: [!Ref PrivateA, !Ref PrivateB]
+  DatabaseParameters:
+    Type: AWS::RDS::DBParameterGroup
+    Properties:
+      Description: GuildNet's database
+      Family: !Sub "postgres${PostgresVersion}"
+      Parameters: {rds.force_ssl: "1"}
+  Database:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      Engine: postgres
+      EngineVersion: !Ref PostgresVersion
+      DBInstanceClass: db.t4g.small
+      AllocatedStorage: "20"
+      StorageType: gp3
+      StorageEncrypted: true
+      MasterUsername: postgres
+      MasterUserPassword: !Sub "{{resolve:secretsmanager:${SettingsSecret}:SecretString:GUILDNET_DB_PASSWORD}}"
+      DBSubnetGroupName: !Ref DatabaseSubnets
+      DBParameterGroupName: !Ref DatabaseParameters
+      VPCSecurityGroups: [!Ref DatabaseGroup]
+      PubliclyAccessible: false
+      BackupRetentionPeriod: 14
+      DeletionProtection: true
+      CopyTagsToSnapshot: true
+
+  # Ergo's accounts and history, the runner's ledger, Caddy's certificates,
+  # and the console's CA: on EFS, each at an access point that sets who owns
+  # it (as the stack's volumes do). Ergo's SQLite has one writer, Ergo.
+  Files:
+    Type: AWS::EFS::FileSystem
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Encrypted: true
+      BackupPolicy: {Status: ENABLED}
+      FileSystemPolicy:
+        Statement:
+          # Only over TLS.
+          - {Effect: Deny, Principal: {AWS: "*"}, Action: "*", Condition: {Bool: {aws:SecureTransport: "false"}}}
+  FilesA:
+    Type: AWS::EFS::MountTarget
+    Properties: {FileSystemId: !Ref Files, SubnetId: !Ref PrivateA, SecurityGroups: [!Ref FilesGroup]}
+  FilesB:
+    Type: AWS::EFS::MountTarget
+    Properties: {FileSystemId: !Ref Files, SubnetId: !Ref PrivateB, SecurityGroups: [!Ref FilesGroup]}
+  ErgoFiles:
+    Type: AWS::EFS::AccessPoint
+    Properties:
+      FileSystemId: !Ref Files
+      PosixUser: {Uid: "65534", Gid: "65534"}
+      RootDirectory: {Path: /ergo, CreationInfo: {OwnerUid: "65534", OwnerGid: "65534", Permissions: "0755"}}
+  WelcomeFiles:
+    Type: AWS::EFS::AccessPoint
+    Properties:
+      FileSystemId: !Ref Files
+      RootDirectory: {Path: /welcome, CreationInfo: {OwnerUid: "65534", OwnerGid: "65534", Permissions: "0777"}}
+  RunnerFiles:
+    Type: AWS::EFS::AccessPoint
+    Properties:
+      FileSystemId: !Ref Files
+      PosixUser: {Uid: "65532", Gid: "65532"}
+      RootDirectory: {Path: /runner, CreationInfo: {OwnerUid: "65532", OwnerGid: "65532", Permissions: "0755"}}
+  BrokerCA:
+    Type: AWS::EFS::AccessPoint
+    Properties:
+      FileSystemId: !Ref Files
+      PosixUser: {Uid: "65532", Gid: "65532"}
+      RootDirectory: {Path: /broker-ca, CreationInfo: {OwnerUid: "65532", OwnerGid: "65532", Permissions: "0700"}}
+  BrokerCAShared:
+    Type: AWS::EFS::AccessPoint
+    Properties:
+      FileSystemId: !Ref Files
+      PosixUser: {Uid: "65532", Gid: "65532"}
+      RootDirectory: {Path: /broker-ca-shared, CreationInfo: {OwnerUid: "65532", OwnerGid: "65532", Permissions: "0755"}}
+  CaddyFiles:
+    Type: AWS::EFS::AccessPoint
+    Properties:
+      FileSystemId: !Ref Files
+      PosixUser: {Uid: "0", Gid: "0"}
+      RootDirectory: {Path: /caddy, CreationInfo: {OwnerUid: "0", OwnerGid: "0", Permissions: "0700"}}
+
+  # The edge's addresses: a Network Load Balancer on two Elastic IPs, to the
+  # task's Caddy, which keeps Let's Encrypt and IRC's TLS as in Compose,
+  # with visitors' own addresses.
+  AddressA:
+    Type: AWS::EC2::EIP
+    Properties: {Domain: vpc}
+  AddressB:
+    Type: AWS::EC2::EIP
+    Properties: {Domain: vpc}
+  Edge:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Type: network
+      Scheme: internet-facing
+      SubnetMappings:
+        - {SubnetId: !Ref PublicA, AllocationId: !GetAtt AddressA.AllocationId}
+        - {SubnetId: !Ref PublicB, AllocationId: !GetAtt AddressB.AllocationId}
+  EdgeHttp:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      {VpcId: !Ref Vpc, TargetType: ip, Protocol: TCP, Port: 80,
+       TargetGroupAttributes: [{Key: preserve_client_ip.enabled, Value: "true"}, {Key: deregistration_delay.timeout_seconds, Value: "10"}]}
+  EdgeHttps:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      {VpcId: !Ref Vpc, TargetType: ip, Protocol: TCP, Port: 443,
+       TargetGroupAttributes: [{Key: preserve_client_ip.enabled, Value: "true"}, {Key: deregistration_delay.timeout_seconds, Value: "10"}]}
+  EdgeIrc:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      {VpcId: !Ref Vpc, TargetType: ip, Protocol: TCP, Port: 6697,
+       TargetGroupAttributes: [{Key: preserve_client_ip.enabled, Value: "true"}, {Key: deregistration_delay.timeout_seconds, Value: "10"}]}
+  EdgeHttpListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties: {LoadBalancerArn: !Ref Edge, Protocol: TCP, Port: 80, DefaultActions: [{Type: forward, TargetGroupArn: !Ref EdgeHttp}]}
+  EdgeHttpsListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties: {LoadBalancerArn: !Ref Edge, Protocol: TCP, Port: 443, DefaultActions: [{Type: forward, TargetGroupArn: !Ref EdgeHttps}]}
+  EdgeIrcListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties: {LoadBalancerArn: !Ref Edge, Protocol: TCP, Port: 6697, DefaultActions: [{Type: forward, TargetGroupArn: !Ref EdgeIrc}]}
+
+  Logs:
+    Type: AWS::Logs::LogGroup
+    Properties: {LogGroupName: /guildnet, RetentionInDays: 30}
+
+  # ECS's own role: pulls the images, writes the logs, and reads the
+  # settings' secret into the containers' environment.
+  ExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement: [{Effect: Allow, Principal: {Service: ecs-tasks.amazonaws.com}, Action: sts:AssumeRole}]
+      ManagedPolicyArns: [arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy]
+      Policies:
+        - PolicyName: settings
+          PolicyDocument:
+            Statement: [{Effect: Allow, Action: secretsmanager:GetSecretValue, Resource: !Ref SettingsSecret}]
+  # The task's own: its files, and (with AllowExec) ECS Exec's channel.
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement: [{Effect: Allow, Principal: {Service: ecs-tasks.amazonaws.com}, Action: sts:AssumeRole}]
+      Policies:
+        - PolicyName: files
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action: [elasticfilesystem:ClientMount, elasticfilesystem:ClientWrite]
+                Resource: !GetAtt Files.Arn
+        - !If
+          - Exec
+          - PolicyName: exec
+            PolicyDocument:
+              Statement:
+                - Effect: Allow
+                  Action: [ssmmessages:CreateControlChannel, ssmmessages:CreateDataChannel, ssmmessages:OpenControlChannel, ssmmessages:OpenDataChannel]
+                  Resource: "*"
+          - !Ref AWS::NoValue
+
+  Cluster:
+    Type: AWS::ECS::Cluster
+
+  Task:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: guildnet
+      RequiresCompatibilities: [FARGATE]
+      NetworkMode: awsvpc
+      Cpu: "1024"
+      Memory: "2048"
+      RuntimePlatform: {CpuArchitecture: X86_64, OperatingSystemFamily: LINUX}
+      ExecutionRoleArn: !GetAtt ExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      Volumes:
+        - {Name: ergo, EFSVolumeConfiguration: {FilesystemId: !Ref Files, TransitEncryption: ENABLED, AuthorizationConfig: {AccessPointId: !Ref ErgoFiles, IAM: ENABLED}}}
+        - {Name: welcome, EFSVolumeConfiguration: {FilesystemId: !Ref Files, TransitEncryption: ENABLED, AuthorizationConfig: {AccessPointId: !Ref WelcomeFiles, IAM: ENABLED}}}
+        - {Name: runner, EFSVolumeConfiguration: {FilesystemId: !Ref Files, TransitEncryption: ENABLED, AuthorizationConfig: {AccessPointId: !Ref RunnerFiles, IAM: ENABLED}}}
+        - {Name: broker-ca, EFSVolumeConfiguration: {FilesystemId: !Ref Files, TransitEncryption: ENABLED, AuthorizationConfig: {AccessPointId: !Ref BrokerCA, IAM: ENABLED}}}
+        - {Name: broker-ca-shared, EFSVolumeConfiguration: {FilesystemId: !Ref Files, TransitEncryption: ENABLED, AuthorizationConfig: {AccessPointId: !Ref BrokerCAShared, IAM: ENABLED}}}
+        - {Name: caddy, EFSVolumeConfiguration: {FilesystemId: !Ref Files, TransitEncryption: ENABLED, AuthorizationConfig: {AccessPointId: !Ref CaddyFiles, IAM: ENABLED}}}
+        # The task's own, gone with it.
+        - {Name: rds-ca}
+        - {Name: caddy-config}
+        - {Name: platform-tmp}
+        - {Name: ergo-tmp}
+        - {Name: runner-tmp}
+      ContainerDefinitions:
+        - Name: rds-ca
+          # RDS's CA bundle, from AWS, for the console and the runner to
+          # check the database's certificate against; then it exits.
+          Image: !Sub "${Registry}/caddy:${Release}"
+          Essential: false
+          EntryPoint: [sh, -c]
+          Command: ["wget -qO /rds-ca/global-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem && grep -q 'BEGIN CERTIFICATE' /rds-ca/global-bundle.pem"]
+          ReadonlyRootFilesystem: true
+          LinuxParameters: {Capabilities: {Drop: [ALL]}}
+          MountPoints: [{SourceVolume: rds-ca, ContainerPath: /rds-ca}]
+          LogConfiguration: {LogDriver: awslogs, Options: {awslogs-group: !Ref Logs, awslogs-region: !Ref AWS::Region, awslogs-stream-prefix: guildnet}}
+
+        - Name: caddy
+          # The edge: HTTPS (Let's Encrypt), and IRC over TLS on 6697.
+          Image: !Sub "${Registry}/caddy:${Release}"
+          Essential: true
+          PortMappings:
+            - {ContainerPort: 80, Protocol: tcp}
+            - {ContainerPort: 443, Protocol: tcp}
+            - {ContainerPort: 6697, Protocol: tcp}
+          Environment:
+            - {Name: GUILDNET_DOMAIN, Value: !Ref Domain}
+            - {Name: GUILDNET_NETWORK, Value: !Ref Network}
+            - {Name: GUILDNET_CONSOLE_UPSTREAM, Value: "localhost:8080"}
+            - {Name: GUILDNET_IRC_UPSTREAM, Value: "localhost:6668"}
+            - {Name: GUILDNET_IRC_HINT_UPSTREAM, Value: "localhost:6699"}
+          ReadonlyRootFilesystem: true
+          # Fargate adds no capabilities: Caddy keeps the default set's
+          # NET_BIND_SERVICE (ports 80 and 443), and drops the rest.
+          LinuxParameters:
+            Capabilities:
+              Drop: [AUDIT_WRITE, CHOWN, DAC_OVERRIDE, FOWNER, FSETID, KILL, MKNOD, NET_RAW, SETFCAP, SETGID, SETPCAP, SETUID, SYS_CHROOT]
+          MountPoints:
+            - {SourceVolume: caddy, ContainerPath: /data}
+            - {SourceVolume: caddy-config, ContainerPath: /config}
+          LogConfiguration: {LogDriver: awslogs, Options: {awslogs-group: !Ref Logs, awslogs-region: !Ref AWS::Region, awslogs-stream-prefix: guildnet}}
+
+        - Name: platform
+          # The console, and the broker the runner gets its settings and
+          # keys from.
+          Image: !Sub "${Registry}/platform:${Release}"
+          Essential: true
+          User: "65532:65532"
+          DependsOn: [{ContainerName: rds-ca, Condition: SUCCESS}]
+          Environment:
+            - {Name: GUILDNET_BASE_DOMAIN, Value: !Ref Domain}
+            - {Name: GUILDNET_SECURE_COOKIES, Value: "on"}
+            # Caddy, in this task: only its X-Forwarded-For is believed.
+            - {Name: GUILDNET_TRUSTED_PROXIES, Value: 127.0.0.1/32}
+            # The password is PGPASSWORD's, from the settings.
+            - {Name: GUILDNET_PLATFORM_DATABASE_URL, Value: !Sub "postgres://platform@${Database.Endpoint.Address}:5432/platform?sslmode=verify-full&sslrootcert=/rds-ca/global-bundle.pem"}
+            - {Name: GUILDNET_NETWORK, Value: !Ref Network}
+            - {Name: GUILDNET_RUNNER_URL, Value: "http://localhost:8090"}
+            - {Name: GUILDNET_ERGO_URL, Value: "http://localhost:8089"}
+            - {Name: GUILDNET_CHAT_URL, Value: "ws://localhost:8097"}
+            - {Name: GUILDNET_GITHUB_BROKER_LISTEN, Value: ":8082"}
+            - {Name: GUILDNET_BROKER_TLS_DIR, Value: /var/lib/guildnet-broker/own}
+            - {Name: GUILDNET_BROKER_CA_SHARE, Value: /var/lib/guildnet-broker/shared}
+            - {Name: GUILDNET_BROKER_NAMES, Value: localhost}
+            - {Name: GUILDNET_IRC_PORT, Value: "6697"}
+            - {Name: GUILDNET_IRC_HINT_LISTEN, Value: ":6699"}
+            - {Name: GUILDNET_BRAND_DIR, Value: ""}
+          Secrets:
+            - {Name: PGPASSWORD, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_PLATFORM_DB_PASSWORD::"}
+            - {Name: GUILDNET_PLATFORM_KEY, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_PLATFORM_KEY::"}
+            - {Name: GUILDNET_PLATFORM_OLD_KEYS, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_PLATFORM_OLD_KEYS::"}
+            - {Name: GUILDNET_API_TOKEN, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_API_TOKEN::"}
+            - {Name: GUILDNET_ERGO_API_TOKEN, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_ERGO_API_TOKEN::"}
+            - {Name: GUILDNET_CHAT_KEY, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_CHAT_KEY::"}
+            - {Name: GUILDNET_SMTP_ADDR, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_SMTP_ADDR::"}
+            - {Name: GUILDNET_SMTP_USERNAME, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_SMTP_USERNAME::"}
+            - {Name: GUILDNET_SMTP_PASSWORD, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_SMTP_PASSWORD::"}
+            - {Name: GUILDNET_SMTP_SECURITY, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_SMTP_SECURITY::"}
+            - {Name: GUILDNET_MAIL_FROM, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_MAIL_FROM::"}
+            - {Name: GUILDNET_MAIL_REPLY_TO, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_MAIL_REPLY_TO::"}
+            - {Name: GUILDNET_RESEND_KEY, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_RESEND_KEY::"}
+            - {Name: GUILDNET_GITHUB_PUBLIC_APP_ID, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_GITHUB_PUBLIC_APP_ID::"}
+            - {Name: GUILDNET_GITHUB_PUBLIC_APP_SLUG, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_GITHUB_PUBLIC_APP_SLUG::"}
+            - {Name: GUILDNET_GITHUB_PUBLIC_CLIENT_ID, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_GITHUB_PUBLIC_CLIENT_ID::"}
+            - {Name: GUILDNET_GITHUB_PUBLIC_CLIENT_SECRET, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_GITHUB_PUBLIC_CLIENT_SECRET::"}
+            - {Name: GUILDNET_GITHUB_PUBLIC_APP_KEY, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_GITHUB_PUBLIC_APP_KEY::"}
+            - {Name: GUILDNET_BRAND_NAME, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_BRAND_NAME::"}
+            - {Name: GUILDNET_BRAND_TAGLINE, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_BRAND_TAGLINE::"}
+            - {Name: GUILDNET_BRAND_HELLO, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_BRAND_HELLO::"}
+            - {Name: GUILDNET_BRAND_SUPPORT, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_BRAND_SUPPORT::"}
+            - {Name: GUILDNET_BRAND_PRIVACY, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_BRAND_PRIVACY::"}
+            - {Name: GUILDNET_BRAND_SECURITY, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_BRAND_SECURITY::"}
+            - {Name: GUILDNET_SOURCE, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_SOURCE::"}
+            - {Name: GUILDNET_CHAT_SOURCE, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_CHAT_SOURCE::"}
+            - {Name: GUILDNET_SANDBOX_URL, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_SANDBOX_URL::"}
+            - {Name: GUILDNET_SANDBOX_KEY, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_SANDBOX_KEY::"}
+            - {Name: GUILDNET_SANDBOX_NAMES, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_SANDBOX_NAMES::"}
+            - {Name: GUILDNET_GIT_PRIVATE_HOSTS, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_GIT_PRIVATE_HOSTS::"}
+            - {Name: GUILDNET_SENTRY_DSN, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_SENTRY_DSN::"}
+            - {Name: GUILDNET_ENVIRONMENT, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_ENVIRONMENT::"}
+          ReadonlyRootFilesystem: true
+          LinuxParameters: {Capabilities: {Drop: [ALL]}}
+          MountPoints:
+            - {SourceVolume: broker-ca, ContainerPath: /var/lib/guildnet-broker/own}
+            - {SourceVolume: broker-ca-shared, ContainerPath: /var/lib/guildnet-broker/shared}
+            - {SourceVolume: rds-ca, ContainerPath: /rds-ca, ReadOnly: true}
+            - {SourceVolume: platform-tmp, ContainerPath: /tmp}
+          LogConfiguration: {LogDriver: awslogs, Options: {awslogs-group: !Ref Logs, awslogs-region: !Ref AWS::Region, awslogs-stream-prefix: guildnet}}
+
+        - Name: ergo
+          # The network's IRC server: members only.
+          Image: !Sub "${Registry}/ergo:${Release}"
+          Essential: true
+          User: "65534:65534"
+          Environment:
+            - {Name: GUILDNET_NETWORK, Value: !Ref Network}
+            - {Name: GUILDNET_WEB_URL, Value: !Sub "https://${Network}.${Domain}"}
+            - {Name: ERGO__NETWORK__NAME, Value: !Ref Network}
+            - {Name: ERGO__SERVER__NAME, Value: !Sub "${Network}.${Domain}"}
+            # The edge and the console, both in this task, say who the
+            # visitor is.
+            - {Name: ERGO__SERVER__PROXY_ALLOWED_FROM, Value: '["127.0.0.1/32"]'}
+            - {Name: ERGO__SERVER__WEBSOCKETS__ALLOWED_ORIGINS, Value: !Sub '["https://${Network}.${Domain}"]'}
+            - {Name: ERGO__API__ENABLED, Value: "true"}
+            - {Name: ERGO__API__LISTENER, Value: ":8089"}
+            - {Name: ERGO__ACCOUNTS__REGISTRATION__ENABLED, Value: "false"}
+            - {Name: ERGO__ACCOUNTS__REQUIRE_SASL__ENABLED, Value: "true"}
+            - {Name: ERGO__ACCOUNTS__JWT_AUTH__ENABLED, Value: "true"}
+            - {Name: ERGO__ACCOUNTS__JWT_AUTH__AUTOCREATE, Value: "false"}
+            - {Name: ERGO__OPERS__GUILDSERV__CLASS, Value: server-admin}
+            - {Name: ERGO__OPERS__GUILDSERV__HIDDEN, Value: "true"}
+          # Made from the settings when the secret's written (fargate.md):
+          # Ergo's API token and the web chat's key, in the forms Ergo reads.
+          Secrets:
+            - {Name: ERGO__API__BEARER_TOKENS, ValueFrom: !Sub "${SettingsSecret}:ERGO__API__BEARER_TOKENS::"}
+            - {Name: ERGO__ACCOUNTS__JWT_AUTH__TOKENS, ValueFrom: !Sub "${SettingsSecret}:ERGO__ACCOUNTS__JWT_AUTH__TOKENS::"}
+            - {Name: GUILDNET_OPER_PASSWORD, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_OPER_PASSWORD::"}
+          ReadonlyRootFilesystem: true
+          LinuxParameters: {Capabilities: {Drop: [ALL]}}
+          MountPoints:
+            - {SourceVolume: ergo, ContainerPath: /ircd}
+            - {SourceVolume: welcome, ContainerPath: /welcome}
+            - {SourceVolume: ergo-tmp, ContainerPath: /tmp}
+          LogConfiguration: {LogDriver: awslogs, Options: {awslogs-group: !Ref Logs, awslogs-region: !Ref AWS::Region, awslogs-stream-prefix: guildnet}}
+
+        - Name: runner
+          # The network's agents, GuildServ and the ledger.
+          Image: !Sub "${Registry}/runner:${Release}"
+          Essential: true
+          User: "65532:65532"
+          DependsOn: [{ContainerName: rds-ca, Condition: SUCCESS}]
+          Environment:
+            - {Name: GUILDNET_NETWORK, Value: !Ref Network}
+            - {Name: GUILDNET_SETTINGS_FROM_BROKER, Value: "on"}
+            - {Name: GUILDNET_KEYS_BROKER, Value: "https://localhost:8082"}
+            - {Name: GUILDNET_GITHUB_BROKER, Value: "https://localhost:8082"}
+            - {Name: GUILDNET_BROKER_CA_FILE, Value: /var/lib/guildnet-broker/ca.crt}
+            - {Name: GUILDNET_DATA_DIR, Value: /app/data}
+            - {Name: GUILDNET_SERVER, Value: "localhost:6667"}
+            - {Name: GUILDNET_DATABASE_URL, Value: !Sub "postgres://runner@${Database.Endpoint.Address}:5432/runner?sslmode=verify-full&sslrootcert=/rds-ca/global-bundle.pem"}
+            - {Name: GUILDNET_ERGO_API_URL, Value: "http://localhost:8089"}
+            - {Name: GUILDNET_OPER_NAME, Value: guildserv}
+            - {Name: GUILDNET_API_LISTEN, Value: ":8090"}
+            - {Name: GUILDNET_WELCOME_DIR, Value: /welcome}
+          Secrets:
+            - {Name: PGPASSWORD, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_RUNNER_DB_PASSWORD::"}
+            - {Name: GUILDNET_ERGO_API_TOKEN, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_ERGO_API_TOKEN::"}
+            - {Name: GUILDNET_ACCOUNT_SECRET, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_ACCOUNT_SECRET::"}
+            - {Name: GUILDNET_OPER_PASSWORD, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_OPER_PASSWORD::"}
+            - {Name: GUILDNET_API_TOKEN, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_API_TOKEN::"}
+            - {Name: GUILDNET_MANAGED, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_MANAGED::"}
+            - {Name: GUILDNET_DESK_BUDGET_CENTS, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_DESK_BUDGET_CENTS::"}
+            - {Name: GUILDNET_GIT_PRIVATE_HOSTS, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_GIT_PRIVATE_HOSTS::"}
+            - {Name: GUILDNET_SENTRY_DSN, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_SENTRY_DSN::"}
+            - {Name: GUILDNET_ENVIRONMENT, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_ENVIRONMENT::"}
+          ReadonlyRootFilesystem: true
+          LinuxParameters: {Capabilities: {Drop: [ALL]}}
+          MountPoints:
+            - {SourceVolume: runner, ContainerPath: /app/data}
+            - {SourceVolume: welcome, ContainerPath: /welcome}
+            # The console's CA's certificate, never its key.
+            - {SourceVolume: broker-ca-shared, ContainerPath: /var/lib/guildnet-broker, ReadOnly: true}
+            - {SourceVolume: rds-ca, ContainerPath: /rds-ca, ReadOnly: true}
+            - {SourceVolume: runner-tmp, ContainerPath: /tmp}
+          LogConfiguration: {LogDriver: awslogs, Options: {awslogs-group: !Ref Logs, awslogs-region: !Ref AWS::Region, awslogs-stream-prefix: guildnet}}
+
+  # The console's and runner's databases and logins on RDS, made by the
+  # Postgres image's own scripts as RDS's admin (not a superuser). Run once,
+  # by hand (fargate.md), before the service starts working; safe again.
+  DatabaseInit:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: guildnet-db-init
+      RequiresCompatibilities: [FARGATE]
+      NetworkMode: awsvpc
+      Cpu: "256"
+      Memory: "512"
+      RuntimePlatform: {CpuArchitecture: X86_64, OperatingSystemFamily: LINUX}
+      ExecutionRoleArn: !GetAtt ExecutionRole.Arn
+      ContainerDefinitions:
+        - Name: db-init
+          Image: !Sub "${Registry}/postgres:${Release}"
+          Essential: true
+          User: "70:70"
+          EntryPoint: [sh, -c]
+          Command: ["sh /docker-entrypoint-initdb.d/10-platform.sh && sh /docker-entrypoint-initdb.d/20-runner.sh"]
+          Environment:
+            - {Name: PGHOST, Value: !GetAtt Database.Endpoint.Address}
+            - {Name: PGSSLMODE, Value: require}
+            - {Name: POSTGRES_USER, Value: postgres}
+            - {Name: POSTGRES_DB, Value: postgres}
+          Secrets:
+            - {Name: PGPASSWORD, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_DB_PASSWORD::"}
+            - {Name: PLATFORM_DB_PASSWORD, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_PLATFORM_DB_PASSWORD::"}
+            - {Name: RUNNER_DB_PASSWORD, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_RUNNER_DB_PASSWORD::"}
+          ReadonlyRootFilesystem: true
+          LinuxParameters: {Capabilities: {Drop: [ALL]}}
+          LogConfiguration: {LogDriver: awslogs, Options: {awslogs-group: !Ref Logs, awslogs-region: !Ref AWS::Region, awslogs-stream-prefix: guildnet}}
+
+  Service:
+    Type: AWS::ECS::Service
+    DependsOn: [EdgeHttpListener, EdgeHttpsListener, EdgeIrcListener, FilesA, FilesB]
+    Properties:
+      Cluster: !Ref Cluster
+      ServiceName: guildnet
+      TaskDefinition: !Ref Task
+      LaunchType: FARGATE
+      DesiredCount: !Ref Running
+      # The old task stops before the new one starts: never two Ergos.
+      DeploymentConfiguration:
+        MaximumPercent: 100
+        MinimumHealthyPercent: 0
+        DeploymentCircuitBreaker: {Enable: true, Rollback: true}
+      EnableExecuteCommand: !If [Exec, true, false]
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          Subnets: [!Ref PublicA, !Ref PublicB]
+          SecurityGroups: [!Ref TaskGroup]
+      LoadBalancers:
+        - {ContainerName: caddy, ContainerPort: 80, TargetGroupArn: !Ref EdgeHttp}
+        - {ContainerName: caddy, ContainerPort: 443, TargetGroupArn: !Ref EdgeHttps}
+        - {ContainerName: caddy, ContainerPort: 6697, TargetGroupArn: !Ref EdgeIrc}
+
+Outputs:
+  Addresses:
+    Description: the edge's addresses, for both DNS names' A records
+    Value: !Join [" ", [!Ref AddressA, !Ref AddressB]]
+  DatabaseInitCommand:
+    Description: runs the database's setup once (fargate.md, step 4)
+    Value: !Sub "aws ecs run-task --cluster ${Cluster} --task-definition ${DatabaseInit} --launch-type FARGATE --network-configuration 'awsvpcConfiguration={subnets=[${PublicA}],securityGroups=[${TaskGroup}],assignPublicIp=ENABLED}'"
+  TaskSecurityGroup:
+    Description: the task's security group, for a desks host's firewall (desks-host.md)
+    Value: !Ref TaskGroup

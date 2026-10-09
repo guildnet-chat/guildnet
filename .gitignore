@@ -1,0 +1,6 @@
+bin/
+data/
+*.exe
+.env
+*.pem
+__pycache__/

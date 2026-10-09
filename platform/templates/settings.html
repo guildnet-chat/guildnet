@@ -1,0 +1,64 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{define "title"}}Settings · {{.Network}}{{end}}
+{{define "main"}}
+{{with .Data.View}}
+<h1>Settings</h1>
+{{if .Saved}}<p class="note" role="status">Saved. The agents restart with it in a few seconds.</p>{{end}}
+
+<form method="post" action="/settings" class="card fields">
+  <input type="hidden" name="csrf" value="{{$.CSRF}}">
+  <h2 class="wide">Company timezone</h2>
+  <label>Timezone
+    <input name="timezone" value="{{.Timezone}}" list="timezones" required spellcheck="false">
+    <datalist id="timezones">{{range .Timezones}}<option value="{{.}}">{{end}}</datalist>
+  </label>
+  <button>Save</button>
+  <p class="muted small wide">The times people and agents see, and the workweek approvals count.</p>
+</form>
+
+{{range .Sections}}{{.}}{{end}}
+
+<section class="card">
+  <h2>Model providers</h2>
+  <p class="muted small">Your agents run on the providers you give keys for. Each key is checked with its provider, stored encrypted, and given only to {{.Name}}; a replaced key isn't kept.</p>
+  <ul class="people">
+    {{range .Providers}}
+    <li>
+      <span><span class="name">{{.Title}}</span> <span class="role">{{if .KeyEnd}}key ending in <strong>…{{.KeyEnd}}</strong>{{else}}no key{{end}}</span></span>
+      {{if .KeyEnd}}
+      <form method="post" action="/settings/keys/remove" class="push">
+        <input type="hidden" name="csrf" value="{{$.CSRF}}">
+        <input type="hidden" name="provider" value="{{.Provider}}">
+        <button class="link danger">Remove</button>
+      </form>
+      {{end}}
+    </li>
+    {{end}}
+  </ul>
+  <form method="post" action="/settings/keys" class="fields">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <label>Provider
+      <select name="provider" required>{{range .Providers}}<option value="{{.Provider}}">{{.Title}}</option>{{end}}</select>
+    </label>
+    <label>API key {{template "key-input"}}</label>
+    <button>Add or replace key</button>
+  </form>
+</section>
+
+{{if .CanDelete}}
+<form method="post" action="/settings/delete" class="card danger-zone" hx-boost="false">
+  <input type="hidden" name="csrf" value="{{$.CSRF}}">
+  <h2 class="danger-title">Delete {{.Name}}</h2>
+  <label><span>To delete it, type <strong>{{.Name}}</strong></span>
+    <input name="confirm" required autocomplete="off" spellcheck="false"></label>
+  <button class="danger">Delete network</button>
+  <p class="muted small">This removes its chat history, org chart, agents and accounts for good.</p>
+</form>
+{{else}}
+<section class="card">
+  <h2>Removing {{.Name}}</h2>
+  <p class="muted">{{.Name}} is this install's own network, so it's removed with the install: stop its stack and remove its volumes, as the self-hosting docs say.</p>
+</section>
+{{end}}
+{{end}}
+{{end}}

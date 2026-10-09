@@ -1,0 +1,90 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{block "title" .}}{{brand}}{{end}}</title>
+{{block "head" .}}{{end}}
+{{template "icons"}}
+<link rel="stylesheet" href="{{static "tokens.css"}}">
+<link rel="stylesheet" href="{{static "console.css"}}">{{with brandCSS}}
+<link rel="stylesheet" href="{{.}}">{{end}}
+<script src="{{static "theme.js"}}"></script>
+<script src="{{static "passkeys.js"}}" defer></script>
+{{if .ChatDock}}<script src="{{static "dock.js"}}"></script>{{end}}
+{{if .Account}}{{/* On every console page: pages swap without reloading, so a chart's page can't bring its own. */}}
+<script src="{{static "chart-4.5.1.umd.min.js"}}" defer></script>
+<script src="{{static "charts.js"}}" defer></script>
+<script src="{{static "forms.js"}}" defer></script>{{end}}
+<script src="/static/htmx-4.0.0.min.js" integrity="{{.HtmxIntegrity}}" defer></script>
+</head>
+{{if .Account}}
+{{/* Moving between pages swaps only the page and the sidebar, so the chat
+     docked beside them stays connected. */}}
+<body hx-boost:inherited="true" hx-target:inherited="#page" hx-select:inherited="#page" hx-swap:inherited="outerHTML" hx-select-oob:inherited="#nav">
+<div class="app{{if .ChatDock}} with-chat{{end}}">
+  <nav class="sidebar" id="nav" aria-label="Console">
+    {{/* On a phone the menu folds away behind a button; moving to another
+         page swaps in a new, folded sidebar. */}}
+    <div class="sidebar-top">
+      <a class="network" href="/"><span class="hash">#</span>{{.Network}}</a>
+      <button type="button" class="menu-toggle" data-menu-toggle aria-expanded="false" aria-controls="nav-menu"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg><span class="visually-hidden">Menu</span>{{with .Chrome.Waiting}}<span class="count" title="Waiting on you">{{len .}}</span>{{end}}</button>
+    </div>
+    <div class="nav-menu" id="nav-menu">
+    {{if .Chrome.CanHire}}<a class="button hire" href="/?add=1#hire">{{template "plus"}}Hire an agent</a>{{end}}
+    <a href="/" {{if or (eq .Nav "org") (eq .Nav "staff") (eq .Nav "roles") (eq .Nav "agent-token") (eq .Nav "agent-webhook")}}class="here" aria-current="page"{{end}}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="9" cy="7" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20a6 6 0 0 1 12 0M14 20a5 5 0 0 1 8 0"/></svg>Org chart</a>
+    <a href="/company" {{if eq .Nav "company"}}class="here" aria-current="page"{{end}}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></svg>Company</a>
+    <a href="/teams" {{if or (eq .Nav "teams") (eq .Nav "team")}}class="here" aria-current="page"{{end}}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Teams</a>
+    <a href="/people" {{if or (eq .Nav "people") (eq .Nav "person") (eq .Nav "access")}}class="here" aria-current="page"{{end}}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="10" cy="8" r="3.5"/><path d="M3 20a7 7 0 0 1 14 0M19 8v6M16 11h6"/></svg>People</a>
+    <a href="/approvals" {{if eq .Nav "approvals"}}class="here" aria-current="page"{{end}}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Approvals{{with .Chrome.Waiting}} <span class="count">{{len .}}</span>{{end}}</a>
+    <a href="/chat/" {{if eq .Nav "chat"}}class="here" aria-current="page"{{end}}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Chat</a>
+    <a href="/connect" {{if eq .Nav "connect"}}class="here" aria-current="page"{{end}}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 17l6-6-6-6M12 19h8"/></svg>IRC apps</a>
+    <a href="/connectors" {{if eq .Nav "connectors"}}class="here" aria-current="page"{{end}}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 7V3M15 7V3M7 7h10v4a5 5 0 0 1-10 0zM12 16v5"/></svg>Connectors</a>
+    {{if .Chrome.CanLog}}<a href="/log" {{if eq .Nav "log"}}class="here" aria-current="page"{{end}}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>Log</a>{{end}}
+    {{if .Chrome.CanSpend}}<a href="/spend" {{if eq .Nav "spend"}}class="here" aria-current="page"{{end}}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Spend</a>{{end}}
+    {{if .Chrome.Server}}<a href="/server" {{if eq .Nav "server"}}class="here" aria-current="page"{{end}}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01"/></svg>Server</a>{{end}}
+    {{if .Chrome.Settings}}<a href="/settings" {{if eq .Nav "settings"}}class="here" aria-current="page"{{end}}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Settings</a>{{end}}
+    <div class="me">
+      <a href="/account" class="who"{{if or (eq .Nav "account") (eq .Nav "two-step")}} aria-current="page"{{end}}>
+        <span class="avatar" aria-hidden="true">{{initial .Account}}</span>
+        <span class="who-text"><span class="name">{{.Account}}</span><span class="role">{{if .Chrome.Owner}}Owner{{else}}Your account{{end}}</span></span>
+      </a>
+      {{template "theme-toggle"}}
+      <form method="post" action="/signout" hx-boost="false"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="icon-button" aria-label="Sign out" title="Sign out"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg></button></form>
+    </div>
+    {{with source}}<a class="source quiet" href="{{.}}" hx-boost="false">Source</a>{{end}}
+    </div>
+  </nav>
+  {{/* Back and Forward bring back this page (and the sidebar with it), not
+       the whole document: htmx's history restores [hx-history-elt]. */}}
+  <div id="page" class="page" hx-history-elt data-version="{{.Version}}"{{if .ChatDock}} data-chat-dock="on"{{end}}{{if eq .Nav "chat"}} data-chat="wide"{{end}}>
+    <main>
+      {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}{{if .Done}}<p class="done" role="status">{{.Done}}</p>{{end}}
+      {{template "main" .}}
+    </main>
+  </div>
+  {{if .ChatDock}}
+  <section id="chat-dock" class="chat-dock" aria-label="Chat">
+    <div class="chat-dock-resize" role="separator" aria-orientation="vertical" aria-label="Chat width: drag, or use the arrow keys" tabindex="0" data-chat-resize></div>
+    <iframe id="chat-frame" class="chat-app" src="/chat/app/" title="Chat"></iframe>
+  </section>
+  <button type="button" class="chat-open" data-chat-toggle aria-controls="chat-dock"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Chat</button>
+  {{end}}
+</div>
+{{else}}
+<body>
+<header class="bare">
+  <span class="brand">{{template "logo"}}{{brand}}</span>
+  {{template "theme-toggle"}}
+</header>
+{{/* Marked as the page too: if a sign-in runs out while moving between
+     console pages, the sign-in form takes the page's place. */}}
+<main class="narrow" id="page" data-version="{{.Version}}">
+  {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}{{if .Done}}<p class="done" role="status">{{.Done}}</p>{{end}}
+  {{template "main" .}}
+</main>
+{{with source}}<footer class="bare"><a class="quiet" href="{{.}}">Source</a></footer>{{end}}
+{{end}}
+</body>
+</html>

@@ -1,0 +1,20 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{define "title"}}Log · {{.Network}}{{end}}
+{{define "main"}}
+<h1>Log</h1>
+<p class="lede muted">Every change to the org: who made it, what, and when.{{if not $.Chrome.Owner}} You see changes in the teams whose log you may see.{{end}}</p>
+{{with .Data.View}}
+<div class="card table-wrap">
+  <table class="data">
+    <thead><tr><th>When</th><th>Who</th><th>What</th><th>To</th><th>Team</th><th>Detail</th></tr></thead>
+    <tbody>
+    {{range .}}
+      <tr><td class="when">{{when .At}}</td><td>{{.Actor}}</td><td>{{.Action}}</td><td>{{.Target}}</td><td>{{.Team}}</td><td class="wrap">{{.Detail}}</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+</div>
+{{else}}
+<section class="card empty"><h2>No changes yet.</h2><p class="muted">Hiring, inviting, and changing teams or who may do what all show up here.</p></section>
+{{end}}
+{{end}}

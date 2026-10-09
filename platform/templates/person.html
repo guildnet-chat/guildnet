@@ -1,0 +1,91 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{define "title"}}{{with .Data.View}}{{.Person.Name}}{{end}} · {{.Network}}{{end}}
+{{define "main"}}
+{{with .Data.View}}
+{{$p := .Person}}
+{{template "crumbs" (list "/people" "People")}}
+<header class="profile">
+  <span class="avatar big" aria-hidden="true">{{initial $p.Name}}</span>
+  <div>
+    <h1>{{$p.Name}}{{if $p.Owner}} <span class="badge">owner</span>{{end}}{{if eq $p.Kind "guest"}} <span class="badge">guest</span>{{end}}{{range $p.Access}} <span class="badge">{{.}}</span>{{end}}</h1>
+    <p class="muted">{{$p.Role}}{{if $p.Team}}, <a href="/teams/{{$p.Team}}">{{$p.Team}}</a>{{end}}.{{if $p.ReportsTo}} Reports to {{$p.ReportsTo}}.{{end}}</p>
+  </div>
+</header>
+
+<dl class="card facts">
+  <dt>Leads</dt><dd>{{range $i, $t := .Leads}}{{if $i}}, {{end}}<a href="/teams/{{$t}}">{{$t}}</a>{{else}}<span class="muted">No team</span>{{end}}</dd>
+  <dt>Reports</dt><dd>{{range $i, $r := .Reports}}{{if $i}}, {{end}}{{if eq $r.Kind "agent"}}<a href="/staff/{{$r.Name}}">{{$r.Name}}</a> <span class="badge ai">AI</span>{{else}}<a href="/people/{{$r.Name}}">{{$r.Name}}</a>{{end}}{{else}}<span class="muted">Nobody</span>{{end}}</dd>
+</dl>
+
+{{if .CanArrange}}
+<form method="post" action="/people/{{$p.Name}}" class="card fields">
+  <input type="hidden" name="csrf" value="{{$.CSRF}}">
+  <h2 class="wide">Their place in the org</h2>
+  <label>Title <input name="role" value="{{$p.Role}}" maxlength="64"></label>
+  <label>Team
+    <select name="team">
+      <option value="" {{if not $p.Team}}selected{{end}}>No team</option>
+      {{range .Teams}}<option {{if eq . $p.Team}}selected{{end}}>{{.}}</option>{{end}}
+    </select>
+  </label>
+  <label>Reports to
+    <select name="reports_to">
+      {{range .Managers}}<option {{if eq . $p.ReportsTo}}selected{{end}}>{{.}}</option>{{end}}
+    </select>
+  </label>
+  <div class="wide"><button>Save</button></div>
+</form>
+
+{{if .LeadTeams}}
+<section class="card">
+  <h2>Leading</h2>
+  <p class="muted">A lead runs their team and every team inside it: who's in it, its agents, and its budget.</p>
+  <ul class="people">
+    {{range .LeadTeams}}
+    <li><span class="name">{{.Team}}</span>
+      <form method="post" action="/people/{{$p.Name}}/lead" class="inline push"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="team" value="{{.Team}}">
+        {{if .Leads}}<input type="hidden" name="lead" value="0"><button class="link">Stop leading</button>{{else}}<input type="hidden" name="lead" value="1"><button class="link">Make a lead</button>{{end}}</form></li>
+    {{end}}
+  </ul>
+</section>
+{{end}}
+
+{{if .Access}}
+<section class="card">
+  <h2>Access</h2>
+  <p class="muted">On top of what their place gives them. <a href="/access">What each level holds</a></p>
+  <ul class="people">
+    {{range .Access}}
+    <li><span><span class="name">{{.Name}}</span><br><span class="role">{{.Describe}}</span></span>
+      <form method="post" action="/people/{{$p.Name}}/access" class="inline push"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="level" value="{{.Name}}">
+        {{if .Has}}<input type="hidden" name="give" value="0"><button class="link danger">Take away</button>{{else}}<input type="hidden" name="give" value="1"><button class="link">Give</button>{{end}}</form></li>
+    {{end}}
+  </ul>
+</section>
+{{end}}
+{{end}}
+
+{{if .TwoStep}}
+<section class="card">
+  <h2>Signing in</h2>
+  <p>Two-step sign-in is on: {{$p.Name}} signs in with their password and a code from their authenticator app.</p>
+  {{if .CanResetTwoStep}}
+  <form method="post" action="/people/{{$p.Name}}/two-step/reset" class="inline" hx-confirm="Reset {{$p.Name}}'s two-step sign-in? Their password alone will sign them in until they set it up again.">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <p class="muted small">If they've lost their phone and their recovery codes, reset it: they're signed out, and set it up again after their password.</p>
+    <button class="outline">Reset two-step sign-in</button>
+  </form>
+  {{end}}
+</section>
+{{end}}
+
+{{if .CanRemove}}
+<form method="post" action="/people/{{$p.Name}}/remove" class="card danger-zone" hx-confirm="Take {{$p.Name}} out of the org?">
+  <input type="hidden" name="csrf" value="{{$.CSRF}}">
+  <h2 class="danger-title">Remove {{$p.Name}}</h2>
+  <p>Taking {{$p.Name}} out of the org stops them signing in to the console and removes their ranks.</p>
+  <button class="danger">Remove {{$p.Name}}</button>
+</form>
+{{end}}
+{{end}}
+{{end}}

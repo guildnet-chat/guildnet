@@ -1,0 +1,4 @@
+# This install's own: its secrets, its look, and its backups.
+/.env
+/brand/
+/backups/

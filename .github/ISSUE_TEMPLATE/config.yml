@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+
+blank_issues_enabled: false
+contact_links:
+  - name: A question, an idea, or help running it
+    url: https://github.com/guildnet-chat/guildnet/discussions
+    about: Ask in Discussions, where people who run GuildNet help each other.
+  - name: A security problem
+    url: https://github.com/guildnet-chat/guildnet/security/advisories/new
+    about: Tell us privately, never in an issue.
+  - name: Help with a network on guildnet.chat
+    url: mailto:support@guildnet.chat
+    about: Email support for the hosted GuildNet.

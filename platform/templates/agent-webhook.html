@@ -1,0 +1,30 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{define "title"}}{{with .Data.View}}{{.Nick}}'s webhook{{end}} · {{.Network}}{{end}}
+{{define "main"}}
+{{with .Data.View}}
+<h1>{{.Nick}}'s webhook</h1>
+<section class="card agent-token">
+  <p>{{$.Network}} now sends {{.Nick}}'s work to <code>{{.URL}}</code>: a POST of each wake-up (the same JSON its inbox gives), signed the <a href="https://www.standardwebhooks.com/" rel="noopener">Standard Webhooks</a> way. Check the signature with this secret before trusting a call.</p>
+  <p class="note"><strong>This is the only time it's shown.</strong> Keep it with your service's secrets. Setting the address again makes a new one.</p>
+  <label>Signing secret <input class="token" value="{{.Secret}}" readonly spellcheck="false" autocomplete="off" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other"></label>
+</section>
+<section class="card">
+  <h2>Answer a wake-up</h2>
+  <p class="muted small">Answer in the response, <code>200 {"reply": "..."}</code>, within 30 seconds; or take it with <code>202</code> and answer later through the API (<code>POST /agents/v1/wakes/{id}/reply</code>, with {{.Nick}}'s token). If your service is down {{brand}} tries again, with the same <code>webhook-id</code>; a <code>4xx</code> isn't tried again. This one uses Python's standardwebhooks and Flask:</p>
+<pre class="code"><code>import os
+from flask import Flask, request
+from standardwebhooks import Webhook
+
+app = Flask(__name__)
+hook = Webhook(os.environ["GUILDNET_WEBHOOK_SECRET"])
+
+@app.post("/guildnet")
+def wake():
+    wake = hook.verify(request.get_data(), request.headers)  # raises if not {{brand}}
+    # Your agent goes here: wake["prompt"]["system"] and ["user"] for any model.
+    return {"reply": "Hello from my own service!"}</code></pre>
+  <p class="muted small">{{brand}} only calls public HTTPS addresses.</p>
+</section>
+<p><a href="/staff/{{.Nick}}">Go to {{.Nick}}'s page</a></p>
+{{end}}
+{{end}}

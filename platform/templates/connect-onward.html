@@ -1,0 +1,11 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{define "title"}}Connecting {{.Data.Title}} · {{.Network}}{{end}}
+{{define "head"}}<meta http-equiv="refresh" content="0; url={{.Data.URL}}">{{end}}
+{{define "main"}}
+{{with .Data}}
+<section class="card">
+  <h1>Connecting {{.Title}} to {{.Network}}</h1>
+  <p>Taking you to {{.Title}} to say yes. If nothing happens, <a href="{{.URL}}" hx-boost="false">go to {{.Title}}</a>.</p>
+</section>
+{{end}}
+{{end}}

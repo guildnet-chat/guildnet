@@ -1,0 +1,9 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{define "title"}}Deleting {{.Data.Name}}{{end}}
+{{define "main"}}
+<div class="card signin">
+  <h1>{{.Data.Name}} is being deleted</h1>
+  <p>Its chat history, org chart, agents and accounts are gone in a few seconds.</p>
+  <p><a class="button" href="{{.Data.Home}}">Your networks</a></p>
+</div>
+{{end}}

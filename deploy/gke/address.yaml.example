@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# The edge's reserved address (gcloud compute addresses create): copy to
+# address.yaml and put it in.
+apiVersion: v1
+kind: Service
+metadata:
+  name: guildnet-edge
+spec:
+  loadBalancerIP: 203.0.113.10

@@ -1,0 +1,8 @@
+nick: otto
+name: Otto
+preset: code-reviewer
+team: Engineering
+reports_to: "{{owner}}"
+model: fast
+daily_budget_usd: 0.50
+channels: ["#general", "#engineering"]

@@ -1,0 +1,47 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# The console's and the runner's databases and logins on Cloud SQL, made
+# by the Postgres image's own scripts, as its admin (postgres, which Cloud
+# SQL doesn't make a superuser). Safe to run again: it changes only the
+# logins' passwords.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: guildnet-db-init
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 3600
+  template:
+    spec:
+      restartPolicy: OnFailure
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: db-init
+          image: ghcr.io/guildnet-chat/postgres:26.10.0
+          command: [sh, -c, "sh /docker-entrypoint-initdb.d/10-platform.sh && sh /docker-entrypoint-initdb.d/20-runner.sh"]
+          env:
+            - {name: PGHOST, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_DB_HOST}}}
+            - {name: PGPASSWORD, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_DB_PASSWORD}}}
+            - {name: PGSSLMODE, value: verify-ca}
+            - {name: PGSSLROOTCERT, value: /etc/cloudsql/server-ca.pem}
+            - {name: POSTGRES_USER, value: postgres}
+            - {name: POSTGRES_DB, value: postgres}
+            - {name: PLATFORM_DB_PASSWORD, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_PLATFORM_DB_PASSWORD}}}
+            - {name: RUNNER_DB_PASSWORD, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_RUNNER_DB_PASSWORD}}}
+          securityContext:
+            runAsUser: 70
+            runAsGroup: 70
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+          volumeMounts:
+            - {name: cloudsql-ca, mountPath: /etc/cloudsql, readOnly: true}
+      volumes:
+        - name: cloudsql-ca
+          configMap: {name: cloudsql-ca}

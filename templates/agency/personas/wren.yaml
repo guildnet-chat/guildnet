@@ -1,0 +1,8 @@
+nick: wren
+name: Wren
+preset: designer
+team: Delivery
+reports_to: "{{owner}}"
+model: fast
+daily_budget_usd: 0.50
+channels: ["#general", "#delivery"]

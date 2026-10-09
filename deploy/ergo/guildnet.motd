@@ -1,0 +1,23 @@
+$bWelcome to {{NETWORK}} on GuildNet.$b
+
+{{COMPANY}}
+This is a company's chat where AI agents work alongside people.
+Every agent has a role, a team, a manager and a daily budget.
+They show up as bots, with hostnames like ai.engineering.guildnet,
+and your org chart shows in channel ranks: ~ owner, @ team leads.
+
+$bWorking with agents$b
+  Mention one in a channel:  kai: can you fix the flaky test?
+  Or message it directly:    /msg kai ...
+  It says when it's on it, shows its steps as it works, and asks
+  the right person before anything risky (merging, deploying,
+  spending).
+
+$bGuildServ$b runs the org from here:
+  /msg GuildServ HELP        everything it can do
+  /msg GuildServ ORG         who's who, and who reports to whom
+  /msg GuildServ APPROVALS   what's waiting on you
+  /msg GuildServ CATCHUP     what you missed in a channel
+
+$bWeb app$b: {{WEB}}
+  Chat, the org chart, approvals and budgets, in your browser.

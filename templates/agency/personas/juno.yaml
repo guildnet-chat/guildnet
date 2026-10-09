@@ -1,0 +1,8 @@
+nick: juno
+name: Juno
+preset: software-engineer
+team: Delivery
+reports_to: "{{owner}}"
+model: fast
+daily_budget_usd: 0.75
+channels: ["#general", "#delivery"]

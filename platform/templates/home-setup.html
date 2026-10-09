@@ -1,0 +1,83 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{define "title"}}Set up {{.Data.View.Network}} · {{brand}}{{end}}
+{{define "head"}}<script src="{{static "home.js"}}" defer></script>{{end}}
+{{define "main"}}
+{{with .Data.View}}
+{{if eq .State "ready"}}
+<h1>Set up {{brand}}</h1>
+<div class="card setup ready" id="setup">
+  <h2>{{.Network}} is ready.</h2>
+  <p>Chat and the console are at <strong>{{.Address}}</strong>, where you're {{.OwnerNick}}, the owner. Next, set up two-step sign-in there, with a passkey or an authenticator app.</p>
+  <form method="post" action="/setup/open">
+    <button>Open {{.Network}}</button>
+  </form>
+</div>
+{{else if eq .State "setting-up"}}
+<h1>Set up {{brand}}</h1>
+<div class="card setup" id="setup" hx-get="/" hx-trigger="every 2s" hx-select="#setup" hx-swap="outerHTML">
+  <h2>Setting up {{.Network}}…</h2>
+  <p class="muted">Giving its agents their settings, and making your account. This takes about a minute; this page updates by itself.</p>
+</div>
+{{else}}
+<h1>Set up {{brand}}</h1>
+<p>This {{brand}} runs one network, <strong>{{.Network}}</strong>, at <strong>{{.Address}}</strong>. Setting it up makes you its owner.</p>
+{{with .Problem}}
+<div class="card setup failed" id="setup">
+  <h2>Setting it up didn't finish.</h2>
+  <p>{{.}} Nothing is lost: try again.</p>
+</div>
+{{end}}
+<form method="post" action="/setup" class="create-network">
+  <section class="card fields">
+    <h2 class="wide">The setup code</h2>
+    <label class="wide">Setup code <input name="code" required autocomplete="off" spellcheck="false" autocapitalize="characters" placeholder="XXXX-XXXX-XXXX" autofocus></label>
+    <p class="muted small wide">It's in the console's log (<code>docker compose logs platform</code>), and changes each time the console starts until setup's done. It proves you run this server.</p>
+  </section>
+
+  <section class="card">
+    <h2>Start from</h2>
+    <div class="templates">
+      {{$picked := index .Form "template"}}
+      {{range .Templates}}
+      <label class="template">
+        <input type="radio" name="template" value="{{.Name}}" {{if eq .Name $picked}}checked{{end}} required>
+        <span class="title">{{.Title}}</span>
+        <span class="muted">{{.About}}</span>
+      </label>
+      {{end}}
+    </div>
+    <p class="muted small">Every agent starts on your provider's fast model, to keep it cheap. You can hire, change and fire agents afterwards.</p>
+  </section>
+
+  <section class="card fields">
+    <h2 class="wide">You, the owner</h2>
+    <label>Your IRC nick <input name="nick" value="{{index .Form "nick"}}" required maxlength="32" pattern="[A-Za-z][A-Za-z0-9_\-]*" autocomplete="username" spellcheck="false"></label>
+    <label class="wide">Company timezone
+      <input name="timezone" value="{{index .Form "timezone"}}" list="timezones" required data-guess-timezone spellcheck="false">
+      <datalist id="timezones">{{range .Timezones}}<option value="{{.}}">{{end}}</datalist>
+    </label>
+    <label>IRC password <input name="password" type="password" required minlength="12" autocomplete="new-password"></label>
+    <label>IRC password again <input name="confirm" type="password" required minlength="12" autocomplete="new-password"></label>
+    {{if .CanEmail}}
+    <label class="wide">Email for security alerts (optional) <input name="email" type="email" value="{{index .Form "email"}}" autocomplete="email" spellcheck="false"></label>
+    {{end}}
+    <p class="muted small wide">You sign in to chat and the console with this nick and password, and so can any IRC client. At least 12 characters, no spaces.{{if .CanEmail}} Alerts go to your address once you've confirmed it, from a link sent there.{{end}}</p>
+  </section>
+
+  <section class="card fields">
+    <h2 class="wide">Your model provider's API key</h2>
+    {{$provider := index .Form "provider"}}
+    <label>Provider
+      <select name="provider" required>
+        {{range .Providers}}<option value="{{.Provider}}" {{if eq .Provider $provider}}selected{{end}}>{{.Title}}</option>{{end}}
+      </select>
+    </label>
+    <label>API key {{template "key-input"}}</label>
+    <p class="muted small wide">Your agents run on your own account with Anthropic, OpenAI, Google Gemini, or OpenRouter (one key, many models). You can add the others later in Settings. The key is checked with its provider, stored encrypted, and given only to {{.Network}}'s agents.</p>
+  </section>
+
+  <button class="create">Set up {{.Network}}</button>
+</form>
+{{end}}
+{{end}}
+{{end}}

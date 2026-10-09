@@ -1,0 +1,15 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{define "title"}}Check your email · {{brand}}{{end}}
+{{define "wide"}} slim{{end}}
+{{define "main"}}
+<div class="card signin">
+  <h1>Check your email</h1>
+  <p>We sent a sign-in link to <strong>{{.Data.View}}</strong>. Open it in this browser.</p>
+  <p class="muted">Reading your email on another device? Type the code from the email here instead.</p>
+  <form method="post" action="/signin/email/code">
+    <label>Code <input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]{6,7}" maxlength="7" required></label>
+    <button>Sign in</button>
+  </form>
+  <p class="muted small">Nothing came? Check your spam folder, or <a href="/signin">ask again</a>.</p>
+</div>
+{{end}}

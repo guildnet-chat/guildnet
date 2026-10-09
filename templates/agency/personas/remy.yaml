@@ -1,0 +1,9 @@
+nick: remy
+name: Remy
+preset: customer-success
+role: Account manager
+team: Accounts
+reports_to: "{{owner}}"
+model: fast
+daily_budget_usd: 0.50
+channels: ["#general", "#accounts"]

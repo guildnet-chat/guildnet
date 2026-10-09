@@ -1,0 +1,30 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{define "title"}}Sign in · {{brand}}{{end}}
+{{define "wide"}} slim{{end}}
+{{define "main"}}
+<div class="card signin">
+  <h1>Sign in to {{brand}}</h1>
+  <p class="muted">To create a network or see yours. To chat, or to use a network's console, sign in at your network's own address with your IRC account.</p>
+  {{with .Data.View}}
+  {{if .Google}}<a class="button google" href="/signin/google">Sign in with Google</a>{{end}}
+  {{if .Email}}
+  {{if .Google}}<p class="or muted small">or</p>{{end}}
+  <form method="post" action="/signin/email">
+    <label>Your email <input name="email" type="email" autocomplete="email" maxlength="254" required placeholder="name@example.com"></label>
+    <button class="outline">Email me a sign-in link</button>
+    <p class="muted small">No password: we email you a link that works once, for 15 minutes.</p>
+  </form>
+  {{end}}
+  {{if .Dev}}
+  <form method="post" action="/signin/dev">
+    <p class="muted">Development sign-in (this machine only): any email, no password.</p>
+    <label>Email <input name="email" type="email" autocomplete="email" required></label>
+    <button class="outline">Sign in</button>
+  </form>
+  {{end}}
+  {{if not (or .Google .Dev .Email)}}<p>Signing in isn't open here yet.</p>{{end}}
+  {{else}}
+  <a class="button" href="/signin">Try again</a>
+  {{end}}
+</div>
+{{end}}

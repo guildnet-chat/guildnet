@@ -1,0 +1,17 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{define "title"}}Join {{.Network}} · {{brand}}{{end}}
+{{define "main"}}
+{{with .Data.View}}
+<div class="card signin">
+  <h1>Join <span class="hash">#</span>{{.Network}}</h1>
+  <p>{{.CreatedBy}} invited you as <strong>{{.Role}}</strong>{{if .Team}} in {{.Team}}{{end}}{{if .Guest}}, as a guest{{end}}.</p>
+  <p class="muted">Pick the nick people will see, and a password. You'll use them in the console and in IRC apps. The password needs at least 12 characters and no spaces.</p>
+  <form method="post">
+    <label>Nick <input name="nick" value="{{.Nick}}" autocomplete="username" required maxlength="32" spellcheck="false" autofocus></label>
+    <label>Password <input name="password" type="password" required minlength="12" autocomplete="new-password"></label>
+    <label>Password again <input name="confirm" type="password" required minlength="12" autocomplete="new-password"></label>
+    <button>Join {{.Network}}</button>
+  </form>
+</div>
+{{end}}
+{{end}}

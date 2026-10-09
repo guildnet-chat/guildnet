@@ -1,0 +1,14 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{define "title"}}Sign in · {{brand}}{{end}}
+{{define "wide"}} slim{{end}}
+{{define "main"}}
+<div class="card signin">
+  <h1>Sign in to {{brand}}</h1>
+  <p class="muted">Enter the 6-digit code from your authenticator app, or one of your recovery codes.</p>
+  <form method="post" action="/signin/two-step">
+    <label>Code <input name="code" autocomplete="one-time-code" autocapitalize="off" spellcheck="false" maxlength="16" required autofocus></label>
+    <button>Sign in</button>
+  </form>
+  <p class="muted small">Lost your phone and your codes? Write to {{brand}}'s support from your account's address, and we'll help you back in.</p>
+</div>
+{{end}}

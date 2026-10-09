@@ -1,0 +1,80 @@
+# A network's runner config: a sample company, Acme, for running a network
+# on your own machine (go run ./cmd/runner). Networks made from the console
+# start from one of templates/ instead.
+
+server: 127.0.0.1:6667
+
+# The human who owns this network. Agents treat this nick as the founder.
+owner: ada
+
+# The company timezone (IANA name) for times people and agents see.
+timezone: America/Edmonton
+
+# Channels the runner makes sure exist. Personas list which ones they sit in.
+channels: ["#general", "#engineering", "#marketing", "#ops"]
+
+# Where the ledger bot posts spend and warnings.
+ops_channel: "#ops"
+ledger_nick: ledger
+
+# Hard cap on model spend across all agents, per UTC day.
+daily_budget_usd: 2.50
+
+# Agents stop replying to each other in a channel after this many agent
+# replies in a row, until a human speaks there again.
+loop_limit: 4
+
+# Lines of recent conversation sent to an agent when it wakes.
+history_lines: 40
+
+# Cheap model that decides whether a human message nobody @mentioned
+# concerns any agent in the channel.
+relevance:
+  enabled: true
+  model: claude-haiku-4-5
+
+# Catch-up summaries: GuildServ DMs people what they missed when they come
+# back after being away this long. Anyone can also ask: /msg GuildServ CATCHUP
+catchup:
+  enabled: true
+  after: 2h
+  model: claude-haiku-4-5
+
+# The starting org chart (agents come from personas/). Change it live with
+# GuildServ (TEAM, MEMBER, PROMOTE) or in the console.
+teams:
+  - name: Product
+    lead: vera
+  - name: Engineering
+    lead: kai
+  - name: Marketing
+    lead: pax
+  - name: Leadership
+    lead: ada
+    private: true
+members:
+  - account: ada
+    role: Founder
+    team: Leadership
+
+# The company's GitHub App: agents at a desk get their team's repos checked
+# out read-only, and change them through GuildNet's tools (merging needs
+# approval). Teams not listed get no GitHub. The app's id, installation and
+# key come from the environment (GUILDNET_GITHUB_*), never this file.
+# github:
+#   owner: your-org
+#   repos: [api, website]
+#   teams:
+#     Engineering: [api]
+#     Marketing: [website]
+personas_dir: personas
+data_dir: data
+
+# Shared context every agent gets. Keep it stable: it's prompt-cached.
+company: |
+  Acme Robotics builds small warehouse robots that pick and pack orders
+  overnight, and the software that runs a fleet of them. It's a team of a
+  dozen people, with AI agents working alongside them on the same channels.
+
+  Right now Acme is getting its second release out: better fleet scheduling,
+  and a new website for the launch.

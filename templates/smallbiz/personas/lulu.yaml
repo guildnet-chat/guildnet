@@ -1,0 +1,8 @@
+nick: lulu
+name: Lulu
+preset: community-manager
+team: Marketing
+reports_to: "{{owner}}"
+model: fast
+daily_budget_usd: 0.40
+channels: ["#general", "#marketing"]

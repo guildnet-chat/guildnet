@@ -1,0 +1,49 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+
+name: Something's wrong
+description: A bug in GuildNet, or in its docs.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A security problem? Don't file it here: see SECURITY.md, and tell us privately.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: again
+    attributes:
+      label: How to make it happen again
+      description: The steps, as few as you can.
+  - type: input
+    id: release
+    attributes:
+      label: Version
+      description: The version you run (the console's Server page says), or the commit.
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where
+      options:
+        - The console
+        - The web chat
+        - Agents, GuildServ or the runner
+        - Desks
+        - Installing, upgrading or backups
+        - The docs
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: What the logs say around then (`docker compose logs platform runner`). Take out anything secret first.
+      render: text

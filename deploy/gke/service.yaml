@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# The edge's address: a passthrough load balancer on the address reserved
+# for it (address.yaml), to Caddy, which keeps Let's Encrypt and IRC's TLS
+# as in Compose. Local traffic policy keeps visitors' own addresses.
+apiVersion: v1
+kind: Service
+metadata:
+  name: guildnet-edge
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Local
+  selector: {app: guildnet}
+  ports:
+    - {name: http, port: 80, targetPort: http, protocol: TCP}
+    - {name: https, port: 443, targetPort: https, protocol: TCP}
+    - {name: irc, port: 6697, targetPort: irc, protocol: TCP}
+---
+# The StatefulSet's own name; nothing listens on it.
+apiVersion: v1
+kind: Service
+metadata:
+  name: guildnet
+spec:
+  clusterIP: None
+  selector: {app: guildnet}
+---
+# Only the edge's ports come in; the pod's own listeners (the console's
+# broker, Ergo's API, the runner's) aren't reachable from other pods.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: guildnet
+spec:
+  podSelector:
+    matchLabels: {app: guildnet}
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - {port: 80, protocol: TCP}
+        - {port: 443, protocol: TCP}
+        - {port: 6697, protocol: TCP}

@@ -1,0 +1,28 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{define "title"}}Approvals · {{.Network}}{{end}}
+{{define "main"}}
+<h1>Approvals</h1>
+{{with .Data.View}}
+{{range .Approvals}}
+<section class="banner">
+  <p><strong>{{.Agent}}</strong> <span class="badge ai">AI</span> {{if .OwnWords}}asks, in its own words, to “{{.Summary}}”{{else}}wants to {{.Summary}}{{end}}</p>
+  <p class="small">#{{.ID}}, asked of {{.Approver}}{{if .Channel}} in {{.Channel}}{{end}}.{{if .Next}} If nobody decides, it goes to {{.Next}} at {{.MovesAt.Format "Mon 15:04 MST"}}.{{end}} Expires {{.ExpiresAt.Format "Mon Jan 2 15:04 MST"}}.</p>
+  <div class="actions">
+    <form method="post" action="/approvals/{{.ID}}/approve"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button>Approve</button></form>
+    <form method="post" action="/approvals/{{.ID}}/deny" class="deny"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input name="reason" placeholder="Why not? (the agent is told)" aria-label="Why not?"><button class="outline">Deny</button></form>
+  </div>
+</section>
+{{else}}
+<section class="card empty"><h2>Nothing is waiting on you.</h2><p class="muted">When an agent wants to do something risky, like merging or deploying, it asks here and in chat.</p></section>
+{{end}}
+<p class="muted small">An approval asks the people up the agent's reporting line who may approve, then its team's leads, then the owner. {{if eq .MoveAfter "off"}}It stays with the first person asked until it's decided or expires.{{else}}If nobody answers within {{.MoveAfter}} of working time, it moves on to the next.{{end}} Anyone it would go to can decide it early. Unanswered approvals expire after 24 working hours.</p>
+{{if .Owner}}
+<form method="post" action="/approvals/after" class="card fields">
+  <input type="hidden" name="csrf" value="{{$.CSRF}}">
+  <label>Move on to the next person after <input name="after" value="{{.MoveAfter}}" maxlength="10" placeholder="4h"></label>
+  <p class="muted small wide">A length of working time, like 4h or 30m, or "off" to leave it with the first person.</p>
+  <button>Save</button>
+</form>
+{{end}}
+{{end}}
+{{end}}

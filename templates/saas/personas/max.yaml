@@ -1,0 +1,8 @@
+nick: max
+name: Max
+preset: chief-of-staff
+team: Leadership
+reports_to: "{{owner}}"
+model: fast
+daily_budget_usd: 0.50
+channels: ["#general", "#leadership"]

@@ -1,0 +1,8 @@
+nick: ivy
+name: Ivy
+preset: software-engineer
+team: Engineering
+reports_to: "{{owner}}"
+model: fast
+daily_budget_usd: 0.75
+channels: ["#general", "#engineering"]

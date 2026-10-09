@@ -1,0 +1,14 @@
+.git
+bin
+data
+.env
+*.exe
+*.pem
+deploy/*.pem
+# An install's own: its secrets, brand files and backups (with the
+# databases) never go into a build, or its cache.
+**/.env
+**/.env.*
+deploy/selfhost/backups
+deploy/selfhost/brand
+**/node_modules

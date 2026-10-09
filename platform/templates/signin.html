@@ -1,0 +1,14 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{define "title"}}Sign in to {{.Network}} · {{brand}}{{end}}
+{{define "main"}}
+<div class="card signin">
+  <h1>Sign in to <span class="hash">#</span>{{.Network}}</h1>
+  <p class="muted">Use the IRC account and password you chat with.</p>
+  <form method="post" action="/signin">
+    <label>Account <input name="account" value="{{.Data.View}}" autocomplete="username" required autofocus></label>
+    <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
+    <button>Sign in</button>
+  </form>
+  <p class="muted small">Forgot your password? Ask the network's owner for a reset link.</p>
+</div>
+{{end}}

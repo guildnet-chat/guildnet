@@ -1,0 +1,70 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{define "title"}}Who may do what · {{.Network}}{{end}}
+{{define "main"}}
+{{with .Data.View}}
+{{$v := .}}
+<header class="page-head">
+  <div class="titles">
+    {{template "crumbs" (list "/people" "People")}}
+    <h1>Who may do what</h1>
+  </div>
+</header>
+<p class="lede muted">The owner may do anything. Everyone else holds <strong>Member</strong>; leading a team adds <strong>Lead</strong> there; having reports adds <strong>Manager</strong> for them; and the owner can give more. Whatever anyone holds, nobody changes themselves or anyone above them, or gives more than they hold.{{if .Mine}} You hold: {{join .Mine ", "}}.{{end}}</p>
+
+<section class="card">
+  <h2>What each ability means</h2>
+<dl class="facts">
+  <dt>approve</dt><dd>Decide agents' risky actions</dd>
+  <dt>hire</dt><dd>Hire, change, and fire agents</dd>
+  <dt>budgets</dt><dd>Set agents' daily caps, and budgets of teams inside</dd>
+  <dt>invite</dt><dd>Add and remove people (reset links need it across the whole org)</dd>
+  <dt>arrange</dt><dd>People's titles, teams, and managers; teams inside; focus and objectives</dd>
+  <dt>spend</dt><dd>See spend, and what people cost</dd>
+  <dt>log</dt><dd>See who changed what</dd>
+  <dt>Where</dt><dd>org: everywhere · led: the teams they lead · reports: everyone below them · own: their own team · teams: the teams ticked (and teams inside each)</dd>
+</dl>
+</section>
+
+{{range .Levels}}
+{{if $v.Owner}}
+<form method="post" action="/access/{{.Name}}" class="card fields">
+  <input type="hidden" name="csrf" value="{{$.CSRF}}">
+  <h2 class="wide">{{.Name}}</h2>
+  <p class="muted wide">{{.Describe}}</p>
+  <fieldset class="wide checks"><legend>Abilities</legend>
+    {{$l := .}}{{range $v.Abilities}}<label class="check"><input type="checkbox" name="abilities" value="{{.}}" {{if $l.Has .}}checked{{end}}> {{.}}</label>{{end}}
+  </fieldset>
+  {{if not .Preset}}
+  <label>Where
+    <select name="scope">{{range $v.Scopes}}<option {{if eq . $l.Scope}}selected{{end}}>{{.}}</option>{{end}}</select>
+  </label>
+  <fieldset class="wide checks"><legend>Teams (for "teams")</legend>
+    {{range $v.Teams}}<label class="check"><input type="checkbox" name="teams" value="{{.}}" {{if $l.InTeam .}}checked{{end}}> {{.}}</label>{{end}}
+  </fieldset>
+  {{end}}
+  <div class="wide actions"><button>Save</button>{{if not .Preset}} <button class="link" name="drop" value="1">Drop this level</button>{{end}}</div>
+</form>
+{{else}}
+<section class="card"><h2>{{.Name}}</h2><p class="muted">{{.Describe}}</p></section>
+{{end}}
+{{end}}
+
+{{if .Owner}}
+<form method="post" action="/access" class="card fields">
+  <input type="hidden" name="csrf" value="{{$.CSRF}}">
+  <h2 class="wide">Make a level</h2>
+  <label>Name <input name="name" required maxlength="32" placeholder="Ops"></label>
+  <label>Where
+    <select name="scope">{{range .Scopes}}<option>{{.}}</option>{{end}}</select>
+  </label>
+  <fieldset class="wide checks"><legend>Abilities</legend>
+    {{range .Abilities}}<label class="check"><input type="checkbox" name="abilities" value="{{.}}"> {{.}}</label>{{end}}
+  </fieldset>
+  <fieldset class="wide checks"><legend>Teams (for "teams")</legend>
+    {{range .Teams}}<label class="check"><input type="checkbox" name="teams" value="{{.}}"> {{.}}</label>{{end}}
+  </fieldset>
+  <div class="wide"><button>Make it</button></div>
+</form>
+{{end}}
+{{end}}
+{{end}}

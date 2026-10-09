@@ -1,0 +1,258 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# GuildNet in one pod (docs/self-host/gke.md): the edge (Caddy), the console,
+# the network's Ergo and runner, as in deploy/selfhost/compose.yml, with
+# Postgres on Cloud SQL. One replica, never two (a StatefulSet replaces its
+# pod, it doesn't run a second): one network has nothing to scale, and two
+# Ergos would split it. hostAliases give the stack's names (platform, ergo,
+# runner) to localhost, so every address and certificate name is as in
+# Compose, and a Compose install's backup restores here unchanged.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: guildnet
+spec:
+  serviceName: guildnet
+  replicas: 1
+  selector:
+    matchLabels: {app: guildnet}
+  template:
+    metadata:
+      labels: {app: guildnet}
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      hostAliases:
+        - ip: 127.0.0.1
+          hostnames: [platform, ergo, runner]
+      securityContext:
+        seccompProfile: {type: RuntimeDefault}
+      initContainers:
+        - name: own
+          # Each one's folder on the disk, owned by who writes it: a new
+          # disk is root's, and Docker's way of copying ownership from the
+          # image doesn't happen here.
+          image: ghcr.io/guildnet-chat/caddy:26.10.0
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              cd /disk
+              mkdir -p caddy ergo welcome runner broker-ca broker-ca-shared
+              chown 65534:65534 ergo welcome && chmod 0777 welcome
+              chown 65532:65532 runner broker-ca broker-ca-shared && chmod 0700 broker-ca
+          securityContext:
+            runAsUser: 0
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL], add: [CHOWN, FOWNER, DAC_OVERRIDE]}
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+          volumeMounts:
+            - {name: disk, mountPath: /disk}
+      containers:
+        - name: caddy
+          # The edge, and the only thing reachable from outside: HTTPS (with
+          # certificates from Let's Encrypt), and IRC over TLS on 6697.
+          image: ghcr.io/guildnet-chat/caddy:26.10.0
+          ports:
+            - {name: http, containerPort: 80}
+            - {name: https, containerPort: 443}
+            - {name: irc, containerPort: 6697}
+          env:
+            - {name: GUILDNET_DOMAIN, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_DOMAIN}}}
+            - {name: GUILDNET_NETWORK, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_NETWORK}}}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL], add: [NET_BIND_SERVICE]}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+          volumeMounts:
+            - {name: disk, mountPath: /data, subPath: caddy}
+            - {name: caddy-config, mountPath: /config}
+
+        - name: platform
+          # The console: the home page (first-run setup), the network's
+          # console and web chat, and the broker the runner gets its settings
+          # and keys from.
+          image: ghcr.io/guildnet-chat/platform:26.10.0
+          env:
+            - {name: GUILDNET_DOMAIN, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_DOMAIN}}}
+            - {name: GUILDNET_BASE_DOMAIN, value: $(GUILDNET_DOMAIN)}
+            - {name: GUILDNET_SECURE_COOKIES, value: "on"}
+            # Caddy, in this pod: only its X-Forwarded-For is believed.
+            - {name: GUILDNET_TRUSTED_PROXIES, value: 127.0.0.1/32}
+            - {name: GUILDNET_DB_HOST, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_DB_HOST}}}
+            - {name: GUILDNET_PLATFORM_DB_PASSWORD, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_PLATFORM_DB_PASSWORD}}}
+            # Cloud SQL over TLS, checked against its server CA.
+            - {name: GUILDNET_PLATFORM_DATABASE_URL, value: "postgres://platform:$(GUILDNET_PLATFORM_DB_PASSWORD)@$(GUILDNET_DB_HOST):5432/platform?sslmode=verify-ca&sslrootcert=/etc/cloudsql/server-ca.pem"} # trufflehog:ignore (a reference to the setting)
+            - {name: GUILDNET_PLATFORM_KEY, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_PLATFORM_KEY}}}
+            - {name: GUILDNET_PLATFORM_OLD_KEYS, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_PLATFORM_OLD_KEYS, optional: true}}}
+            - {name: GUILDNET_NETWORK, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_NETWORK}}}
+            - {name: GUILDNET_RUNNER_URL, value: "http://runner:8090"}
+            - {name: GUILDNET_ERGO_URL, value: "http://ergo:8089"}
+            - {name: GUILDNET_CHAT_URL, value: "ws://ergo:8097"}
+            - {name: GUILDNET_API_TOKEN, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_API_TOKEN}}}
+            - {name: GUILDNET_ERGO_API_TOKEN, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_ERGO_API_TOKEN}}}
+            - {name: GUILDNET_CHAT_KEY, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_CHAT_KEY}}}
+            - {name: GUILDNET_GITHUB_BROKER_LISTEN, value: ":8082"}
+            - {name: GUILDNET_BROKER_TLS_DIR, value: /var/lib/guildnet-broker/own}
+            - {name: GUILDNET_BROKER_CA_SHARE, value: /var/lib/guildnet-broker/shared}
+            - {name: GUILDNET_BROKER_NAMES, value: platform}
+            - {name: GUILDNET_IRC_PORT, value: "6697"}
+            - {name: GUILDNET_IRC_HINT_LISTEN, value: ":6699"}
+            - {name: GUILDNET_SMTP_ADDR, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_SMTP_ADDR, optional: true}}}
+            - {name: GUILDNET_SMTP_USERNAME, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_SMTP_USERNAME, optional: true}}}
+            - {name: GUILDNET_SMTP_PASSWORD, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_SMTP_PASSWORD, optional: true}}}
+            - {name: GUILDNET_SMTP_SECURITY, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_SMTP_SECURITY, optional: true}}}
+            - {name: GUILDNET_MAIL_FROM, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_MAIL_FROM, optional: true}}}
+            - {name: GUILDNET_MAIL_REPLY_TO, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_MAIL_REPLY_TO, optional: true}}}
+            - {name: GUILDNET_RESEND_KEY, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_RESEND_KEY, optional: true}}}
+            - {name: GUILDNET_GITHUB_PUBLIC_APP_ID, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_GITHUB_PUBLIC_APP_ID, optional: true}}}
+            - {name: GUILDNET_GITHUB_PUBLIC_APP_SLUG, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_GITHUB_PUBLIC_APP_SLUG, optional: true}}}
+            - {name: GUILDNET_GITHUB_PUBLIC_CLIENT_ID, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_GITHUB_PUBLIC_CLIENT_ID, optional: true}}}
+            - {name: GUILDNET_GITHUB_PUBLIC_CLIENT_SECRET, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_GITHUB_PUBLIC_CLIENT_SECRET, optional: true}}}
+            - {name: GUILDNET_GITHUB_PUBLIC_APP_KEY, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_GITHUB_PUBLIC_APP_KEY, optional: true}}}
+            - {name: GUILDNET_BRAND_NAME, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_BRAND_NAME, optional: true}}}
+            - {name: GUILDNET_BRAND_TAGLINE, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_BRAND_TAGLINE, optional: true}}}
+            - {name: GUILDNET_BRAND_HELLO, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_BRAND_HELLO, optional: true}}}
+            - {name: GUILDNET_BRAND_SUPPORT, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_BRAND_SUPPORT, optional: true}}}
+            - {name: GUILDNET_BRAND_PRIVACY, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_BRAND_PRIVACY, optional: true}}}
+            - {name: GUILDNET_BRAND_SECURITY, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_BRAND_SECURITY, optional: true}}}
+            - {name: GUILDNET_BRAND_DIR, value: /brand}
+            - {name: GUILDNET_SOURCE, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_SOURCE, optional: true}}}
+            - {name: GUILDNET_CHAT_SOURCE, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_CHAT_SOURCE, optional: true}}}
+            # Desks, on a host of their own (docs/self-host/desks-host.md).
+            - {name: GUILDNET_SANDBOX_URL, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_SANDBOX_URL, optional: true}}}
+            - {name: GUILDNET_SANDBOX_KEY, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_SANDBOX_KEY, optional: true}}}
+            - {name: GUILDNET_SANDBOX_NAMES, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_SANDBOX_NAMES, optional: true}}}
+            - {name: GUILDNET_GIT_PRIVATE_HOSTS, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_GIT_PRIVATE_HOSTS, optional: true}}}
+            - {name: GUILDNET_SENTRY_DSN, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_SENTRY_DSN, optional: true}}}
+            - {name: GUILDNET_ENVIRONMENT, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_ENVIRONMENT, optional: true}}}
+          securityContext:
+            runAsUser: 65532
+            runAsGroup: 65532
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 250m, memory: 512Mi}
+          volumeMounts:
+            - {name: disk, mountPath: /var/lib/guildnet-broker/own, subPath: broker-ca}
+            - {name: disk, mountPath: /var/lib/guildnet-broker/shared, subPath: broker-ca-shared}
+            - {name: brand, mountPath: /brand, readOnly: true}
+            - {name: cloudsql-ca, mountPath: /etc/cloudsql, readOnly: true}
+            - {name: platform-tmp, mountPath: /tmp}
+
+        - name: ergo
+          # The network's IRC server. Members only: an account is needed to
+          # connect, and accounts come from the console and invites.
+          image: ghcr.io/guildnet-chat/ergo:26.10.0
+          env:
+            - {name: GUILDNET_DOMAIN, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_DOMAIN}}}
+            - {name: GUILDNET_NETWORK, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_NETWORK}}}
+            - {name: GUILDNET_WEB_URL, value: "https://$(GUILDNET_NETWORK).$(GUILDNET_DOMAIN)"}
+            - {name: ERGO__NETWORK__NAME, value: $(GUILDNET_NETWORK)}
+            - {name: ERGO__SERVER__NAME, value: "$(GUILDNET_NETWORK).$(GUILDNET_DOMAIN)"}
+            # The edge (IRC over TLS) and the console (web chat), both in
+            # this pod, say who the visitor is.
+            - {name: ERGO__SERVER__PROXY_ALLOWED_FROM, value: '["127.0.0.1/32"]'}
+            - {name: ERGO__SERVER__WEBSOCKETS__ALLOWED_ORIGINS, value: '["https://$(GUILDNET_NETWORK).$(GUILDNET_DOMAIN)"]'}
+            - {name: ERGO__API__ENABLED, value: "true"}
+            - {name: ERGO__API__LISTENER, value: ":8089"}
+            - {name: GUILDNET_ERGO_API_TOKEN, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_ERGO_API_TOKEN}}}
+            - {name: ERGO__API__BEARER_TOKENS, value: '["$(GUILDNET_ERGO_API_TOKEN)"]'}
+            - {name: ERGO__ACCOUNTS__REGISTRATION__ENABLED, value: "false"}
+            - {name: ERGO__ACCOUNTS__REQUIRE_SASL__ENABLED, value: "true"}
+            - {name: ERGO__ACCOUNTS__JWT_AUTH__ENABLED, value: "true"}
+            - {name: ERGO__ACCOUNTS__JWT_AUTH__AUTOCREATE, value: "false"}
+            - {name: GUILDNET_CHAT_KEY, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_CHAT_KEY}}}
+            - {name: ERGO__ACCOUNTS__JWT_AUTH__TOKENS, value: '[{"algorithm":"hmac","key":"$(GUILDNET_CHAT_KEY)","account-claims":["account"],"validate-aud":["$(GUILDNET_NETWORK)"]}]'}
+            - {name: ERGO__OPERS__GUILDSERV__CLASS, value: server-admin}
+            - {name: ERGO__OPERS__GUILDSERV__HIDDEN, value: "true"}
+            - {name: GUILDNET_OPER_PASSWORD, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_OPER_PASSWORD}}}
+          securityContext:
+            runAsUser: 65534
+            runAsGroup: 65534
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+          volumeMounts:
+            - {name: disk, mountPath: /ircd, subPath: ergo}
+            - {name: disk, mountPath: /welcome, subPath: welcome}
+            - {name: ergo-tmp, mountPath: /tmp}
+
+        - name: runner
+          # The network's agents, GuildServ and the ledger. It waits for
+          # first-run setup, then starts from what it chose.
+          image: ghcr.io/guildnet-chat/runner:26.10.0
+          env:
+            - {name: GUILDNET_NETWORK, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_NETWORK}}}
+            - {name: GUILDNET_SETTINGS_FROM_BROKER, value: "on"}
+            - {name: GUILDNET_KEYS_BROKER, value: "https://platform:8082"}
+            - {name: GUILDNET_GIT_PRIVATE_HOSTS, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_GIT_PRIVATE_HOSTS, optional: true}}}
+            - {name: GUILDNET_GITHUB_BROKER, value: "https://platform:8082"}
+            - {name: GUILDNET_BROKER_CA_FILE, value: /var/lib/guildnet-broker/ca.crt}
+            - {name: GUILDNET_DATA_DIR, value: /app/data}
+            - {name: GUILDNET_SERVER, value: "ergo:6667"}
+            - {name: GUILDNET_DB_HOST, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_DB_HOST}}}
+            - {name: GUILDNET_RUNNER_DB_PASSWORD, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_RUNNER_DB_PASSWORD}}}
+            - {name: GUILDNET_DATABASE_URL, value: "postgres://runner:$(GUILDNET_RUNNER_DB_PASSWORD)@$(GUILDNET_DB_HOST):5432/runner?sslmode=verify-ca&sslrootcert=/etc/cloudsql/server-ca.pem"} # trufflehog:ignore (a reference to the setting)
+            - {name: GUILDNET_ERGO_API_URL, value: "http://ergo:8089"}
+            - {name: GUILDNET_ERGO_API_TOKEN, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_ERGO_API_TOKEN}}}
+            - {name: GUILDNET_ACCOUNT_SECRET, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_ACCOUNT_SECRET}}}
+            - {name: GUILDNET_OPER_NAME, value: guildserv}
+            - {name: GUILDNET_OPER_PASSWORD, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_OPER_PASSWORD}}}
+            - {name: GUILDNET_API_LISTEN, value: ":8090"}
+            - {name: GUILDNET_API_TOKEN, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_API_TOKEN}}}
+            - {name: GUILDNET_WELCOME_DIR, value: /welcome}
+            - {name: GUILDNET_MANAGED, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_MANAGED, optional: true}}}
+            - {name: GUILDNET_DESK_BUDGET_CENTS, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_DESK_BUDGET_CENTS, optional: true}}}
+            - {name: GUILDNET_SENTRY_DSN, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_SENTRY_DSN, optional: true}}}
+            - {name: GUILDNET_ENVIRONMENT, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_ENVIRONMENT, optional: true}}}
+          securityContext:
+            runAsUser: 65532
+            runAsGroup: 65532
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 250m, memory: 512Mi}
+          volumeMounts:
+            - {name: disk, mountPath: /app/data, subPath: runner}
+            - {name: disk, mountPath: /welcome, subPath: welcome}
+            # The console's CA's certificate, the only one it trusts the
+            # broker by; never the CA's key.
+            - {name: disk, mountPath: /var/lib/guildnet-broker, subPath: broker-ca-shared, readOnly: true}
+            - {name: cloudsql-ca, mountPath: /etc/cloudsql, readOnly: true}
+            - {name: runner-tmp, mountPath: /tmp}
+      volumes:
+        - name: caddy-config
+          emptyDir: {}
+        - name: platform-tmp
+          emptyDir: {}
+        - name: ergo-tmp
+          emptyDir: {}
+        - name: runner-tmp
+          emptyDir: {}
+        # Your own files (docs/self-host/brand.md): a ConfigMap, if any.
+        - name: brand
+          configMap: {name: guildnet-brand, optional: true}
+        - name: cloudsql-ca
+          configMap: {name: cloudsql-ca}
+  volumeClaimTemplates:
+    # Ergo's accounts and history, the runner's ledger, Caddy's
+    # certificates, and the console's CA: on one disk, each in a folder.
+    - metadata:
+        name: disk
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests: {storage: 10Gi}

@@ -1,0 +1,401 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* GuildNet console (A3, sidebar). Colours, type and radii come from
+   tokens.css; this file is layout and components only. */
+
+body { font-size: var(--text-md); line-height: 1.5; }
+h1 { font-size: var(--text-2xl); line-height: 1.15; letter-spacing: -.5px; margin: 0; text-wrap: balance; }
+h2 { font-size: var(--text-xl); line-height: 1.25; margin: 0; }
+h3 { font-size: 16px; line-height: 1.3; margin: 0; }
+p { margin: 0; }
+
+/* Frame: the sidebar, then the page (and the chat, docked on the right). */
+.app { display: grid; grid-template-columns: 248px minmax(0, 1fr); min-height: 100vh; }
+.sidebar { position: sticky; top: 0; height: 100vh; overflow-y: auto; background: var(--rail); border-right: 1px solid var(--line); padding: 20px 12px 14px; display: flex; flex-direction: column; }
+.sidebar-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sidebar .network { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 18px; padding: 0 10px 16px; color: var(--text); text-decoration: none; overflow-wrap: anywhere; }
+.menu-toggle { display: none; }
+.nav-menu { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+.nav-menu .hire { margin: 0 0 14px; }
+.nav-menu > a:not(.button) { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: var(--radius); color: var(--muted); text-decoration: none; }
+.nav-menu > a:not(.button):hover { background: var(--selected); color: var(--text); }
+.nav-menu > a.here { background: var(--tonal); color: var(--on-tonal); font-weight: 600; }
+.nav-menu .count { margin-left: auto; }
+.nav-menu > a.source { padding: 8px 4px 0; font-size: var(--text-xs); color: var(--faint); }
+.nav-menu > a.source:hover { background: none; color: var(--text); text-decoration: underline; }
+/* You, at the foot: your account, the light and dark switch, signing out. */
+.me { margin-top: auto; padding: 12px 0 0; border-top: 1px solid var(--line); display: flex; align-items: center; gap: 6px; }
+.me .who { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; padding: 4px 6px 4px 4px; margin-left: -4px; border-radius: var(--radius); color: var(--text); text-decoration: none; }
+.me .who:hover, .me .who[aria-current] { background: var(--selected); color: var(--text); }
+.me .who-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
+.me .name { font-weight: 600; font-size: var(--text-ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.me .role { font-size: var(--text-xs); color: var(--faint); }
+.me form { margin: 0; }
+.me .theme { width: var(--control-sm); height: var(--control-sm); color: var(--muted); }
+
+main { padding: 30px 32px 48px; display: flex; flex-direction: column; gap: 20px; max-width: 1100px; }
+.with-chat main { padding-bottom: 88px; } /* room for the Chat button */
+/* Avatars are rounded squares; agents' are tonal. */
+.avatar { width: 38px; height: 38px; border-radius: var(--radius); background: var(--selected); color: var(--text); display: inline-flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0; }
+.avatar.agent { background: var(--tonal); color: var(--on-tonal); }
+.me .avatar { width: 32px; height: 32px; }
+.avatar.big { width: 56px; height: 56px; font-size: 24px; border-radius: var(--radius-card); }
+
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-card); padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+/* A form for adding something, opened from the button at the page's top. */
+.card.adding { border-color: var(--accent); }
+.card-head { display: flex; align-items: baseline; gap: 6px 10px; flex-wrap: wrap; }
+.card-head .push, .card-head form.push { margin: 0 0 0 auto; }
+.card.empty { align-items: flex-start; gap: 8px; }
+.card.empty h2 { font-size: var(--text-lg); }
+.card > p.small, .card > p.muted { max-width: 75ch; }
+
+/* The top of a page: where it sits, its title and a line about it, and
+   its main action on the right. */
+.page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px 16px; flex-wrap: wrap; }
+.page-head .titles { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1 1 340px; }
+.page-head .sub { color: var(--muted); max-width: 70ch; }
+.page-head .push { margin-left: auto; }
+.crumbs { font-size: var(--text-sm); color: var(--faint); }
+.crumbs a { color: var(--muted); text-decoration: none; }
+.crumbs a:hover { color: var(--text); text-decoration: underline; }
+.lede { font-size: var(--text-lg); max-width: 70ch; margin: 0; }
+.channel { font-family: var(--mono); font-size: var(--text-sm); color: var(--faint); }
+
+/* Teams and the people in them. */
+.teams { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+.team header { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.team .channel { margin-left: auto; }
+.people { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.people li { display: flex; align-items: center; gap: 12px; }
+.people .name { font-weight: 500; }
+/* Names link to their page without looking like the page's other links. */
+.people a.name, .people .name a, .org-tree .name a { color: var(--text); text-decoration: none; font-weight: 500; }
+.people a.name:hover, .people .name a:hover, .org-tree .name a:hover { color: var(--accent); text-decoration: underline; }
+.people .role { color: var(--faint); font-size: var(--text-ui); }
+.people .amount { margin-left: auto; font-family: var(--mono); font-size: var(--text-sm); color: var(--muted); font-variant-numeric: tabular-nums; }
+.people .push { margin-left: auto; }
+
+/* Forms. */
+.fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; align-items: end; }
+.fields .wide { grid-column: 1 / -1; }
+.fields > button { justify-self: start; }
+.inline-form { display: flex; flex-wrap: wrap; gap: 10px 12px; align-items: end; }
+.inline-form label { flex: 1 1 240px; }
+label.check { flex-direction: row; align-items: center; gap: 8px; min-height: var(--control-sm); font-size: var(--text-md); color: var(--text); }
+fieldset.checks { margin: 0; min-inline-size: 0; border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 12px 12px; display: flex; flex-wrap: wrap; gap: 4px 20px; }
+fieldset.checks legend { color: var(--muted); font-size: var(--text-sm); padding: 0 4px; }
+/* Something that can't be undone: deleting, firing, removing. */
+.danger-zone { border-color: var(--danger); flex-direction: row; align-items: end; flex-wrap: wrap; }
+.danger-zone > h2, .danger-zone > p { flex-basis: 100%; }
+.danger-zone > h2 { font-size: var(--text-lg); color: var(--danger); }
+.danger-zone label { flex: 1 1 260px; }
+/* A plan's desk hours used. */
+meter.hours { display: block; width: 100%; height: 10px; accent-color: var(--accent); }
+.profile { display: flex; align-items: center; gap: 16px; }
+.facts { display: grid; grid-template-columns: max-content 1fr; gap: 8px 20px; margin: 0; }
+.facts dt { color: var(--faint); }
+.facts dd { margin: 0; }
+
+/* Getting started: the owner's checklist on the org chart. */
+.steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.step { display: flex; align-items: flex-start; gap: 12px; }
+.step .tick { width: 22px; height: 22px; margin-top: 1px; flex-shrink: 0; border-radius: var(--radius-pill); border: 1.5px solid var(--field); display: inline-flex; align-items: center; justify-content: center; font-size: var(--text-xs); font-weight: 700; }
+.step.is-done .tick { background: var(--tonal); color: var(--on-tonal); border-color: transparent; }
+.step .what { display: flex; flex-direction: column; flex-grow: 1; min-width: 0; }
+.step .title { font-weight: 600; }
+.step.is-done .title { color: var(--faint); font-weight: 400; text-decoration: line-through; }
+.step .hint { color: var(--muted); font-size: var(--text-ui); }
+.step .go { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; font-size: var(--text-ui); margin-top: 4px; }
+.step .go form { margin: 0; }
+
+/* Tiles of numbers: four across where there's room, two on a phone. */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.tile { gap: 4px; color: var(--text); text-decoration: none; }
+a.tile:hover { border-color: var(--accent); color: var(--text); }
+.tile .label { font-size: var(--text-sm); font-weight: 600; color: var(--muted); }
+.tile .n { font-size: 26px; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.tile meter { width: 100%; height: 8px; margin-top: 4px; }
+.tile .over { color: var(--danger); font-weight: 600; }
+
+/* Charts, drawn by charts.js: two side by side where there's room. */
+.charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 16px; }
+.chart { position: relative; height: 260px; min-width: 0; }
+.chart.chart-short { height: auto; min-height: 120px; aspect-ratio: 4 / 1; }
+
+/* People: invite and reset links, shown once to copy. */
+.link-box { width: 100%; font-family: var(--mono); font-size: var(--text-sm); }
+details.card > summary { cursor: pointer; font-weight: 600; }
+details.card:not([open]) { gap: 0; }
+
+/* Approvals: what's waiting, leading the org chart, and on its own page. */
+.waiting { background: var(--tonal); color: var(--on-tonal); border-radius: var(--radius-card); padding: 14px 18px; display: flex; flex-direction: column; gap: 10px; }
+.waiting h2 { font-size: var(--text-md); }
+.waiting ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.waiting li { display: flex; align-items: center; gap: 8px 16px; flex-wrap: wrap; padding: 10px 0; border-top: 1px solid color-mix(in srgb, var(--on-tonal) 18%, transparent); }
+.waiting li:first-child { border-top: 0; padding-top: 0; }
+.waiting li p { flex: 1 1 320px; min-width: 0; }
+.waiting .small { font-size: var(--text-sm); opacity: .85; }
+.waiting a { color: inherit; }
+.waiting button.outline, .banner button.outline { border-color: var(--on-tonal); color: var(--on-tonal); }
+.waiting button.outline:hover, .banner button.outline:hover { background: color-mix(in srgb, var(--on-tonal) 10%, transparent); }
+.banner { background: var(--tonal); color: var(--on-tonal); border-radius: var(--radius-card); padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; line-height: 1.45; }
+.banner .small { font-size: var(--text-sm); opacity: .85; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.actions form { margin: 0; display: flex; gap: 8px; }
+.deny input { min-width: 240px; }
+
+/* Signed out: one card in the middle. */
+/* A network's pages when signed out: the same bar as guildnet.chat's. */
+.bare { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-block: 18px; padding-inline: max(clamp(16px, 6vw, 80px), calc((100% - 1200px) / 2)); border-bottom: 1px solid var(--line); }
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: var(--text-xl); color: var(--text); text-decoration: none; }
+main.narrow { max-width: 440px; margin: 8vh auto; padding: 0 16px; }
+.signin { padding: 28px; }
+.signin form { display: flex; flex-direction: column; gap: 14px; }
+.signin form button { align-self: stretch; }
+/* Signing in with a passkey, the first way offered: as wide as the form. */
+.passkey-use { display: flex; flex-direction: column; gap: 8px; }
+.passkey-use .passkey-status { margin: 0; }
+.passkey-use .passkey-status:empty { display: none; }
+.signin h1 { font-size: 26px; }
+
+@media (max-width: 1100px) {
+  .app { grid-template-columns: 220px minmax(0, 1fr); }
+}
+
+/* A phone: a bar across the top, the menu folded behind a button. */
+@media (max-width: 760px) {
+  .app { display: flex; flex-direction: column; }
+  .sidebar { position: sticky; top: 0; z-index: 7; height: auto; max-height: 100dvh; padding: 10px 16px; border-right: 0; border-bottom: 1px solid var(--line); }
+  .sidebar .network { padding: 0; }
+  .menu-toggle { display: inline-flex; position: relative; width: var(--control); height: var(--control); padding: 0; background: var(--surface); color: var(--text); border: 1px solid var(--line); }
+  .menu-toggle:hover { background: var(--selected); color: var(--text); }
+  .menu-toggle .count { position: absolute; top: -6px; right: -8px; }
+  .nav-menu { display: none; padding-top: 12px; }
+  .sidebar.open .nav-menu { display: flex; }
+  .nav-menu > a:not(.button) { min-height: 44px; }
+  main { padding: 20px 16px 40px; }
+  .with-chat main { padding-bottom: 96px; }
+  .teams { grid-template-columns: 1fr; }
+  .deny input { min-width: 0; flex-grow: 1; }
+  h1 { font-size: 26px; }
+  .waiting li p { flex-basis: 100%; }
+}
+/* Chat, docked beside every console page so it stays connected as you move
+   between them: a column on the right where there's room, a panel over the
+   page where there isn't, and a sheet from the bottom on a phone. Hidden, a
+   button brings it back. The Chat page widens it to fill the page. The
+   page's own parts sit directly in the .app grid (#page is only a wrapper
+   for swapping). */
+div#page { display: contents; } /* not the sign-in page's main#page, which keeps its own box */
+.app.with-chat { grid-template-columns: 248px minmax(0, 1fr) auto; }
+.chat-dock { grid-column: -2; grid-row: 1; position: sticky; top: 0; height: 100vh; width: var(--chat-width, clamp(400px, 28vw, 640px)); display: flex; flex-direction: column; background: var(--bg); border-left: 1px solid var(--line); z-index: 5; }
+/* Its left edge: drag to make the chat wider or narrower. */
+.chat-dock-resize { position: absolute; left: -4px; top: 0; bottom: 0; width: 8px; cursor: col-resize; z-index: 1; touch-action: none; }
+.chat-dock-resize:hover { background: var(--accent); opacity: .5; }
+.chat-dock-resize:focus-visible { background: color-mix(in srgb, var(--accent) 50%, transparent); outline: 2px solid var(--accent); outline-offset: -2px; }
+.chat-resizing, .chat-resizing * { cursor: col-resize; user-select: none; }
+.chat-resizing .chat-app { pointer-events: none; }
+.chat-app { display: block; width: 100%; flex: 1; min-height: 0; border: 0; background: var(--bg); }
+.chat-open { display: none; position: fixed; right: 20px; bottom: 20px; z-index: 6; box-shadow: var(--shadow); border-radius: var(--radius-pill); }
+:root[data-chat="hidden"] .chat-dock { display: none; }
+:root[data-chat="hidden"] .chat-open { display: inline-flex; }
+.chat-missing { padding: 30px 32px; display: flex; flex-direction: column; gap: 12px; }
+
+/* The Chat page: the dock fills the page, whether or not it's hidden. */
+#page[data-chat="wide"] > main { display: none; }
+.app:has(#page[data-chat="wide"]) .chat-dock { display: flex; grid-column: 2 / -1; width: auto; border-left: 0; }
+.app:has(#page[data-chat="wide"]) .chat-dock-resize,
+.app:has(#page[data-chat="wide"]) .chat-open { display: none; }
+
+@media (max-width: 1100px) {
+  .app.with-chat { grid-template-columns: 220px minmax(0, 1fr); }
+  .chat-dock { position: fixed; top: 0; right: 0; bottom: 0; height: auto; width: min(var(--chat-width, 400px), 92vw); box-shadow: var(--shadow); }
+  .app:has(#page[data-chat="wide"]) .chat-dock { position: sticky; height: 100vh; width: auto; box-shadow: none; }
+}
+@media (max-width: 760px) {
+  .chat-dock { top: auto; left: 0; width: auto; height: 70vh; border-left: 0; border-top: 1px solid var(--line); }
+  .chat-dock-resize { display: none; }
+  .app:has(#page[data-chat="wide"]) { height: 100dvh; }
+  .app:has(#page[data-chat="wide"]) .chat-dock { position: static; order: 2; flex: 1; height: auto; min-height: 0; }
+}
+
+/* The home page for people signed in with Google: their networks, and
+   creating one. */
+main.home { width: 100%; max-width: 720px; margin: 4vh auto 48px; padding: 0 16px; }
+/* Signing in: one card, no wider than its form. */
+main.home.slim { max-width: 480px; }
+.bare .brand { color: var(--text); text-decoration: none; }
+footer.bare { justify-content: center; border-bottom: 0; border-top: 1px solid var(--line); font-size: var(--text-xs); }
+.bare .actions form { margin: 0; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.small { font-size: var(--text-sm); }
+.button.google, .button.create, button.create { align-self: flex-start; }
+.network-card { flex-direction: row; align-items: center; flex-wrap: wrap; gap: 6px 14px; color: var(--text); text-decoration: none; }
+.network-card:hover { border-color: var(--accent); color: var(--text); }
+.network-name { font-weight: 700; font-size: 18px; }
+.status { margin-left: auto; font-size: var(--text-sm); font-weight: 600; padding: 2px 10px; border-radius: var(--radius-pill); background: var(--selected); }
+.status-ready { background: var(--tonal); color: var(--on-tonal); }
+.status-failed { background: var(--danger-soft); color: var(--on-danger-soft); }
+.create-network { display: flex; flex-direction: column; gap: 16px; }
+.address { flex-direction: row; align-items: center; gap: 0; }
+.address input { flex-grow: 1; min-width: 0; border-radius: var(--radius) 0 0 var(--radius); font-family: var(--mono); }
+.address .suffix { height: var(--control); display: inline-flex; align-items: center; padding: 0 12px; border: 1px solid var(--field); border-left: 0; border-radius: 0 var(--radius) var(--radius) 0; background: var(--rail); font-family: var(--mono); font-size: var(--text-ui); color: var(--muted); }
+.templates { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+.template { position: relative; border: 1px solid var(--line); border-radius: var(--radius-card); padding: 14px 14px 14px 42px; gap: 4px; color: var(--text); font-size: var(--text-ui); cursor: pointer; }
+.template input { position: absolute; left: 14px; top: 15px; margin: 0; }
+.template .title { font-weight: 700; font-size: var(--text-md); }
+.template:has(input:checked) { border-color: var(--accent); background: var(--tonal); color: var(--on-tonal); }
+.template:has(input:checked) .muted { color: inherit; opacity: .85; }
+.template:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.setup.ready { border-color: var(--accent); }
+.setup.failed { border-color: var(--danger); }
+@media (max-width: 520px) {
+  .bare .actions .muted { display: none; }
+  .status { margin-left: 0; }
+}
+
+/* The admin section: wider pages, tabs, tiles of numbers, and tables that
+   scroll sideways on their own on a phone rather than the page. */
+main.home.admin { max-width: 1180px; }
+/* Tabs between a section's pages (admin), or views of one (the org chart). */
+.admin-nav, .view-switch { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.admin-nav { border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+.admin-nav a, .view-switch a { padding: 6px 12px; border-radius: var(--radius); color: var(--muted); text-decoration: none; }
+.admin-nav a:hover, .view-switch a:hover { background: var(--selected); color: var(--text); }
+.admin-nav a.here, .view-switch a[aria-current] { background: var(--tonal); color: var(--on-tonal); font-weight: 600; }
+.view-switch .push { margin-left: auto; }
+/* Tables: on a phone they scroll sideways in their own box, rather than
+   squeezing every column or widening the page. */
+.table-wrap { overflow-x: auto; }
+.card > .table-wrap { margin: 0 -8px; }
+table.data { width: 100%; border-collapse: collapse; font-size: var(--text-ui); }
+.table-wrap > table.data { width: max-content; min-width: 100%; }
+table.data th { text-align: left; font-size: var(--text-xs); font-weight: 600; color: var(--faint); text-transform: uppercase; letter-spacing: .4px; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+table.data td { padding: 10px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; white-space: nowrap; }
+/* Cells of running text wrap, at a readable width. */
+table.data td.wrap { white-space: normal; min-width: 220px; max-width: 520px; }
+table.data td.num, table.data th.num { text-align: right; font-variant-numeric: tabular-nums; }
+/* Feedback: what people said, kept as they wrote it. */
+table.data td.said { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 240px; max-width: 560px; }
+table.feedback tr.read td { color: var(--muted); }
+td.row-actions form { display: inline; margin-left: 10px; }
+table.data tr:last-child td { border-bottom: 0; }
+table.data form { margin: 0; }
+table.data :is(input, select) { height: var(--control-sm); font-size: var(--text-ui); }
+form.inline { display: inline-flex; gap: 8px; align-items: center; margin: 0; }
+.status-suspended { background: var(--danger-soft); color: var(--on-danger-soft); }
+.status-deleting, .status-creating { background: var(--selected); }
+details.delete summary { cursor: pointer; color: var(--danger); font-size: var(--text-ui); }
+details.delete form { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; min-width: 180px; }
+details.delete input { height: var(--control-sm); }
+.log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.table-wrap .status { margin-left: 0; }
+
+/* Managing the org: team trees, goals with where they stand. */
+.tree .depth-1 { padding-left: 24px; }
+.tree .depth-2 { padding-left: 48px; }
+.tree .depth-3, .tree .depth-4, .tree .depth-5 { padding-left: 72px; }
+.goal-progress input { width: 7em; height: var(--control-sm); padding: 4px 8px; }
+.goals li { flex-wrap: wrap; }
+/* The org chart as a reporting tree: each person's reports indented under
+   them on a guide line, collapsible. */
+.org-tree { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.org-tree .org-tree { margin: 10px 0 0 17px; padding-left: 18px; border-left: 1px solid var(--line); }
+.org-tree summary { list-style: none; cursor: pointer; }
+.org-tree summary::-webkit-details-marker { display: none; }
+.org-tree details:not([open]) > summary .node::after { content: "+"; margin-left: 6px; color: var(--faint); }
+.org-tree .node { display: inline-flex; align-items: center; gap: 12px; }
+.org-tree .name { font-weight: 500; }
+.org-tree .role { display: block; color: var(--faint); font-size: var(--text-ui); }
+/* You: on a tonal ground, unlike the keyboard's focus ring. */
+.org-tree li.you > .node, .org-tree li.you > details > summary .node { background: var(--tonal); border-radius: var(--radius); padding: 4px 10px 4px 4px; margin: -4px -10px -4px -4px; }
+/* The org chart as a picture: boxes top-down, joined by lines, coloured by
+   team. Drawn with CSS only: each level is a row of boxes, and each box's
+   ::before and ::after draw its half of the line above it. */
+.org-picture-card { gap: 10px; }
+main:has(.org-picture) { max-width: none; }
+.org-picture-scroll { overflow: auto; padding: 8px 0 4px; }
+.org-picture, .org-picture ul { list-style: none; margin: 0; padding: 0; display: flex; justify-content: center; }
+.org-picture { min-width: max-content; margin: 0 auto; }
+.org-picture ul { padding-top: 22px; position: relative; }
+.org-picture ul::before { content: ""; position: absolute; top: 0; left: 50%; height: 22px; border-left: 2px solid var(--line); }
+.org-picture li { display: flex; flex-direction: column; align-items: center; position: relative; padding: 22px 8px 0; }
+.org-picture > li { padding-top: 0; }
+.org-picture li::before, .org-picture li::after { content: ""; position: absolute; top: 0; width: 50%; height: 22px; border-top: 2px solid var(--line); }
+.org-picture li::before { right: 50%; }
+.org-picture li::after { left: 50%; border-left: 2px solid var(--line); }
+.org-picture li:only-child::before, .org-picture li:only-child::after { border-top: 0; }
+.org-picture li:first-child::before, .org-picture li:last-child::after { border-top: 0; }
+.org-picture li:last-child::before { border-right: 2px solid var(--line); border-top-right-radius: 8px; }
+.org-picture li:first-child::after { border-top-left-radius: 8px; }
+.org-picture > li::before, .org-picture > li::after { display: none; }
+.org-picture .box { display: grid; justify-items: center; gap: 2px; width: 150px; padding: 12px 10px 10px; border-radius: var(--radius-card);
+  background: var(--surface); border: 1px solid var(--line); border-top: 4px solid var(--team, var(--line)); color: var(--text); text-decoration: none; text-align: center;
+  transition: transform .12s ease, box-shadow .12s ease; }
+.org-picture .box:hover { transform: translateY(-2px); box-shadow: var(--shadow-lift); }
+.org-picture .box.ai { border-style: dashed; border-top-style: solid; }
+.org-picture .box.you { background: var(--tonal); }
+.org-picture .box .avatar { margin-bottom: 4px; }
+.org-picture .who { font-weight: 600; }
+.org-picture .what { font-size: var(--text-sm); color: var(--muted); }
+.org-picture .where { font-size: var(--text-xs); color: var(--team, var(--faint)); font-weight: 600; }
+.org-picture .reports { font-size: var(--text-xs); color: var(--faint); }
+.legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: var(--text-sm); color: var(--muted); }
+.legend li { display: flex; align-items: center; gap: 6px; }
+.swatch { width: 12px; height: 12px; border-radius: 3px; background: var(--team); display: inline-block; }
+.swatch.ai { background: transparent; border: 1.5px dashed var(--muted); }
+.tc-0 { --team: var(--team-0); } .tc-1 { --team: var(--team-1); } .tc-2 { --team: var(--team-2); } .tc-3 { --team: var(--team-3); }
+.tc-4 { --team: var(--team-4); } .tc-5 { --team: var(--team-5); } .tc-6 { --team: var(--team-6); } .tc-7 { --team: var(--team-7); }
+@media (prefers-reduced-motion: reduce) { .org-picture .box, .work-list summary::before { transition: none; } .org-picture .box:hover { transform: none; } }
+/* An outside agent: its token, shown once, and its program's status. */
+.agent-token label { margin-top: 12px; }
+.agent-token input { width: 100%; font-family: var(--mono); font-size: var(--text-ui); }
+pre.code { margin: 12px 0; padding: 14px 16px; background: var(--rail); border: 1px solid var(--line); border-radius: var(--radius); overflow-x: auto; font-family: var(--mono); font-size: var(--text-sm); line-height: 1.55; }
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 7px; vertical-align: 1px; }
+.dot.on { background: var(--ai); }
+.dot.off { background: var(--faint); }
+.outside-status form { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
+
+/* A field turned off because it doesn't apply (an outside agent's model). */
+.when-off { display: none; }
+label.off { color: var(--faint); }
+label.off .when-off { display: block; font-size: var(--text-sm); }
+label.off select, label.off input { opacity: .5; }
+
+/* An agent's recent work: a line per wake-up, opening to its steps. */
+.work-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.work-list > li { border-top: 1px solid var(--line); }
+.work-list > li:first-child { border-top: 0; }
+.work-list summary { cursor: pointer; padding: 10px 0 10px 18px; position: relative; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; list-style: none; }
+.work-list summary::-webkit-details-marker { display: none; }
+.work-list summary::before { content: ""; position: absolute; left: 2px; top: 17px; border: 5px solid transparent; border-left-color: var(--faint); transition: transform .15s; transform-origin: 2px 5px; }
+.work-list details[open] > summary::before { transform: rotate(90deg); }
+.work-list summary .when { font-family: var(--mono); font-size: var(--text-sm); color: var(--faint); min-width: 7em; }
+.work-list summary .result { flex-basis: 100%; padding-left: calc(7em + 12px); font-size: var(--text-ui); color: var(--accent); }
+.work-list .steps { margin: 0 0 12px calc(7em + 12px); padding: 0 0 0 16px; font-size: var(--text-ui); display: flex; flex-direction: column; gap: 4px; }
+.work-list .steps .muted { font-family: var(--mono); display: inline-block; min-width: 5.5em; }
+.work-list .steps li.result { color: var(--accent); font-weight: 500; }
+@media (max-width: 640px) {
+  .work-list summary .result, .work-list .steps { padding-left: 0; margin-left: 0; }
+}
+
+/* Two-step sign-in: setting it up, and the recovery codes shown once. */
+.setup-steps { margin: 0; padding-left: 1.4em; display: flex; flex-direction: column; gap: 10px; }
+.qr { display: block; margin: 10px 0; background: #fff; padding: 6px; border-radius: 8px; image-rendering: pixelated; max-width: 100%; height: auto; }
+code.secret { word-break: break-all; }
+.recovery { columns: 2; column-gap: 32px; padding-left: 1.8em; font-family: var(--mono); font-size: var(--text-md); line-height: 1.9; }
+
+/* Passkeys: adding one, and using one to sign in. */
+.passkey-add { display: flex; flex-wrap: wrap; align-items: end; gap: 10px 14px; }
+.passkey-add .passkey-status { flex-basis: 100%; margin: 0; }
+.passkey-add .passkey-status:empty { display: none; }
+/* Two ways to do one thing, side by side down the page. */
+.or-divider { display: flex; align-items: center; gap: 12px; color: var(--faint); font-size: var(--text-sm); }
+.or-divider::before, .or-divider::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
+
+/* A form on its way (forms.js): its button can't be pressed again, and spins. */
+button.busy, input.busy { opacity: 0.75; cursor: progress; pointer-events: none; }
+button.busy::after { content: ""; display: inline-block; width: 0.85em; height: 0.85em; margin-left: 0.5em; vertical-align: -0.1em; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: busy-spin 0.7s linear infinite; }
+@keyframes busy-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { button.busy::after { animation: none; border-right-color: currentColor; } }

@@ -1,0 +1,8 @@
+nick: pip
+name: Pip
+preset: support-agent
+team: Support
+reports_to: "{{owner}}"
+model: fast
+daily_budget_usd: 0.50
+channels: ["#general", "#support"]

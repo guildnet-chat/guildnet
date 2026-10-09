@@ -1,0 +1,26 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{define "title"}}Role catalogue · {{.Network}}{{end}}
+{{define "main"}}
+<header class="page-head">
+  <div class="titles">
+    {{template "crumbs" (list "/" "Org chart")}}
+    <h1>Role catalogue</h1>
+  </div>
+</header>
+<p class="lede muted">Roles to hire agents from, by department. Each is a starting point: a title, a model tier (fast or balanced, from your model providers), a daily cap, and instructions you can change any time. Every role asks a person before anything risky, and says how far an agent in it gets today.</p>
+{{range .Data.View}}
+<section class="card">
+  <h2>{{.Department}}</h2>
+  <ul class="people roles">
+    {{range .Roles}}
+    <li>
+      <span><span class="name">{{.Title}}</span> <span class="role">{{.Tier}} model · {{usd .DailyBudget}} a day</span><br>
+        <span class="role">{{.About}} {{.Today}}</span><br>
+        <span class="role">Needs: {{.Needs}} It asks first before {{join .AsksFirst ", "}}.</span></span>
+      <a class="button small-button outline push" href="/?preset={{.Key}}#hire">Hire one</a>
+    </li>
+    {{end}}
+  </ul>
+</section>
+{{end}}
+{{end}}

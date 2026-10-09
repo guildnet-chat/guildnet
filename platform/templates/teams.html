@@ -1,0 +1,39 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{define "title"}}Teams · {{.Network}}{{end}}
+{{define "main"}}
+{{with .Data.View}}
+<header class="page-head">
+  <div class="titles"><h1>Teams</h1><p class="sub">How {{$.Network}} is split up, and what each team may spend. <a href="/company">What they're for</a></p></div>
+  {{if and .CanMakeTeam (not $.Adding)}}<a class="button" href="/teams?add=1#add">{{template "plus"}}Make a team</a>{{end}}
+</header>
+{{if and .CanMakeTeam $.Adding}}
+<form method="post" action="/teams" class="card fields adding" id="add">
+  <input type="hidden" name="csrf" value="{{$.CSRF}}">
+  <header class="card-head wide"><h2>Make a team</h2><a href="/teams" class="push quiet">Cancel</a></header>
+  <label>Name <input name="name" required maxlength="40"></label>
+  <label>Inside
+    <select name="parent">
+      {{if .TopLevel}}<option value="">Nothing: at the top</option>{{end}}
+      {{range .Parents}}<option>{{.}}</option>{{end}}
+    </select>
+  </label>
+  <label class="wide">Focus: what it's for, in a line <input name="focus" maxlength="300" placeholder="Bakers get answers fast"></label>
+  <label class="check wide"><input type="checkbox" name="private"> Private (invite-only channel)</label>
+  <div class="wide"><button>Make it</button></div>
+</form>
+{{end}}
+<section class="card">
+  <ul class="people tree">
+  {{range .Teams}}
+    <li class="depth-{{.Depth}}">
+      <span><a class="name" href="/teams/{{.Name}}">{{.Name}}</a>{{if .Private}} <span class="badge">private</span>{{end}}<br>
+        <span class="role">{{if .Leads}}Led by {{join .Leads ", "}}{{else}}No lead{{end}}{{if .Focus}} · {{.Focus}}{{end}}</span></span>
+      {{if .MonthlyBudget}}<span class="amount">{{usd .MonthlyBudget}}/month</span>{{end}}
+    </li>
+  {{else}}
+    <li class="muted">No teams yet.</li>
+  {{end}}
+  </ul>
+</section>
+{{end}}
+{{end}}

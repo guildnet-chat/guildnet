@@ -1,0 +1,115 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{define "title"}}{{.Data.View.Name}} · {{brand}}{{end}}
+{{define "main"}}
+{{with .Data.View}}
+<h1><span class="hash">#</span>{{.Name}}</h1>
+{{if .DeleteFailed}}
+<div class="card setup failed" id="setup">
+  <h2>Deleting {{.Name}} didn't finish.</h2>
+  <p>{{.Problem}} Try deleting it again below.</p>
+</div>
+{{else if eq .Status "deleting"}}
+<div class="card setup" id="setup" hx-get="/networks/{{.Name}}" hx-trigger="every 2s" hx-select="#setup" hx-swap="outerHTML">
+  <h2>Deleting {{.Name}}…</h2>
+  <p class="muted">Removing its IRC server, agents and data. This page updates by itself.</p>
+</div>
+{{else if .Failed}}
+<div class="card setup failed" id="setup">
+  <h2>{{.Name}}'s setup didn't finish.</h2>
+  <p>{{if .Problem}}{{.Problem}}{{else}}Setting it up stopped part way.{{end}} Nothing is lost: try again, and it picks up where it stopped.</p>
+  <form method="post" action="/networks/{{.Name}}/retry" class="fields">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <label>Your IRC password, for {{.OwnerNick}} <input name="password" type="password" required minlength="12" autocomplete="current-password"></label>
+    <button>Try again</button>
+  </form>
+</div>
+{{else if eq .Status "suspended"}}
+<div class="card setup failed" id="setup">
+  <h2>{{.Name}} is suspended.</h2>
+  <p>{{brand}} has paused it: its chat, console and agents are stopped for now. Nothing in it has been deleted.</p>
+</div>
+{{else if eq .Status "creating"}}
+<div class="card setup" id="setup" hx-get="/networks/{{.Name}}" hx-trigger="every 2s" hx-select="#setup" hx-swap="outerHTML">
+  <h2>Setting up {{.Name}}…</h2>
+  <p class="muted">Starting its IRC server and agents, and making your account. This takes about a minute; this page updates by itself.</p>
+</div>
+{{else}}
+<div class="card setup ready" id="setup">
+  <h2>{{.Name}} is ready.</h2>
+  <p>Chat and the console are at <strong>{{.Address}}</strong>, where you're {{.OwnerNick}}, the owner.</p>
+  <form method="post" action="/networks/{{.Name}}/open">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <button>Open {{.Name}}</button>
+  </form>
+  <h3>IRC apps</h3>
+  {{template "irc-settings" .IRC}}
+</div>
+{{if .GitHubOn}}
+<section class="card">
+  <h2>GitHub</h2>
+  {{with .GitHub.Account}}
+  <p>Connected to <strong>{{.}}</strong>. Each team's leads choose which of its repos the team works on, on the team's page in the console.</p>
+  <p class="muted small">Protect your main branch on GitHub (require a review before merging) so GitHub enforces it too. To take {{brand}}'s access away completely, uninstall the app on GitHub.</p>
+  <form method="post" action="/networks/{{$.Data.View.Name}}/github/disconnect"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="outline">Disconnect</button></form>
+  {{else}}
+  <p>Give {{.Name}}'s agents your repos: they read the code in a workspace of their own, open pull requests, and ask before merging. You choose the account and which repos on GitHub.</p>
+  <form method="post" action="/networks/{{.Name}}/github"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button>Connect GitHub</button></form>
+  {{end}}
+</section>
+{{end}}
+{{with .Connectors}}
+<section class="card" id="connectors">
+  <h2>Connectors</h2>
+  <p>Give {{$.Data.View.Name}}'s agents the tools your team uses. What an agent does through one shows as the account you connect with, so where the service allows it, connect a shared or bot account. Reads just run; anything that changes something asks a person first.</p>
+  <div class="table-wrap">
+  <table class="data">
+    {{range .}}
+    <tr>
+      <td class="wrap"><strong>{{.Title}}</strong><br><span class="muted small">{{.About}}</span></td>
+      <td>{{if .Reconnect}}<span class="badge danger">Needs reconnecting</span>{{else if .Connected}}<span class="badge">Connected {{when .At}}</span>{{end}}</td>
+      <td class="num">
+        {{if and .Connected (not .Reconnect)}}
+        <form method="post" action="/networks/{{$.Data.View.Name}}/connectors/{{.ID}}/disconnect"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="outline">Disconnect</button></form>
+        {{else}}
+        <form method="post" action="/networks/{{$.Data.View.Name}}/connectors/{{.ID}}"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button>{{if .Reconnect}}Reconnect{{else}}Connect{{end}}</button></form>
+        {{end}}
+      </td>
+    </tr>
+    {{end}}
+  </table>
+  </div>
+</section>
+{{end}}
+<details class="card">
+  <summary>Forgot your IRC password?</summary>
+  <form method="post" action="/networks/{{.Name}}/password" class="fields">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <p class="muted wide">Signed in here, you can set a new one for {{.OwnerNick}}. You'll be signed out of {{.Name}}'s console everywhere.</p>
+    <input type="text" name="username" value="{{.OwnerNick}}" autocomplete="username" hidden>
+    <label>New password <input name="password" type="password" required minlength="12" autocomplete="new-password"></label>
+    <label>New password again <input name="confirm" type="password" required minlength="12" autocomplete="new-password"></label>
+    <button>Set password</button>
+  </form>
+</details>
+{{if .TwoStep}}
+<details class="card">
+  <summary>Lost your authenticator app?</summary>
+  <form method="post" action="/networks/{{.Name}}/two-step/reset" class="fields">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <p class="muted wide">Two-step sign-in is on for {{.OwnerNick}}. If you've lost your phone and your recovery codes, reset it here: you'll be signed out of {{.Name}}'s console everywhere, and set it up again after your password.</p>
+    <button class="outline">Reset two-step sign-in</button>
+  </form>
+</details>
+{{end}}
+{{end}}
+<form method="post" action="/networks/{{.Name}}/remove" class="card danger-zone">
+  <input type="hidden" name="csrf" value="{{$.CSRF}}">
+  <h2>Delete {{.Name}}</h2>
+  <label><span>To delete it, type <strong>{{.Name}}</strong></span>
+    <input name="confirm" required autocomplete="off" spellcheck="false"></label>
+  <button class="danger">Delete network</button>
+  <p class="muted small">This removes its chat history, org chart, agents and accounts for good.</p>
+</form>
+<p><a href="/networks">Your networks</a></p>
+{{end}}
+{{end}}

@@ -1,0 +1,98 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{define "title"}}{{with .Data.View}}{{.Agent.Nick}}{{end}} · {{.Network}}{{end}}
+{{define "main"}}
+{{with .Data.View}}
+{{$a := .Agent}}{{$desks := .Desks}}
+{{template "crumbs" (list "/" "Org chart")}}
+<header class="profile">
+  <span class="avatar agent big" aria-hidden="true">{{initial $a.Nick}}</span>
+  <div>
+    <h1>{{$a.Nick}} <span class="badge ai">AI</span></h1>
+    <p class="muted">{{$a.Role}}{{if $a.Team}}, <a href="/teams/{{$a.Team}}">{{$a.Team}}</a>{{end}}. Reports to {{$a.ReportsTo}}.</p>
+  </div>
+</header>
+{{range $a.Notes}}<p class="note">{{.}}</p>{{end}}
+{{if eq $a.Platform "outside"}}
+<section class="card outside-status">
+  <h2>Runs outside {{brand}}</h2>
+  {{if eq $a.GetsWork "webhook"}}
+  <p>Its work is sent to <code>{{$a.WebhookURL}}</code>.
+    {{with $a.LastDelivery}}{{if .OK}}<span class="dot on" aria-hidden="true"></span>The last call, {{when .At}}, went through.{{else}}<span class="dot off" aria-hidden="true"></span>The last call, {{when .At}}, failed: {{.Err}}.{{end}}{{end}}
+    Wake-ups today: {{$a.Wakes}} of {{$a.DailyWakes}}.</p>
+  {{else}}
+  <p>Its program checks its inbox for work. {{if $a.IsConnected}}<span class="dot on" aria-hidden="true"></span>It's connected.{{else}}<span class="dot off" aria-hidden="true"></span>It isn't connected{{with $a.LastSeen}}: it last checked in {{when .}}{{end}}.{{end}}
+    Wake-ups today: {{$a.Wakes}} of {{$a.DailyWakes}}.</p>
+  {{end}}
+  {{if .Gateway}}<p>{{if .GatewayOn}}<span class="dot on" aria-hidden="true"></span>{{else}}<span class="dot off" aria-hidden="true"></span>{{end}}Its program can call models through {{brand}}'s model gateway, at <code>{{.Gateway}}</code> with its token as the API key: {{$a.ModelLabel}} (<code>"model": "default"</code>) or a cheaper model, charged to its daily budget of {{usd $a.Budget}}.{{if not .GatewayOn}} The gateway isn't on for this network yet.{{end}}</p>{{end}}
+  {{if .CanEdit}}<form method="post" action="/staff/{{$a.Nick}}/webhook" class="fields" hx-boost="false">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <label class="wide">Or send its work to its own address (a webhook; leave empty for the inbox) <input name="webhook_url" type="url" value="{{$a.WebhookURL}}" placeholder="https://agents.example.com/guildnet" spellcheck="false"></label>
+    <button class="outline">{{if eq $a.GetsWork "webhook"}}Change or clear{{else}}Send its work there{{end}}</button>
+  </form>{{end}}
+  {{if .CanEdit}}<form method="post" action="/staff/{{$a.Nick}}/token" hx-boost="false" hx-confirm="Make {{$a.Nick}} a new token? The one its program uses now stops working at once.">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="outline">New token</button>
+    <span class="muted small">Shown once; the old one stops working.</span></form>{{end}}
+</section>
+{{end}}
+{{with .Work}}
+<section class="card work" id="work">
+  <h2>Recent work</h2>
+  <ul class="work-list">
+    {{range $w := .}}
+    <li>
+      <details>
+        <summary>
+          <span class="when">{{when .Started}}</span>
+          <span>{{.Where}}{{if .Asker}}, for {{.Asker}}{{end}}{{with .Asked}}: <span class="muted">{{.}}</span>{{end}}</span>
+          <span class="muted small">{{.Took}} · {{len .Steps}} step{{if ne (len .Steps) 1}}s{{end}} · {{.Outcome}}{{with .Spent}} · {{.}}{{end}}</span>
+          {{range .Results}}<span class="result">{{.}}</span>{{end}}
+        </summary>
+        {{if .Steps}}<ol class="steps">{{range .Steps}}<li{{if .Result}} class="result"{{end}}><span class="muted small">{{$w.Since .}}</span> {{.Summary}}</li>{{end}}</ol>{{end}}
+      </details>
+    </li>
+    {{end}}
+  </ul>
+</section>
+{{end}}
+{{if .CanEdit}}
+<form method="post" action="/staff/{{$a.Nick}}" class="card fields">
+  <input type="hidden" name="csrf" value="{{$.CSRF}}">
+  <h2 class="wide">Profile and how it works</h2>
+  <label>Name <input name="name" value="{{$a.Name}}"></label>
+  <label>Role <input name="role" value="{{$a.Role}}"></label>
+  {{if .Teams}}<label>Team <select name="team">{{range .Teams}}<option {{if eq . $a.Team}}selected{{end}}>{{.}}</option>{{end}}</select></label>{{end}}
+  {{if .Managers}}<label>Reports to <select name="reports_to">{{range .Managers}}<option {{if eq . $a.ReportsTo}}selected{{end}}>{{.}}</option>{{end}}</select></label>{{end}}
+  <label class="wide">Works at <select name="platform"><option value="chat" {{if eq $a.Platform "chat"}}selected{{end}}>in chat ({{brand}}'s tools, any model)</option>{{if or $desks.Own (eq $a.Platform "desk")}}<option value="desk" {{if eq $a.Platform "desk"}}selected{{end}}>at a desk (a workspace too, any model)</option>{{end}}{{if or $desks.Managed (eq $a.Platform "managed")}}<option value="managed" {{if eq $a.Platform "managed"}}selected{{end}}>at a desk on Managed Agents (a workspace too, Claude only)</option>{{end}}<option value="outside" {{if eq $a.Platform "outside"}}selected{{end}}>outside {{brand}} (its own program)</option></select></label>
+  {{if eq $a.Platform "outside"}}
+  <label>Wake-ups a day <input name="daily_wakes" inputmode="numeric" value="{{$a.DailyWakes}}"></label>
+  {{end}}
+  {{if .Models}}<label class="wide">Model <select name="model">{{if .Kept}}<option value="{{$a.Model}}" selected>{{$a.ModelLabel}} (current)</option>{{end}}{{template "model-options" .Models}}</select></label>
+  {{else}}<label>Model <input name="model" value="{{$a.Model}}"></label>{{end}}
+  {{if ne $a.Platform "outside"}}<label data-not-outside>Effort <select name="effort">{{range $e := list "low" "medium" "high" "xhigh" "max"}}<option {{if eq $e $a.Effort}}selected{{end}}>{{$e}}</option>{{end}}</select><span class="when-off">Not used: an agent outside {{brand}} sets its own.</span></label>{{end}}
+  <label>Daily budget ($) <input name="budget" inputmode="decimal" value="{{printf "%.2f" $a.Budget}}"></label>
+  <label>Channels <input name="channels" value="{{join $a.Channels ", "}}"></label>
+  <label class="wide">Instructions <textarea name="prompt" rows="10">{{.Prompt}}</textarea></label>
+  <div class="wide"><button>Save</button></div>
+</form>
+<form method="post" action="/staff/{{$a.Nick}}/fire" class="card danger-zone" hx-confirm="Fire {{$a.Nick}}? They'll leave the network.">
+  <input type="hidden" name="csrf" value="{{$.CSRF}}">
+  <h2 class="danger-title">Fire {{$a.Nick}}</h2>
+  <label>Reason (shown as they leave) <input name="reason"></label>
+  <button class="danger">Fire {{$a.Nick}}</button>
+</form>
+{{else}}
+<dl class="card facts">
+  <dt>Model</dt><dd>{{$a.ModelLabel}}</dd>
+  {{if eq $a.Platform "outside"}}
+  <dt>Wake-ups a day</dt><dd>{{$a.DailyWakes}}</dd>
+  {{else}}
+  <dt>Effort</dt><dd>{{$a.Effort}}</dd>
+  {{end}}
+  <dt>Daily budget</dt><dd>{{usd $a.Budget}}</dd>
+  <dt>Channels</dt><dd>{{join $a.Channels ", "}}</dd>
+  <dt>Works at</dt><dd>{{$a.Platform}}</dd>
+</dl>
+<p class="muted">You can't change {{$a.Nick}}. {{if $a.Team}}{{$a.Team}}'s leads{{else}}The owner{{end}} can, and whoever else may hire there.</p>
+{{end}}
+{{end}}
+{{end}}
