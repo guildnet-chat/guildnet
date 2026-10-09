@@ -29,7 +29,7 @@ jobs:
       chat-release: ${{ steps.release.outputs.chat }}
       chat-commit: ${{ steps.chat.outputs.commit }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: the tag is the release VERSION names
         id: release
         run: |
@@ -41,7 +41,7 @@ jobs:
           echo "release=$version" >> "$GITHUB_OUTPUT"
           echo "chat=$(cat deploy/platform/chat-release)" >> "$GITHUB_OUTPUT"
       - name: the web chat's release
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           repository: guildnet-chat/guildnet-chat
           ref: ${{ steps.release.outputs.chat }}
@@ -69,24 +69,24 @@ jobs:
           - {image: caddy, context: deploy/caddy}
           - {image: postgres, context: deploy/postgres}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           path: guildnet
       # The console's image builds the web chat in.
       - if: matrix.image == 'platform'
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           repository: guildnet-chat/guildnet-chat
           ref: ${{ needs.check.outputs.chat-commit }}
           path: chat
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
       - if: github.event_name == 'push'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: guildnet/${{ matrix.context }}
           file: guildnet/deploy/${{ matrix.image }}/Dockerfile
