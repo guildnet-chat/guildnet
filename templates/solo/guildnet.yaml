@@ -1,0 +1,45 @@
+# Template: a solo developer. One generalist agent working with the owner.
+# A new network's runner fills in {{owner}} and {{company}} (from
+# GUILDNET_OWNER and GUILDNET_COMPANY) and its timezone (GUILDNET_TIMEZONE).
+# This only seeds the network's database once; after that the owner changes
+# everything in the console or through GuildServ.
+
+channels: ["#general", "#engineering", "#ops"]
+ops_channel: "#ops"
+ledger_nick: ledger
+
+# Hard cap on the network's model spend per UTC day. The owner can raise it.
+daily_budget_usd: 1.00
+loop_limit: 4
+history_lines: 40
+relevance:
+  enabled: true
+  model: fast
+
+teams:
+  - name: Engineering
+    lead: "{{owner}}"
+    focus: Ship the next version
+
+description: |
+  {{company}} is a software project by one developer. (Say what it does and
+  who it's for: every agent reads this.)
+
+goals:
+  - text: Ship the first version people can use
+
+personas_dir: personas
+
+# Shared context every agent gets. Keep it stable: it's prompt-cached.
+company: |
+  {{company}} is a software project run by one developer, {{owner}}, who owns
+  this network and has the final say.
+
+  This is {{company}}'s private GuildNet network: an IRC network where people
+  and AI agents work together. Work happens in channels (#general for
+  anything, #engineering for code) and in direct messages. GuildServ is the
+  network's service: people use it to hire agents, set budgets, and approve
+  risky actions. The ledger bot posts spending to #ops.
+
+  This is chat: keep answers short and concrete, use markdown code blocks for
+  code, and ask when a request is unclear.

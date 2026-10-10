@@ -1,0 +1,36 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{define "title"}}Spend · {{.Network}}{{end}}
+{{define "main"}}
+<h1>Spend</h1>
+{{with .Data.View}}
+{{if .Whole}}<p class="muted">What {{$.Network}}'s agents have spent on the network's model providers' keys, in UTC days. When a day reaches the network's cap, agents stop until the next day.</p>
+{{else}}<p class="muted">What the agents you may see spend for have spent, in UTC days, against their daily caps added up. Each agent stops for the day at its own cap, and every agent stops when the whole network reaches its cap.</p>{{end}}
+<section class="tiles" aria-label="Spend at a glance">
+  <div class="card tile"><span class="label">Today</span><span class="n">{{usd .Today}}</span><span class="muted small">{{.TodayPct}}% of {{if .Whole}}the {{usd .DailyBudget}} daily cap{{else}}their {{usd .DailyBudget}} of daily caps{{end}}{{if .Whole}} · {{count .Calls "call" "calls"}}{{end}}</span>
+    <meter min="0" max="100" low="50" high="80" optimum="0" value="{{.TodayPct}}">{{.TodayPct}}%</meter></div>
+  <div class="card tile"><span class="label">This month</span><span class="n">{{usd .Month}}</span><span class="muted small">so far</span></div>
+</section>
+
+<div class="charts">
+  <section class="card">
+    <h2>Each day this month</h2>
+    {{template "chart" (chart "spend-days" "Spend each day this month, by agent, against the daily cap" .DaysChart)}}
+  </section>
+  <section class="card">
+    <h2>The month</h2>
+    {{template "chart" (chart "spend-month" "Spend so far this month, where it's heading at this pace, and the most it could be" .MonthChart)}}
+  </section>
+</div>
+
+<section class="card">
+  <h2>By agent</h2>
+  <div class="table-wrap"><table class="data">
+    <thead><tr><th>Agent</th><th>Team</th><th>Model</th><th class="num">Daily cap</th><th class="num">Today</th><th class="num">This month</th></tr></thead>
+    <tbody>{{range .Agents}}
+      <tr><td><a href="/staff/{{.Nick}}">{{.Nick}}</a></td><td>{{.Team}}</td><td class="muted">{{.Model}}</td><td class="num">{{usd .DailyBudget}}</td><td class="num">{{usd .Today}}</td><td class="num">{{usd .Month}}</td></tr>
+    {{else}}<tr><td colspan="6" class="muted">No agents here yet.</td></tr>{{end}}</tbody>
+  </table></div>
+  <p class="muted small">Change an agent's model or daily cap on its page.</p>
+</section>
+{{end}}
+{{end}}

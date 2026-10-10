@@ -1,0 +1,8 @@
+nick: cora
+name: Cora
+preset: content-writer
+team: Marketing
+reports_to: "{{owner}}"
+model: fast
+daily_budget_usd: 0.50
+channels: ["#general", "#marketing"]

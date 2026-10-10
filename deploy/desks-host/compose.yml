@@ -1,0 +1,129 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# Desks on a machine of their own (docs/self-host/desks-host.md): sandboxd,
+# egress and the desk image, for a console that runs elsewhere (on GKE or
+# Fargate, or a second machine beside a Compose install). The console and
+# the runner reach sandboxd over the private network, on this host's
+# private address only, over TLS with a certificate the console signs.
+# init.sh writes the settings into .env beside this file.
+name: guildnet-desks
+
+# What every service shares: no Linux capabilities and none to gain, and
+# logs kept small.
+x-locked: &locked
+  restart: unless-stopped
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  logging:
+    driver: json-file
+    options: {max-size: "10m", max-file: "3"}
+
+services:
+  sandboxd:
+    # Each agent's workspace is a container sandboxd makes from the desk
+    # image, under gVisor, on the desks' network, whose only way out is
+    # egress. It has Docker's socket: reachable only on this host's private
+    # address (the cloud's firewall lets only the console and the runner
+    # in), and it checks each call's token (signed by the console) first.
+    <<: *locked
+    image: ${GUILDNET_REGISTRY:-ghcr.io/guildnet-chat}/sandboxd:${GUILDNET_VERSION:?run init.sh first}
+    build:
+      context: ../..
+      dockerfile: deploy/sandboxd/Dockerfile
+      args: [GUILDNET_RELEASE]
+    command: ["serve"]
+    ports:
+      - "${GUILDNET_DESKS_HOST_ADDRESS:?run init.sh first}:8443:8443"
+    environment:
+      # Only the public half: sandboxd checks tokens, it can't make them.
+      GUILDNET_SANDBOX_PUBLIC_KEY: ${GUILDNET_SANDBOX_PUBLIC_KEY:-}
+      GUILDNET_DESK_IMAGE: ${GUILDNET_REGISTRY:-ghcr.io/guildnet-chat}/desk:${GUILDNET_VERSION:?run init.sh first}
+      GUILDNET_DESK_RUNTIME: ${GUILDNET_DESK_RUNTIME:-runsc}
+      GUILDNET_DESK_NETWORK: guildnet-desks
+      # By address: under gVisor, desks can't use Docker's name lookup.
+      GUILDNET_DESK_PROXY: http://172.31.255.2:3128
+      GUILDNET_DESK_MEMORY: ${GUILDNET_DESK_MEMORY:-2g}
+      GUILDNET_DESK_CPUS: ${GUILDNET_DESK_CPUS:-2}
+      GUILDNET_DESKS_AT_ONCE: ${GUILDNET_DESKS_AT_ONCE:-1}
+      GUILDNET_SENTRY_DSN: ${GUILDNET_SENTRY_DSN:-}
+      GUILDNET_ENVIRONMENT: ${GUILDNET_ENVIRONMENT:-}
+      # Its certificate, which the console signed (tls service).
+      GUILDNET_SANDBOX_TLS_DIR: /tls
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - sandbox-tls:/tls:ro
+    # Out of memory, the kernel takes a desk, not sandboxd.
+    oom_score_adj: -500
+    networks:
+      - api
+
+  egress:
+    # The desks' only way out: HTTPS to GitHub, the package registries and a
+    # network's git hosts (with its egress pass); never to a private address
+    # that GUILDNET_GIT_PRIVATE_HOSTS doesn't name.
+    <<: *locked
+    image: ${GUILDNET_REGISTRY:-ghcr.io/guildnet-chat}/sandboxd:${GUILDNET_VERSION:?run init.sh first}
+    build:
+      context: ../..
+      dockerfile: deploy/sandboxd/Dockerfile
+      args: [GUILDNET_RELEASE]
+    command: ["proxy"]
+    environment:
+      # Where desks may go, comma-separated (default: GitHub, and the Go,
+      # npm and Python registries); "*.example.com" takes its subdomains.
+      GUILDNET_DESK_ALLOWED: ${GUILDNET_DESK_ALLOWED:-}
+      # Networks' egress passes open their git hosts; git servers on your
+      # own network are reached only where they're named.
+      GUILDNET_SANDBOX_PUBLIC_KEY: ${GUILDNET_SANDBOX_PUBLIC_KEY:-}
+      GUILDNET_GIT_PRIVATE_HOSTS: ${GUILDNET_GIT_PRIVATE_HOSTS:-}
+    user: "65534:65534"
+    read_only: true
+    oom_score_adj: -500
+    networks:
+      outbound: {}
+      desks:
+        ipv4_address: 172.31.255.2
+
+  desk:
+    # The desk image: fetched (or built) with the stack, never run here
+    # (sandboxd runs desks from it).
+    image: ${GUILDNET_REGISTRY:-ghcr.io/guildnet-chat}/desk:${GUILDNET_VERSION:?run init.sh first}
+    build: ../desk
+    scale: 0
+
+  tls:
+    # sandboxd's key and certificate: init.sh asks it for a request (the key
+    # stays here), and it installs the certificate the console signs. Never
+    # left running.
+    profiles: [tools]
+    image: ${GUILDNET_REGISTRY:-ghcr.io/guildnet-chat}/sandboxd:${GUILDNET_VERSION:?run init.sh first}
+    build:
+      context: ../..
+      dockerfile: deploy/sandboxd/Dockerfile
+      args: [GUILDNET_RELEASE]
+    environment:
+      GUILDNET_SANDBOX_TLS_DIR: /tls
+    network_mode: none
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    volumes:
+      - sandbox-tls:/tls
+
+networks:
+  # sandboxd's, for its published port only.
+  api:
+  # Desks, each a container of sandboxd's, and egress: no way out but it.
+  # The same as the self-host stack's: desks-firewall.sh keeps desks apart
+  # on it.
+  desks:
+    name: guildnet-desks
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.31.255.0/24
+          ip_range: 172.31.255.128/25
+  # egress's way out, shared with nothing else.
+  outbound:
+
+volumes:
+  sandbox-tls:

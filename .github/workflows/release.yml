@@ -1,0 +1,129 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# A release: a tag by date (YY.0M.N), on a commit of main whose CI passed,
+# naming the release VERSION says. It publishes every image the self-host
+# stack runs to GitHub's registry (amd64), tagged with the release and
+# latest, with provenance and an SBOM, then drafts the GitHub release, which
+# names the web chat's release it ships with. docs/development.md#releases.
+# Run by hand, it rehearses one: it builds every image of the release
+# VERSION names, and publishes nothing.
+name: release
+
+on:
+  push:
+    tags: ["[0-9][0-9].[0-9][0-9].[0-9]*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.release.outputs.release }}
+      chat-release: ${{ steps.release.outputs.chat }}
+      chat-commit: ${{ steps.chat.outputs.commit }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: the tag is the release VERSION names
+        id: release
+        run: |
+          version=$(cat VERSION)
+          if [ "$GITHUB_EVENT_NAME" = push ] && { ! printf '%s' "$GITHUB_REF_NAME" | grep -Eq '^[0-9]{2}\.(0[1-9]|1[0-2])\.(0|[1-9][0-9]*)$' || [ "$GITHUB_REF_NAME" != "$version" ]; }; then
+            echo "::error::the tag is $GITHUB_REF_NAME, and VERSION says $version: tag the release VERSION names"
+            exit 1
+          fi
+          echo "release=$version" >> "$GITHUB_OUTPUT"
+          echo "chat=$(cat deploy/platform/chat-release)" >> "$GITHUB_OUTPUT"
+      - name: the web chat's release
+        uses: actions/checkout@v5
+        with:
+          repository: guildnet-chat/guildnet-chat
+          ref: ${{ steps.release.outputs.chat }}
+          path: chat
+      - id: chat
+        run: echo "commit=$(git -C chat rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  images:
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        # Each image, built as deploy/selfhost/compose.yml builds it: from
+        # deploy/<image>/Dockerfile, in this context (the repo's root for
+        # the Go programs).
+        include:
+          - {image: platform, context: .}
+          - {image: runner, context: .}
+          - {image: sandboxd, context: .}
+          - {image: desk, context: deploy/desk}
+          - {image: ergo, context: deploy/ergo}
+          - {image: caddy, context: deploy/caddy}
+          - {image: postgres, context: deploy/postgres}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: guildnet
+      # The console's image builds the web chat in.
+      - if: matrix.image == 'platform'
+        uses: actions/checkout@v5
+        with:
+          repository: guildnet-chat/guildnet-chat
+          ref: ${{ needs.check.outputs.chat-commit }}
+          path: chat
+      - uses: docker/setup-buildx-action@v3
+      - if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: guildnet/${{ matrix.context }}
+          file: guildnet/deploy/${{ matrix.image }}/Dockerfile
+          build-contexts: ${{ matrix.image == 'platform' && 'chat-src=chat' || '' }}
+          build-args: |
+            GUILDNET_RELEASE=${{ needs.check.outputs.release }}
+            GUILDNET_CHAT_COMMIT=${{ needs.check.outputs.chat-commit }}
+          platforms: linux/amd64
+          push: ${{ github.event_name == 'push' }}
+          provenance: mode=max
+          sbom: true
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ needs.check.outputs.release }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          tags: |
+            ghcr.io/guildnet-chat/${{ matrix.image }}:${{ needs.check.outputs.release }}
+            ghcr.io/guildnet-chat/${{ matrix.image }}:latest
+
+  release:
+    needs: [check, images]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: draft the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHAT_RELEASE: ${{ needs.check.outputs.chat-release }}
+          CHAT_COMMIT: ${{ needs.check.outputs.chat-commit }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag --draft \
+            --title "$GITHUB_REF_NAME" --generate-notes --notes "$(cat <<EOF
+          Web chat: [guildnet-chat $CHAT_RELEASE](https://github.com/guildnet-chat/guildnet-chat/releases/tag/$CHAT_RELEASE) ($CHAT_COMMIT).
+
+          Images (linux/amd64): \`ghcr.io/guildnet-chat/{platform,runner,sandboxd,desk,ergo,caddy,postgres}:$GITHUB_REF_NAME\`.
+          Installing: [docs/self-host/install.md](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/docs/self-host/install.md). Upgrading: [docs/self-host/operations.md](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/docs/self-host/operations.md#upgrading).
+          EOF
+          )"

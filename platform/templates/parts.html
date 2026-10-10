@@ -1,0 +1,59 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{/* Pieces every page shares, console and landing alike. */}}
+
+{{define "theme-toggle"}}<button type="button" class="theme" data-theme-toggle aria-label="Switch light and dark"><svg class="moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><svg class="sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>{{end}}
+
+{{/* The tab's icon, in every page's head. */}}
+{{define "icons"}}<link rel="icon" href="{{static "favicon.ico"}}" sizes="16x16 32x32 48x48">
+<link rel="apple-touch-icon" href="{{static "apple-touch-icon.png"}}">{{end}}
+
+{{/* A model provider's API key: hidden as it's typed, but not a password,
+     so browsers and password managers don't save, fill or cover it. */}}
+{{define "key-input"}}<input name="model_key" type="text" class="secret" required autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other">{{end}}
+
+{{/* GuildNet's mark, beside its name: a crest carrying a #, drawn in the
+     theme's colours. */}}
+{{define "logo"}}{{with brandLogo}}<img class="logo" src="{{.}}" alt="">{{else}}<svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><path class="shield" d="M7 3H25A2.5 2.5 0 0 1 27.5 5.5V14C27.5 22 22.6 26.9 16 30C9.4 26.9 4.5 22 4.5 14V5.5A2.5 2.5 0 0 1 7 3Z"/><path class="hash" d="M13.7 7.4 12.7 21.4M20.3 7.4 19.3 21.4M8.6 11.5H23.6M8.3 17.3H23.2"/></svg>{{end}}{{end}}
+
+{{/* The site's header and footer, the same on every page of the home page's
+     site (not a network's console); given a site. An extension may put its
+     own in their place (Pages.Frame). */}}
+{{define "site-header"}}<header class="site-header" id="top">
+  <a class="brand" href="/">{{template "logo"}}{{brand}}</a>
+  <nav aria-label="{{brand}}">
+    {{if .SignedIn}}<a class="quiet way-in" href="/networks">Your networks</a>{{else if .SignIn}}<a class="quiet way-in" href="/signin">Sign in</a>{{end}}
+    {{if .CSRF}}<form method="post" action="/signout" class="signout"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="link quiet" title="Signed in as {{.Email}}">Sign out</button></form>{{end}}
+    {{template "theme-toggle"}}
+  </nav>
+</header>{{end}}
+
+{{define "site-footer"}}<footer class="site-footer">
+  <span class="brand">{{template "logo"}}{{brand}}</span>
+  <nav aria-label="More of {{brand}}">{{if .SignedIn}}<a href="/networks">Your networks</a>{{else if .SignIn}}<a href="/signin">Sign in</a>{{end}}<a href="mailto:{{.Hello}}">{{.Hello}}</a>{{with source}}<a href="{{.}}">Source</a>{{end}}{{if .CSRF}}<form method="post" action="/signout" class="signout"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="link quiet">Sign out</button></form>{{end}}</nav>
+</footer>{{end}}
+
+{{define "plus"}}<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>{{end}}
+
+{{/* Where a page sits, for pages inside another; given its links up, as
+     list "/teams" "Teams" ... */}}
+{{define "crumbs"}}<nav class="crumbs" aria-label="Breadcrumb">{{range $i, $x := .}}{{if eq (mod $i 2) 0}}<a href="{{$x}}">{{else}}{{$x}}</a> <span aria-hidden="true">/</span> {{end}}{{end}}</nav>{{end}}
+
+{{define "avatar"}}<span class="avatar{{if .Agent}} agent{{end}}" aria-hidden="true">{{initial .Name}}</span>{{end}}
+
+{{/* A chart, drawn by charts.js from its data; given a chartBox. */}}
+{{define "chart"}}<div class="chart{{if eq .Data.Kind "hbar"}} chart-short{{end}}" data-chart="{{.Name}}"><canvas role="img" aria-label="{{.Label}}"></canvas><script type="application/json">{{.Data}}</script></div>{{end}}
+
+{{/* Models to pick from, by tier; given []modelGroup. */}}
+{{define "model-options"}}{{range .}}<optgroup label="{{.Tier}}">{{range .Models}}<option value="{{.ID}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</optgroup>{{end}}{{end}}
+
+{{/* How to connect an IRC app; given an ircSettings. */}}
+{{define "irc-settings"}}{{if .Port}}
+<dl class="facts irc-settings">
+  <dt>Server</dt><dd><code>{{.Host}}</code></dd>
+  <dt>Port</dt><dd><code>{{.Port}}</code>, with TLS (SSL) on. In mIRC, type the port as <code>+{{.Port}}</code>: the plus means TLS.</dd>
+  <dt>Sign in</dt><dd>SASL (PLAIN), with your nick <code>{{.Account}}</code> and your IRC password. To have each app catch up on its own, add a name for it: <code>{{.Account}}@phone</code>, <code>{{.Account}}@mirc</code>.</dd>
+</dl>
+<p class="muted small">In mIRC: Tools, Options, Connect, Servers, Add. Server <code>{{.Host}}</code>, ports <code>+{{.Port}}</code>, login method SASL.</p>
+{{else}}
+<p>IRC apps can't connect to this network yet. Use the web chat for now.</p>
+{{end}}{{end}}

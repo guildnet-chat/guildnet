@@ -1,0 +1,26 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{define "title"}}Sign in to {{.Network}} · {{brand}}{{end}}
+{{define "main"}}
+<div class="card signin">
+  <h1>Sign in to <span class="hash">#</span>{{.Network}}</h1>
+  {{if .Data.View}}
+  <p class="muted">One more step: show it's you.</p>
+  <div class="passkey-use">
+    <button type="button" data-passkey="use" data-begin="/signin/two-step/passkey/begin" data-finish="/signin/two-step/passkey/finish" autofocus>Use your passkey</button>
+    <p class="passkey-status muted small" role="status"></p>
+  </div>
+  <p class="or-divider"><span>or</span></p>
+  <form method="post" action="/signin/two-step">
+    <label>A code from your authenticator app, or a recovery code <input name="code" autocomplete="one-time-code" autocapitalize="off" spellcheck="false" maxlength="16" required></label>
+    <button class="outline">Sign in with the code</button>
+  </form>
+  {{else}}
+  <p class="muted">Enter the 6-digit code from your authenticator app, or one of your recovery codes.</p>
+  <form method="post" action="/signin/two-step">
+    <label>Code <input name="code" autocomplete="one-time-code" autocapitalize="off" spellcheck="false" maxlength="16" required autofocus></label>
+    <button>Sign in</button>
+  </form>
+  {{end}}
+  <p class="muted small">Lost your phone and your codes? The network's owner can reset your two-step sign-in.</p>
+</div>
+{{end}}

@@ -1,0 +1,235 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* GuildNet design tokens (direction A3). Light by default; dark when the
+   system asks for it, unless someone picked a side with the switch, which
+   theme.js records as data-theme on <html>. Components use only these. */
+
+@font-face { font-family: "Space Grotesk"; font-style: normal; font-weight: 400; font-display: swap; src: url("/static/fonts/space-grotesk-400.woff2") format("woff2"); }
+@font-face { font-family: "Space Grotesk"; font-style: normal; font-weight: 500; font-display: swap; src: url("/static/fonts/space-grotesk-500.woff2") format("woff2"); }
+@font-face { font-family: "Space Grotesk"; font-style: normal; font-weight: 700; font-display: swap; src: url("/static/fonts/space-grotesk-700.woff2") format("woff2"); }
+@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 400; font-display: swap; src: url("/static/fonts/jetbrains-mono-400.woff2") format("woff2"); }
+@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 600; font-display: swap; src: url("/static/fonts/jetbrains-mono-600.woff2") format("woff2"); }
+
+:root {
+  --font: "Space Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
+  --radius-xs: 4px;    /* badges, inline code */
+  --radius: 8px;       /* buttons, inputs, badges' containers */
+  --radius-card: 12px; /* cards, panels, banners */
+  --radius-pill: 999px;
+
+  /* One scale for every page. Spacing: 4 8 12 16 20 24 32 48 64. Text: */
+  --text-xs: 12px;   /* labels, badges, captions */
+  --text-sm: 13px;   /* help under a field, small print */
+  --text-ui: 14px;   /* second lines in lists and tables, small controls */
+  --text-md: 15px;   /* the console's body */
+  --text-lg: 17px;   /* the landing page's body, ledes */
+  --text-xl: 20px;   /* card headings */
+  --text-2xl: 28px;  /* page titles */
+  /* Controls: buttons and the fields beside them are the same height. */
+  --control: 40px;
+  --control-sm: 32px;
+
+  --bg: #f6f6f9;
+  --surface: #ffffff;
+  --rail: #eceef4;
+  --selected: #dfe2ec;
+  --line: #dcdfe8;
+  --field: #8a90a2;    /* a field's edge: 3:1 against the card, so it's seen */
+  --text: #171a22;
+  --muted: #4b5163;
+  --faint: #5f6577;
+  --accent: #4c55d8;
+  --accent-hover: #3940b8;
+  --on-accent: #ffffff;
+  --tonal: #e6e8ff;
+  --on-tonal: #262c8f;
+  --ai: #1f7a4d;
+  --on-ai: #ffffff;
+  --danger: #d6264a;
+  --on-danger: #ffffff;
+  --danger-soft: #fde8ec;
+  --on-danger-soft: #8f1230;
+  --warn-soft: #fff3dc;
+  --on-warn-soft: #6b4a00;
+  --ok-soft: #dcf3e6;
+  --on-ok-soft: #155234;
+  /* A band that calls for attention (the landing page's beta): solid indigo,
+     and in the dark the soft indigo, so it isn't the brightest thing there. */
+  --band: #4c55d8;
+  --on-band: #ffffff;
+  --shadow: 0 18px 44px rgba(23, 26, 34, 0.14);
+  --shadow-lift: 0 6px 18px rgba(23, 26, 34, 0.14);
+  /* Teams' colours: readable as text on the page, in either theme. */
+  --team-0: #4c55d8; --team-1: #0f7d69; --team-2: #9a5d06; --team-3: #b8386a;
+  --team-4: #1f6fb8; --team-5: #7448c2; --team-6: #3f7a1c; --team-7: #b0471f;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12141a;
+    --surface: #1b1e26;
+    --rail: #161920;
+    --selected: #262a35;
+    --line: #2c303b;
+    --field: #6a7080;
+    --text: #e6e8ee;
+    --muted: #aeb3c2;
+    --faint: #8a90a2;
+    --accent: #8b91ff;
+    --accent-hover: #a5abff;
+    --on-accent: #12141a;
+    --tonal: #262a4a;
+    --on-tonal: #d4d6ff;
+    --ai: #23784a;
+    --danger: #ff6b85;
+    --on-danger: #12141a;
+    --danger-soft: #3a1c24;
+    --on-danger-soft: #ffb3c1;
+    --warn-soft: #33291a;
+    --on-warn-soft: #f5d28f;
+    --ok-soft: #173326;
+    --on-ok-soft: #9fe0bb;
+    --band: #262a4a;
+    --on-band: #d4d6ff;
+    --shadow: none;
+    --shadow-lift: none;
+    --team-0: #8b91ff; --team-1: #3fc9ad; --team-2: #f0a540; --team-3: #f07aa5;
+    --team-4: #6fb1f0; --team-5: #b49af0; --team-6: #8ccf5c; --team-7: #f08a5e;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #12141a;
+  --surface: #1b1e26;
+  --rail: #161920;
+  --selected: #262a35;
+  --line: #2c303b;
+  --field: #6a7080;
+  --text: #e6e8ee;
+  --muted: #aeb3c2;
+  --faint: #8a90a2;
+  --accent: #8b91ff;
+  --accent-hover: #a5abff;
+  --on-accent: #12141a;
+  --tonal: #262a4a;
+  --on-tonal: #d4d6ff;
+  --ai: #23784a;
+  --danger: #ff6b85;
+  --on-danger: #12141a;
+  --danger-soft: #3a1c24;
+  --on-danger-soft: #ffb3c1;
+  --warn-soft: #33291a;
+  --on-warn-soft: #f5d28f;
+  --ok-soft: #173326;
+  --on-ok-soft: #9fe0bb;
+  --band: #262a4a;
+  --on-band: #d4d6ff;
+  --shadow: none;
+  --shadow-lift: none;
+  --team-0: #8b91ff; --team-1: #3fc9ad; --team-2: #f0a540; --team-3: #f07aa5;
+  --team-4: #6fb1f0; --team-5: #b49af0; --team-6: #8ccf5c; --team-7: #f08a5e;
+  color-scheme: dark;
+}
+
+/* Shared pieces. */
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--font); }
+a { color: var(--accent); }
+a:hover { color: var(--accent-hover); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+svg { flex-shrink: 0; }
+
+.hash { font-family: var(--mono); color: var(--accent); }
+.logo { width: 1.3em; height: 1.3em; }
+.logo .shield { fill: var(--accent); }
+.logo .hash { fill: none; stroke: var(--on-accent); stroke-width: 2.8; stroke-linecap: round; }
+
+/* Badges: one look everywhere (console, chat, landing). */
+.badge { display: inline-block; font-size: 11px; font-weight: 700; line-height: 18px; letter-spacing: .3px; text-transform: uppercase; padding: 0 6px; border-radius: var(--radius-xs); vertical-align: 1px; background: var(--selected); color: var(--text); white-space: nowrap; }
+.badge.ai { background: var(--ai); color: var(--on-ai); }
+.badge.lead { background: var(--accent); color: var(--on-accent); }
+.badge.danger { background: var(--danger-soft); color: var(--on-danger-soft); }
+
+/* How many are waiting on you: indigo, the colour for "needs you". */
+.count { display: inline-block; min-width: 20px; text-align: center; background: var(--accent); color: var(--on-accent); border-radius: var(--radius-pill); padding: 0 6px; font-size: var(--text-xs); font-weight: 700; line-height: 18px; }
+
+.button, button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: var(--control); padding: 0 16px; border: 0; border-radius: var(--radius); background: var(--accent); color: var(--on-accent); font: inherit; font-weight: 700; text-decoration: none; white-space: nowrap; cursor: pointer; }
+.button:hover, button:hover { background: var(--accent-hover); color: var(--on-accent); }
+button.outline, .button.outline { background: transparent; color: var(--text); border: 1px solid var(--field); font-weight: 600; }
+button.outline:hover, .button.outline:hover { background: var(--selected); color: var(--text); }
+button.danger { background: var(--danger); color: var(--on-danger); }
+button.danger:hover { background: var(--danger); filter: brightness(1.1); }
+.small-button, button.small-button { height: var(--control-sm); padding: 0 12px; font-size: 14px; }
+/* A button that reads as a link, in what a page says: Give, Update, Drop. */
+button.link { height: auto; padding: 0; background: none; color: var(--accent); font-weight: 400; text-decoration: underline; text-underline-offset: 2px; white-space: normal; }
+button.link:hover { background: none; color: var(--accent-hover); }
+button.link.danger { color: var(--danger); }
+/* Quiet: the page's own furniture (Hide this, Cancel), not what it's about. */
+button.link.quiet, a.quiet { color: var(--muted); text-decoration: none; }
+button.link.quiet:hover, a.quiet:hover { color: var(--text); text-decoration: underline; }
+.icon-button { width: var(--control-sm); height: var(--control-sm); padding: 0; border: 1px solid var(--line); background: var(--surface); color: var(--muted); }
+.icon-button:hover { background: var(--selected); color: var(--text); }
+
+.theme { width: var(--control); height: var(--control); padding: 0; border: 1px solid var(--line); background: var(--surface); color: var(--text); }
+.theme:hover { background: var(--selected); color: var(--text); }
+.theme .sun { display: none; }
+:root[data-theme="dark"] .theme .sun { display: block; }
+:root[data-theme="dark"] .theme .moon { display: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .theme .sun { display: block; }
+  :root:not([data-theme="light"]) .theme .moon { display: none; }
+}
+
+input, select, textarea { height: var(--control); padding: 0 12px; border: 1px solid var(--field); border-radius: var(--radius); background: var(--surface); color: var(--text); font: inherit; font-size: var(--text-md); }
+textarea { height: auto; padding: 10px 12px; font-family: var(--mono); font-size: 14px; line-height: 1.5; }
+input[type="checkbox"], input[type="radio"] { width: 18px; height: 18px; margin: 0; padding: 0; accent-color: var(--accent); }
+/* A secret that isn't a password (an API key): hidden while it's typed. */
+input.secret { -webkit-text-security: disc; }
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+label { display: flex; flex-direction: column; gap: 6px; font-size: var(--text-sm); color: var(--muted); }
+
+/* Messages: something wrong, something to know, something done. */
+.error, .note, .done { border-radius: var(--radius); padding: 10px 16px; margin: 0; }
+.error { background: var(--danger-soft); color: var(--on-danger-soft); }
+.note { background: var(--warn-soft); color: var(--on-warn-soft); }
+.muted { color: var(--faint); }
+/* A small label above a title: which section a page is in. */
+.eyebrow { font: 600 var(--text-xs)/1 var(--mono); letter-spacing: .8px; text-transform: uppercase; color: var(--faint); }
+/* A form went through: said once, on the page it led to. */
+.done { background: var(--ok-soft); color: var(--on-ok-soft); font-weight: 500; }
+/* guildnet.chat's header and footer, on every page of it: the landing page,
+   the docs, the legal pages and a signed-in person's networks. */
+.site-header, .site-footer { padding-inline: max(clamp(16px, 6vw, 80px), calc((100% - 1200px) / 2)); }
+.site-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-block: 18px; border-bottom: 1px solid var(--line); }
+.site-header .brand, .site-footer .brand { display: flex; align-items: center; gap: 10px; color: var(--text); font-weight: 700; font-size: 20px; text-decoration: none; }
+.site-header .brand:hover { color: var(--text); }
+.site-header nav { display: flex; gap: 20px; align-items: center; font-size: 15px; }
+.site-header .site-links { display: flex; gap: 20px; }
+.site-header .quiet { color: var(--muted); text-decoration: none; }
+.site-header .quiet:hover { color: var(--text); }
+.site-header .way-in { color: var(--text); font-weight: 600; }
+.site-header nav a, .site-header nav button { white-space: nowrap; }
+.site-header form { margin: 0; }
+.site-footer { display: flex; justify-content: space-between; align-items: center; gap: 12px 24px; flex-wrap: wrap; padding-block: 24px; margin-top: auto; border-top: 1px solid var(--line); color: var(--faint); font-size: 14px; }
+.site-footer .brand { font-size: 15px; gap: 8px; }
+.site-footer nav { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+.site-footer a { color: var(--muted); text-decoration: none; }
+.site-footer a:hover { color: var(--text); text-decoration: underline; }
+.site-footer form { margin: 0; }
+.site-footer .signout { display: none; } /* in the header, but on a phone */
+/* The footer sits at the bottom of a short page. */
+body.site { min-height: 100vh; display: flex; flex-direction: column; }
+@media (max-width: 900px) {
+  .site-header .site-links { display: none; }
+}
+@media (max-width: 520px) {
+  .site-header nav { gap: 12px; }
+  .site-header .signout { display: none; }
+  .site-footer .signout { display: block; }
+  .site-header .button { padding: 0 14px; }
+}

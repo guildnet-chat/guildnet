@@ -1,0 +1,9 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{define "title"}}{{.Network}} · {{brand}}{{end}}
+{{define "main"}}
+<div class="card signin">
+  <h1><span class="hash">#</span>{{.Network}}</h1>
+  <p>{{.Data.View}}</p>
+  <p><a class="button" href="/signin">Sign in</a></p>
+</div>
+{{end}}

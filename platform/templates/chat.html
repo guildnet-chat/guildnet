@@ -1,0 +1,7 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{define "title"}}Chat · {{.Network}}{{end}}
+{{define "main"}}
+{{if not .ChatDock}}
+<div class="chat-missing"><h1>Chat</h1><p class="muted">Web chat isn't set up on this network yet. Any IRC app works in the meantime.</p></div>
+{{end}}
+{{end}}

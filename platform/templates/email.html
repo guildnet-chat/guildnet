@@ -1,0 +1,53 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="supported-color-schemes" content="light dark">
+<title>{{.Subject}}</title>
+<style>
+  @media (prefers-color-scheme: dark) {
+    body, .page { background: #12141a !important; }
+    .card { background: #1b1e26 !important; border-color: #2c303b !important; }
+    .ink { color: #e6e8ee !important; }
+    .muted { color: #aeb3c2 !important; }
+    .faint, .faint a { color: #8a90a2 !important; }
+    .button { background: #8b91ff !important; }
+    .button a { color: #12141a !important; }
+    .link { color: #a5abff !important; }
+  }
+  @media (max-width: 600px) { .card-pad { padding: 28px 22px !important; } }
+</style>
+</head>
+<body style="margin:0;padding:0;background:#f6f6f9;">
+<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">{{.Preheader}}</div>
+<table role="presentation" class="page" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f6f6f9;">
+<tr><td align="center" style="padding:32px 16px 40px;">
+  <!--[if mso]><table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;">
+    <tr><td style="padding:0 4px 18px;">
+      <a href="{{.Home}}" style="text-decoration:none;"><img src="{{.Logo}}" width="28" height="28" alt="" style="display:inline-block;vertical-align:middle;border:0;border-radius:7px;"><span class="ink" style="display:inline-block;vertical-align:middle;padding-left:10px;font-family:'Space Grotesk',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:18px;font-weight:700;line-height:28px;color:#171a22;">{{brand}}</span></a>
+    </td></tr>
+    <tr><td class="card card-pad" style="background:#ffffff;border:1px solid #dcdfe8;border-radius:12px;padding:36px 40px;">
+      <h1 class="ink" style="margin:0 0 16px;font-family:'Space Grotesk',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:24px;font-weight:700;line-height:1.25;letter-spacing:-0.01em;color:#171a22;">{{.Heading}}</h1>
+      {{range .Paras}}<p class="muted" style="margin:0 0 14px;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:16px;line-height:1.6;color:#4b5163;">{{.}}</p>
+      {{end}}
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:10px 0 22px;"><tr>
+        <td class="button" style="background:#4c55d8;border-radius:8px;mso-padding-alt:13px 22px;"><a href="{{.Link}}" style="display:inline-block;padding:13px 22px;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;font-weight:700;line-height:1;color:#ffffff;text-decoration:none;border-radius:8px;">{{.Button}}</a></td>
+      </tr></table>
+      {{range .After}}<p class="faint" style="margin:0 0 10px;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.55;color:#5f6577;">{{.}}</p>
+      {{end}}
+      <p class="faint" style="margin:18px 0 0;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;line-height:1.5;color:#5f6577;">Or open this link:<br><a class="link" href="{{.Link}}" style="color:#4c55d8;word-break:break-all;">{{.Link}}</a></p>
+    </td></tr>
+    <tr><td class="faint" style="padding:18px 4px 0;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;line-height:1.5;color:#5f6577;">
+      {{.Why}}<br>
+      <a href="{{.Home}}" style="color:#5f6577;">{{brand}}</a> · {{tagline}}
+    </td></tr>
+  </table>
+  <!--[if mso]></td></tr></table><![endif]-->
+</td></tr>
+</table>
+</body>
+</html>

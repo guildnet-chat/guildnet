@@ -1,0 +1,399 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# GuildNet on one machine: the edge (Caddy), the console, one network (its
+# Ergo and runner), and Postgres. init.sh writes the settings and secrets
+# into .env beside this file, with the release it runs (GUILDNET_VERSION):
+# each service runs that release's image, fetched with docker compose pull,
+# or built from this repo with --build. README.md says how to start it, set
+# it up, upgrade it and back it up.
+name: guildnet
+
+# What every service shares: no Linux capabilities and none to gain, and
+# logs kept small.
+x-locked: &locked
+  restart: unless-stopped
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  logging:
+    driver: json-file
+    options: {max-size: "10m", max-file: "3"}
+
+services:
+  caddy:
+    # The edge, and the only thing reachable from outside: HTTPS (with
+    # certificates from Let's Encrypt), and IRC over TLS on 6697.
+    <<: *locked
+    image: ${GUILDNET_REGISTRY:-ghcr.io/guildnet-chat}/caddy:${GUILDNET_VERSION:?run init.sh first}
+    build: ../caddy
+    cap_add: [NET_BIND_SERVICE] # ports 80 and 443
+    environment:
+      GUILDNET_DOMAIN: ${GUILDNET_DOMAIN:?run init.sh first}
+      GUILDNET_NETWORK: ${GUILDNET_NETWORK:?run init.sh first}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+      - "6697:6697"
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      edge:
+        ipv4_address: 172.30.0.2
+
+  platform:
+    # The console: the home page (first-run setup), the network's console
+    # and web chat, and the broker the runner gets its settings and keys from.
+    <<: *locked
+    image: ${GUILDNET_REGISTRY:-ghcr.io/guildnet-chat}/platform:${GUILDNET_VERSION:?run init.sh first}
+    build:
+      context: ../..
+      dockerfile: deploy/platform/Dockerfile
+      # Which release this is, for the Server page and fault reports.
+      args: [GUILDNET_RELEASE, GUILDNET_CHAT_COMMIT]
+      # The web chat, a separate program (guildnet-chat), beside this repo.
+      additional_contexts:
+        chat-src: ${GUILDNET_CHAT_SRC:-../../../guildnet-chat}
+    user: "65532:65532"
+    read_only: true
+    tmpfs: [/tmp]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      GUILDNET_BASE_DOMAIN: ${GUILDNET_DOMAIN}
+      GUILDNET_SECURE_COOKIES: "on"
+      # Caddy's fixed address: only its X-Forwarded-For is believed.
+      GUILDNET_TRUSTED_PROXIES: 172.30.0.2/32
+      GUILDNET_PLATFORM_DATABASE_URL: postgres://platform:${GUILDNET_PLATFORM_DB_PASSWORD:?run init.sh first}@postgres:5432/platform?sslmode=disable
+      # Seals what the console keeps (model keys, connectors' tokens).
+      GUILDNET_PLATFORM_KEY: ${GUILDNET_PLATFORM_KEY:?run init.sh first}
+      # While the key's changed (docs/self-host/operations.md).
+      GUILDNET_PLATFORM_OLD_KEYS: ${GUILDNET_PLATFORM_OLD_KEYS:-}
+      # The install's one network, which first-run setup makes.
+      GUILDNET_NETWORK: ${GUILDNET_NETWORK}
+      GUILDNET_RUNNER_URL: http://runner:8090
+      GUILDNET_ERGO_URL: http://ergo:8089
+      GUILDNET_CHAT_URL: ws://ergo:8097
+      GUILDNET_API_TOKEN: ${GUILDNET_API_TOKEN:?run init.sh first}
+      GUILDNET_ERGO_API_TOKEN: ${GUILDNET_ERGO_API_TOKEN:?run init.sh first}
+      GUILDNET_CHAT_KEY: ${GUILDNET_CHAT_KEY:?run init.sh first}
+      # The broker, on the private network only, never the internet: over
+      # TLS from a CA the console keeps (in a volume only it has), whose
+      # certificate it shares with the runner.
+      GUILDNET_GITHUB_BROKER_LISTEN: ":8082"
+      GUILDNET_BROKER_TLS_DIR: /var/lib/guildnet-broker/own
+      GUILDNET_BROKER_CA_SHARE: /var/lib/guildnet-broker/shared
+      GUILDNET_BROKER_NAMES: platform
+      # IRC apps connect at the edge with TLS on 6697; one that forgot TLS is
+      # sent here to be told so.
+      GUILDNET_IRC_PORT: "6697"
+      GUILDNET_IRC_HINT_LISTEN: ":6699"
+      # Email, through any mail server (docs/self-host/email.md).
+      GUILDNET_SMTP_ADDR: ${GUILDNET_SMTP_ADDR:-}
+      GUILDNET_SMTP_USERNAME: ${GUILDNET_SMTP_USERNAME:-}
+      GUILDNET_SMTP_PASSWORD: ${GUILDNET_SMTP_PASSWORD:-}
+      GUILDNET_SMTP_SECURITY: ${GUILDNET_SMTP_SECURITY:-}
+      GUILDNET_MAIL_FROM: ${GUILDNET_MAIL_FROM:-}
+      GUILDNET_MAIL_REPLY_TO: ${GUILDNET_MAIL_REPLY_TO:-}
+      GUILDNET_RESEND_KEY: ${GUILDNET_RESEND_KEY:-}
+      # A GitHub App of your own (docs/self-host/github.md).
+      GUILDNET_GITHUB_PUBLIC_APP_ID: ${GUILDNET_GITHUB_PUBLIC_APP_ID:-}
+      GUILDNET_GITHUB_PUBLIC_APP_SLUG: ${GUILDNET_GITHUB_PUBLIC_APP_SLUG:-}
+      GUILDNET_GITHUB_PUBLIC_CLIENT_ID: ${GUILDNET_GITHUB_PUBLIC_CLIENT_ID:-}
+      GUILDNET_GITHUB_PUBLIC_CLIENT_SECRET: ${GUILDNET_GITHUB_PUBLIC_CLIENT_SECRET:-}
+      GUILDNET_GITHUB_PUBLIC_APP_KEY: ${GUILDNET_GITHUB_PUBLIC_APP_KEY:-}
+      # Your own name and look (docs/self-host/brand.md); your files go in
+      # brand/ beside this file.
+      GUILDNET_BRAND_NAME: ${GUILDNET_BRAND_NAME:-}
+      GUILDNET_BRAND_TAGLINE: ${GUILDNET_BRAND_TAGLINE:-}
+      GUILDNET_BRAND_HELLO: ${GUILDNET_BRAND_HELLO:-}
+      GUILDNET_BRAND_SUPPORT: ${GUILDNET_BRAND_SUPPORT:-}
+      GUILDNET_BRAND_PRIVACY: ${GUILDNET_BRAND_PRIVACY:-}
+      GUILDNET_BRAND_SECURITY: ${GUILDNET_BRAND_SECURITY:-}
+      GUILDNET_BRAND_DIR: /brand
+      # Where GuildNet's and the web chat's source is, for their Source
+      # links (both AGPL: if you change them, link to your changes).
+      GUILDNET_SOURCE: ${GUILDNET_SOURCE:-https://github.com/guildnet-chat/guildnet}
+      GUILDNET_CHAT_SOURCE: ${GUILDNET_CHAT_SOURCE:-https://github.com/guildnet-chat/guildnet-chat}
+      # Desks, once desks.sh turns them on: sandboxd's address, and the key
+      # the console signs the runner's desk tokens with. sandboxd serves
+      # TLS, with a certificate the console gives it from its own CA (the
+      # broker's), in a folder only sandboxd shares.
+      GUILDNET_SANDBOX_URL: ${GUILDNET_SANDBOX_URL:-}
+      GUILDNET_SANDBOX_KEY: ${GUILDNET_SANDBOX_KEY:-}
+      GUILDNET_SANDBOX_TLS_DIR: /var/lib/guildnet-broker/sandbox
+      # Desks on a host of their own (docs/self-host/desks-host.md): the
+      # names and addresses its certificate is for, which sandbox-cert signs.
+      GUILDNET_SANDBOX_NAMES: ${GUILDNET_SANDBOX_NAMES:-}
+      # Git servers on your own network that agents' repositories may be on
+      # (docs/self-host/configuration.md).
+      GUILDNET_GIT_PRIVATE_HOSTS: ${GUILDNET_GIT_PRIVATE_HOSTS:-}
+      # Reports of faults in GuildNet's own code, to a Sentry (or GlitchTip)
+      # of yours.
+      GUILDNET_SENTRY_DSN: ${GUILDNET_SENTRY_DSN:-}
+      GUILDNET_ENVIRONMENT: ${GUILDNET_ENVIRONMENT:-}
+    volumes:
+      - ./brand:/brand:ro
+      - broker-ca:/var/lib/guildnet-broker/own
+      - broker-ca-shared:/var/lib/guildnet-broker/shared
+      - sandbox-tls:/var/lib/guildnet-broker/sandbox
+    networks:
+      - edge
+      - private
+      - data
+
+  ergo:
+    # The network's IRC server. Members only: an account is needed to
+    # connect, and accounts come from the console and invites.
+    <<: *locked
+    image: ${GUILDNET_REGISTRY:-ghcr.io/guildnet-chat}/ergo:${GUILDNET_VERSION:?run init.sh first}
+    build: ../ergo
+    user: "65534:65534"
+    read_only: true
+    tmpfs: [/tmp]
+    environment:
+      GUILDNET_NETWORK: ${GUILDNET_NETWORK}
+      GUILDNET_WEB_URL: https://${GUILDNET_NETWORK}.${GUILDNET_DOMAIN}
+      ERGO__NETWORK__NAME: ${GUILDNET_NETWORK}
+      ERGO__SERVER__NAME: ${GUILDNET_NETWORK}.${GUILDNET_DOMAIN}
+      # The edge (IRC over TLS) and the console (web chat) say who the
+      # visitor is.
+      ERGO__SERVER__PROXY_ALLOWED_FROM: '["10.0.0.0/8","172.16.0.0/12","192.168.0.0/16"]'
+      ERGO__SERVER__WEBSOCKETS__ALLOWED_ORIGINS: '["https://${GUILDNET_NETWORK}.${GUILDNET_DOMAIN}"]'
+      ERGO__API__ENABLED: "true"
+      ERGO__API__LISTENER: ":8089"
+      ERGO__API__BEARER_TOKENS: '["${GUILDNET_ERGO_API_TOKEN}"]'
+      ERGO__ACCOUNTS__REGISTRATION__ENABLED: "false"
+      ERGO__ACCOUNTS__REQUIRE_SASL__ENABLED: "true"
+      # Web chat: the console signs people in with short-lived tokens made
+      # with this key, for accounts that already exist, for this network.
+      ERGO__ACCOUNTS__JWT_AUTH__ENABLED: "true"
+      ERGO__ACCOUNTS__JWT_AUTH__AUTOCREATE: "false"
+      ERGO__ACCOUNTS__JWT_AUTH__TOKENS: '[{"algorithm":"hmac","key":"${GUILDNET_CHAT_KEY}","account-claims":["account"],"validate-aud":["${GUILDNET_NETWORK}"]}]'
+      # GuildServ keeps IRC in step with the org chart, as an operator.
+      ERGO__OPERS__GUILDSERV__CLASS: server-admin
+      ERGO__OPERS__GUILDSERV__HIDDEN: "true"
+      GUILDNET_OPER_PASSWORD: ${GUILDNET_OPER_PASSWORD:?run init.sh first}
+    volumes:
+      # Accounts, channels and chat history.
+      - ergo-data:/ircd
+      # The welcome, shared with the runner: GuildServ adds what the company
+      # is for.
+      - welcome:/welcome
+    networks:
+      - edge
+      - private
+
+  runner:
+    # The network's agents, GuildServ and the ledger. It waits for first-run
+    # setup, then starts from what it chose; when the network's settings
+    # change, it stops, and starts again with them.
+    <<: *locked
+    image: ${GUILDNET_REGISTRY:-ghcr.io/guildnet-chat}/runner:${GUILDNET_VERSION:?run init.sh first}
+    build:
+      context: ../..
+      dockerfile: deploy/runner/Dockerfile
+      args: [GUILDNET_RELEASE]
+    user: "65532:65532"
+    read_only: true
+    tmpfs: [/tmp]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ergo:
+        condition: service_started
+      platform:
+        condition: service_started
+    environment:
+      GUILDNET_NETWORK: ${GUILDNET_NETWORK}
+      GUILDNET_SETTINGS_FROM_BROKER: "on"
+      # Its settings, model keys, GitHub and connectors' tokens: from the
+      # console's broker, over TLS, kept only in memory.
+      GUILDNET_KEYS_BROKER: https://platform:8082
+      # Git servers on your own network, which it pushes agents' branches to.
+      GUILDNET_GIT_PRIVATE_HOSTS: ${GUILDNET_GIT_PRIVATE_HOSTS:-}
+      GUILDNET_GITHUB_BROKER: https://platform:8082
+      GUILDNET_BROKER_CA_FILE: /var/lib/guildnet-broker/ca.crt
+      GUILDNET_DATA_DIR: /app/data
+      GUILDNET_SERVER: ergo:6667
+      GUILDNET_DATABASE_URL: postgres://runner:${GUILDNET_RUNNER_DB_PASSWORD:?run init.sh first}@postgres:5432/runner?sslmode=disable
+      GUILDNET_ERGO_API_URL: http://ergo:8089
+      GUILDNET_ERGO_API_TOKEN: ${GUILDNET_ERGO_API_TOKEN}
+      GUILDNET_ACCOUNT_SECRET: ${GUILDNET_ACCOUNT_SECRET:?run init.sh first}
+      GUILDNET_OPER_NAME: guildserv
+      GUILDNET_OPER_PASSWORD: ${GUILDNET_OPER_PASSWORD}
+      # Its API, for the console only.
+      GUILDNET_API_LISTEN: ":8090"
+      GUILDNET_API_TOKEN: ${GUILDNET_API_TOKEN}
+      GUILDNET_WELCOME_DIR: /welcome
+      # Desks on Anthropic's Managed Agents instead of (or as well as)
+      # sandboxd's: "on", with an Anthropic key; each desk's spend capped at
+      # GUILDNET_DESK_BUDGET_CENTS (default $1).
+      GUILDNET_MANAGED: ${GUILDNET_MANAGED:-}
+      GUILDNET_DESK_BUDGET_CENTS: ${GUILDNET_DESK_BUDGET_CENTS:-}
+      GUILDNET_SENTRY_DSN: ${GUILDNET_SENTRY_DSN:-}
+      GUILDNET_ENVIRONMENT: ${GUILDNET_ENVIRONMENT:-}
+    volumes:
+      # The spend ledger.
+      - runner-data:/app/data
+      - welcome:/welcome
+      # The console's CA's certificate, the only one it trusts the broker by.
+      - broker-ca-shared:/var/lib/guildnet-broker:ro
+    networks:
+      # Its way out (to the model providers), and to Ergo and the console.
+      - private
+      - data
+
+  postgres:
+    # The console's and the runner's databases, each with its own login.
+    <<: *locked
+    image: ${GUILDNET_REGISTRY:-ghcr.io/guildnet-chat}/postgres:${GUILDNET_VERSION:?run init.sh first}
+    build: ../postgres
+    # Its entrypoint hands the data to the postgres user, then drops to it.
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    environment:
+      POSTGRES_USER: guildnet
+      POSTGRES_DB: guildnet
+      POSTGRES_PASSWORD: ${GUILDNET_DB_PASSWORD:?run init.sh first}
+      PLATFORM_DB_PASSWORD: ${GUILDNET_PLATFORM_DB_PASSWORD}
+      RUNNER_DB_PASSWORD: ${GUILDNET_RUNNER_DB_PASSWORD}
+    healthcheck:
+      # Over TCP: while its init scripts run on a first start, Postgres
+      # answers only on its socket, and isn't ready for the others yet.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U guildnet -d postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    networks:
+      - data
+
+  sandboxd:
+    # Desks (optional; desks.sh turns them on): each agent's workspace is a
+    # container sandboxd makes from the desk image, under gVisor, on the
+    # desks' network, whose only way out is egress. The one service with
+    # Docker's socket: on the private network only, and it checks each
+    # call's token (signed by the console) before anything.
+    <<: *locked
+    profiles: [desks]
+    image: ${GUILDNET_REGISTRY:-ghcr.io/guildnet-chat}/sandboxd:${GUILDNET_VERSION:?run init.sh first}
+    build:
+      context: ../..
+      dockerfile: deploy/sandboxd/Dockerfile
+      args: [GUILDNET_RELEASE]
+    command: ["serve"]
+    environment:
+      # Only the public half: sandboxd checks tokens, it can't make them.
+      GUILDNET_SANDBOX_PUBLIC_KEY: ${GUILDNET_SANDBOX_PUBLIC_KEY:-}
+      GUILDNET_DESK_IMAGE: ${GUILDNET_REGISTRY:-ghcr.io/guildnet-chat}/desk:${GUILDNET_VERSION:?run init.sh first}
+      GUILDNET_DESK_RUNTIME: ${GUILDNET_DESK_RUNTIME:-runsc}
+      GUILDNET_DESK_NETWORK: guildnet-desks
+      # By address: under gVisor, desks can't use Docker's name lookup.
+      GUILDNET_DESK_PROXY: http://172.31.255.2:3128
+      # Each desk's share of the machine, and how many work at once (the
+      # rest wait their turn, or the one idle longest is stopped).
+      GUILDNET_DESK_MEMORY: ${GUILDNET_DESK_MEMORY:-2g}
+      GUILDNET_DESK_CPUS: ${GUILDNET_DESK_CPUS:-2}
+      GUILDNET_DESKS_AT_ONCE: ${GUILDNET_DESKS_AT_ONCE:-1}
+      GUILDNET_SENTRY_DSN: ${GUILDNET_SENTRY_DSN:-}
+      GUILDNET_ENVIRONMENT: ${GUILDNET_ENVIRONMENT:-}
+      # Its certificate (from the console's CA), served over TLS.
+      GUILDNET_SANDBOX_TLS_DIR: /tls
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - sandbox-tls:/tls:ro
+    # Out of memory, the kernel takes a desk, not sandboxd.
+    oom_score_adj: -500
+    networks:
+      - private
+
+  egress:
+    # The desks' only way out: HTTPS to GitHub, the package registries and a
+    # network's git hosts (with its egress pass); never to a private address
+    # that GUILDNET_GIT_PRIVATE_HOSTS doesn't name.
+    <<: *locked
+    profiles: [desks]
+    image: ${GUILDNET_REGISTRY:-ghcr.io/guildnet-chat}/sandboxd:${GUILDNET_VERSION:?run init.sh first}
+    build:
+      context: ../..
+      dockerfile: deploy/sandboxd/Dockerfile
+      args: [GUILDNET_RELEASE]
+    command: ["proxy"]
+    environment:
+      # Where desks may go, comma-separated (default: GitHub, and the Go,
+      # npm and Python registries); "*.example.com" takes its subdomains.
+      GUILDNET_DESK_ALLOWED: ${GUILDNET_DESK_ALLOWED:-}
+      # Networks' egress passes open their git hosts; git servers on your
+      # own network are reached only where they're named.
+      GUILDNET_SANDBOX_PUBLIC_KEY: ${GUILDNET_SANDBOX_PUBLIC_KEY:-}
+      GUILDNET_GIT_PRIVATE_HOSTS: ${GUILDNET_GIT_PRIVATE_HOSTS:-}
+    user: "65534:65534"
+    read_only: true
+    oom_score_adj: -500
+    networks:
+      outbound: {}
+      desks:
+        ipv4_address: 172.31.255.2
+
+  desk:
+    # The desk image: fetched (or built) with the stack, never run here
+    # (sandboxd runs desks from it).
+    profiles: [desks]
+    image: ${GUILDNET_REGISTRY:-ghcr.io/guildnet-chat}/desk:${GUILDNET_VERSION:?run init.sh first}
+    build: ../desk
+    scale: 0
+
+  files:
+    # backup.sh and restore.sh copy Ergo's and the runner's files with this
+    # (tar, as root, to keep who owns them); it's never left running.
+    profiles: [tools]
+    # Postgres's image, which is here while the stack is: never fetched or
+    # built for a backup.
+    image: ${GUILDNET_REGISTRY:-ghcr.io/guildnet-chat}/postgres:${GUILDNET_VERSION:?run init.sh first}
+    entrypoint: ["tar"]
+    network_mode: none
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
+    security_opt: ["no-new-privileges:true"]
+    volumes:
+      - ergo-data:/files/ergo
+      - runner-data:/files/runner
+
+networks:
+  # Caddy, and what it hands connections to: the console and Ergo.
+  edge:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+          # The others' addresses come from the top half, so none can take
+          # Caddy's while it starts.
+          ip_range: 172.30.0.128/25
+  # The console, Ergo and the runner.
+  private:
+  # The database, the console and the runner; no way out.
+  data:
+    internal: true
+  # Desks, each a container of sandboxd's, and egress: no way out but it.
+  desks:
+    name: guildnet-desks
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.31.255.0/24
+          # Desks' addresses come from the top half, so none can take egress's.
+          ip_range: 172.31.255.128/25
+  # egress's way out, shared with nothing else.
+  outbound:
+
+volumes:
+  caddy-data:
+  caddy-config:
+  postgres-data:
+  ergo-data:
+  runner-data:
+  welcome:
+  broker-ca:
+  broker-ca-shared:
+  sandbox-tls:

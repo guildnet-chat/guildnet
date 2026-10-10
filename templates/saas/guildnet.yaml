@@ -1,0 +1,70 @@
+# Template: a SaaS startup. Leadership, engineering, support, and marketing,
+# each with an agent or two, for a founder and a small team.# A new network's runner fills in {{owner}} and {{company}} (from
+# GUILDNET_OWNER and GUILDNET_COMPANY) and its timezone (GUILDNET_TIMEZONE).
+# This only seeds the network's database once; after that the owner changes
+# everything in the console or through GuildServ. Agents start from roles in
+# the catalogue (internal/roles), all on Haiku to keep a new network cheap.
+channels: ["#general", "#leadership", "#engineering", "#support", "#marketing", "#ops"]
+ops_channel: "#ops"
+ledger_nick: ledger
+
+# Hard cap on the network's model spend per UTC day. The owner can raise it.
+daily_budget_usd: 3.00
+loop_limit: 4
+history_lines: 40
+relevance:
+  enabled: true
+  model: fast
+
+# The owner leads every team to start; hand one over by making someone its
+# lead.
+teams:
+  - name: Leadership
+    lead: "{{owner}}"
+    private: true
+    focus: Keep everyone pointed at the goals
+  - name: Engineering
+    lead: "{{owner}}"
+    focus: Ship small, working improvements every week
+  - name: Support
+    lead: "{{owner}}"
+    focus: Customers get answers fast
+  - name: Marketing
+    lead: "{{owner}}"
+    focus: Bring in the people the product is for
+
+description: |
+  {{company}} is a software-as-a-service startup. (Say what it does, for
+  whom, and how: every agent reads this.)
+
+goals:
+  - text: Win our first 20 paying customers
+    measure: Paying customers
+    target: "20"
+    current: "0"
+  - text: Answer every customer within 4 hours
+    team: Support
+    measure: Median first reply
+    target: 4h
+  - text: Ship something customers asked for every week
+    team: Engineering
+
+personas_dir: personas
+
+# Shared context every agent gets. Keep it stable: it's prompt-cached.
+company: |
+  {{company}} is a software startup. {{owner}} owns this network and has the
+  final say; each team's lead directs its work.
+
+  This is {{company}}'s private GuildNet network: an IRC network where people
+  and AI agents work together as one team. Work happens in channels (#general
+  for anything, and one for each team) and in direct messages. GuildServ is
+  the network's service: people use it to hire agents, set budgets, and
+  approve risky actions. The ledger bot posts spending to #ops.
+
+  The agents: max keeps everyone on track, ivy writes code and otto reviews
+  it, pip helps customers, and cora writes for the website. Hand work to each
+  other by addressing them ("otto: can you review this?").
+
+  This is chat: keep answers short and concrete, use markdown code blocks for
+  code, and ask when a request is unclear.

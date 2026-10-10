@@ -1,0 +1,102 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+
+package platform_test
+
+import (
+	"net/url"
+	"strings"
+	"testing"
+
+	"github.com/guildnet-chat/guildnet/platform"
+	. "github.com/guildnet-chat/guildnet/platformtest"
+)
+
+// A network's owner hears by email (at the Google address they created it
+// with) when it's ready, when someone joins, and whenever something that
+// could hand it to someone else changes: its model keys, its GitHub
+// connection, the owner's password, or the network being deleted. Security
+// alerts can't be turned off, and never carry a secret.
+
+func TestTheOwnerIsWelcomedWhenTheirNetworkIsReady(t *testing.T) {
+	w, out := MailWorld(t)
+
+	w.Created("ada@example.com", "initech")
+
+	out.One(t, "ada@example.com", "initech is ready", "http://initech."+BaseDomain, "ada")
+}
+
+func TestTheOwnerHearsWhenSomeoneJoins(t *testing.T) {
+	w, out := MailWorld(t)
+	_, console := w.Created("ada@example.com", "initech")
+	console.Get("/people")
+	link := JoinLink.FindString(console.Post("/people/invite", url.Values{"role": {"Designer"}}).Body)
+	dee := w.Browser("initech")
+	dee.Get(link)
+
+	dee.Post(link, url.Values{"nick": {"dee"}, "password": {"a-long-enough-password"}, "confirm": {"a-long-enough-password"}})
+
+	out.One(t, "ada@example.com", "dee joined initech", "Designer", "http://initech."+BaseDomain+"/people")
+}
+
+func TestTheOwnerIsAlertedWhenModelKeysChange(t *testing.T) {
+	w, out := MailWorld(t)
+	_, console := w.Created("ada@example.com", "initech")
+	console.Get("/settings")
+
+	console.Post("/settings/keys", url.Values{"provider": {"openai"}, "model_key": {"sk-proj-initech-0123456789"}})
+	console.Get("/settings")
+	console.Post("/settings/keys", url.Values{"provider": {"openai"}, "model_key": {"sk-proj-initech-9876543210"}})
+	console.Get("/settings")
+	console.Post("/settings/keys/remove", url.Values{"provider": {"openai"}})
+
+	for _, what := range []string{"added", "replaced", "removed"} {
+		m := out.One(t, "ada@example.com", "OpenAI key was "+what, "ada", "If that wasn't you")
+		for _, secret := range []string{"sk-proj-initech"} {
+			if strings.Contains(m.Text+m.HTML, secret) {
+				t.Errorf("the alert %q carries the key", m.Subject)
+			}
+		}
+	}
+}
+
+func TestTheOwnerIsAlertedWhenTheirPasswordIsSetFromTheHomePage(t *testing.T) {
+	w, out := MailWorld(t)
+	home, _ := w.Created("ada@example.com", "initech")
+	home.Get("/networks/initech")
+
+	home.Post("/networks/initech/password", url.Values{"password": {"another-long-password"}, "confirm": {"another-long-password"}})
+
+	m := out.One(t, "ada@example.com", "password", "ada", "initech", "If that wasn't you")
+	if strings.Contains(m.Text+m.HTML, "another-long-password") {
+		t.Error("the alert carries the password")
+	}
+}
+
+func TestTheOwnerIsToldTheirNetworkWasDeleted(t *testing.T) {
+	w, out := MailWorld(t)
+	_, console := w.Created("ada@example.com", "initech")
+	console.Get("/settings")
+
+	console.Post("/settings/delete", url.Values{"confirm": {"initech"}})
+
+	out.One(t, "ada@example.com", "initech was deleted", "ada")
+}
+
+func TestTheOwnerIsAlertedWhenGitHubIsConnectedOrDisconnected(t *testing.T) {
+	gh := newFakeGitHubApp(t)
+	key := appKey(t)
+	out := &Outbox{}
+	w := NewWorldWith(t, func() Store { return platform.NewMemoryStore() }, WithMail(out), func(o *Setup) {
+		o.GitHub = &platform.GitHubApp{AppID: 1, Slug: "guildnet", ClientID: "Iv1.test", ClientSecret: "client-secret", Key: key,
+			APIURL: gh.srv.URL, WebURL: gh.srv.URL}
+	})
+	bob := w.CreateNetwork("bob@example.com", "bobco")
+	gh.canReach("bobs-code", 7)
+
+	callback(bob, "bobs-code", 7, connect(t, bob, "bobco"))
+	bob.Get("/networks/bobco")
+	bob.Post("/networks/bobco/github/disconnect", nil)
+
+	out.One(t, "bob@example.com", "connected to GitHub", "acct7", "If that wasn't you")
+	out.One(t, "bob@example.com", "disconnected from GitHub", "acct7")
+}

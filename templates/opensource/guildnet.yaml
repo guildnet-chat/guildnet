@@ -1,0 +1,58 @@
+# Template: an open-source project. An agent that triages issues and one that
+# keeps the docs up to date. A new network's runner fills in {{owner}} and
+# {{company}} (from GUILDNET_OWNER and GUILDNET_COMPANY) and its timezone
+# (GUILDNET_TIMEZONE). This only seeds the network's database once; after
+# that the owner changes everything in the console or through GuildServ.
+
+channels: ["#general", "#maintainers", "#community", "#ops"]
+ops_channel: "#ops"
+ledger_nick: ledger
+
+# Hard cap on the network's model spend per UTC day. The owner can raise it.
+daily_budget_usd: 1.50
+loop_limit: 4
+history_lines: 40
+relevance:
+  enabled: true
+  model: fast
+
+# Maintainers do the project's work; Community is where contributors and
+# users get help. The owner leads both to start.
+teams:
+  - name: Maintainers
+    lead: "{{owner}}"
+    focus: A project people can rely on
+  - name: Community
+    lead: "{{owner}}"
+    focus: Newcomers get help and a good first step
+
+description: |
+  {{company}} is an open-source project. (Say what it does and who uses it:
+  every agent reads this.)
+
+goals:
+  - text: Every new issue gets a first reply within a day
+    team: Community
+    measure: Issues waiting for a first reply
+    target: "0"
+
+personas_dir: personas
+
+# Shared context every agent gets. Keep it stable: it's prompt-cached.
+company: |
+  {{company}} is an open-source project. {{owner}} owns this network and has
+  the final say; maintainers decide what gets merged and released.
+
+  This is {{company}}'s GuildNet network: an IRC network where maintainers,
+  contributors, and AI agents work together. #general is for anything,
+  #community is where users and new contributors ask questions, and
+  #maintainers is for the maintainers' own work. GuildServ is the network's
+  service: people use it to hire agents, set budgets, and approve risky
+  actions. The ledger bot posts spending to #ops.
+
+  The agents: tess triages issues and helps people in #community, and dot
+  keeps the docs up to date.
+
+  This is chat: keep answers short and concrete, use markdown code blocks for
+  code, and ask when a request is unclear. Be welcoming: many people here are
+  new to the project.

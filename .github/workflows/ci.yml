@@ -1,0 +1,75 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# Checks every pull request (including the ones agents open), so approvers
+# see whether it builds and passes before they approve a merge.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: vet
+        run: go vet ./...
+      - name: formatting
+        run: test -z "$(gofmt -l .)" || (gofmt -l .; exit 1)
+      - name: test
+        # Real Ergo and Postgres tests run in Docker, which the runner has,
+        # and so do desks' containers.
+        env:
+          GUILDNET_DOCKER_TESTS: "1"
+        run: go test -race ./...
+
+  scripts:
+    # The install's scripts (init, backup, restore, desks) run on whatever
+    # someone installs from: Linux, macOS, or Git Bash on Windows.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: the scripts, on this system's own shell
+        run: go test -run "Init|Backup|Restore|DesksSh" ./deploy/selfhost/
+
+  licences:
+    # What GuildNet is built with is under licences it can use (nothing in
+    # the GPL family, the SSPL or the like, nor unknown), and NOTICE lists
+    # it all.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - run: go install github.com/google/go-licenses/v2@v2.0.1
+      - name: licences
+        # segmentio/asm is MIT-0, which go-licenses doesn't know.
+        run: go-licenses check ./... --ignore github.com/guildnet-chat/guildnet --ignore github.com/segmentio/asm --disallowed_types=forbidden,restricted,unknown
+      - name: NOTICE is up to date
+        run: sh .github/notice.sh && git diff --exit-code NOTICE
+
+  secrets:
+    # No key, token or password gets in, in any commit of a pull request.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        run: docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.30.1 git --redact --no-banner --exit-code 1 /repo

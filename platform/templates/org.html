@@ -1,0 +1,129 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{define "title"}}Org chart · {{.Network}}{{end}}
+{{define "main"}}
+<header class="page-head">
+  <div class="titles"><h1>Org chart</h1></div>
+  {{/* Hiring is the sidebar's button, on every page. */}}
+</header>
+{{template "waiting" .}}
+{{with .Data.View}}
+{{if and .CanHire (or $.Adding .Preset .FirstHire)}}
+<section id="hire" class="card adding">
+  <header class="card-head"><h2>Hire an agent</h2>{{if not .FirstHire}}<a href="/" class="push quiet">Cancel</a>{{end}}</header>
+  <form method="post" action="/staff" class="fields">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    {{$preset := .Preset}}
+    <label class="wide">Start from a role <select name="preset">
+      <option value="">None: I'll describe it</option>
+      {{range .Roles}}<optgroup label="{{.Department}}">{{range .Roles}}<option value="{{.Key}}"{{if eq .Key $preset}} selected{{end}}>{{.Title}}: {{.About}}</option>{{end}}</optgroup>{{end}}
+    </select></label>
+    <p class="wide muted small">A role fills in the title, model, daily cap, and instructions to start from; change any of them here or later. <a href="/roles">Browse the role catalogue</a></p>
+    <label>Nick <input name="nick" required pattern="[A-Za-z][A-Za-z0-9_-]{0,29}"></label>
+    <label>Title <input name="role" placeholder="The role's, or Team member"></label>
+    <label>Team <select name="team">{{range .HireTeams}}<option>{{.}}</option>{{end}}</select></label>
+    <label class="wide">Works at <select name="platform"><option value="chat">In chat: reads its team's repos and opens pull requests through {{brand}}'s tools, any model</option>{{if .Desks.Own}}<option value="desk">At a desk: a workspace to build and test in too, any model (uses desk hours)</option>{{end}}{{if .Desks.Managed}}<option value="managed">At a desk on Anthropic's Managed Agents: a workspace too, Claude only (costs more per wake)</option>{{end}}<option value="outside">Outside {{brand}}: your own agent (LangChain, CrewAI, anything), which gets its work from {{brand}} and can call this model (or cheaper) through it; you get its token next</option></select></label>
+    <label class="wide">Model <select name="model"><option value="">The role's{{with .DefaultModel}} (or {{.}}){{end}}</option>{{template "model-options" .Models}}</select></label>
+    <label>Daily budget ($) <input name="budget" inputmode="decimal" placeholder="The role's, or 1.00"></label>
+    <div class="wide"><button>Hire</button></div>
+  </form>
+</section>
+{{end}}
+{{with .Checklist}}
+<section class="card getting-started" aria-label="Getting started">
+  <header class="card-head"><h2>Getting started</h2><span class="muted small">{{count .Left "step" "steps"}} left</span>
+    <form method="post" action="/onboarding/dismissed" class="push"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="link quiet">Hide this</button></form></header>
+  <ol class="steps">
+    {{range .Steps}}
+    <li class="step{{if .Done}} is-done{{end}}" data-step="{{.Key}}">
+      <span class="tick" aria-hidden="true">{{if .Done}}✓{{end}}</span>
+      <span class="what"><span class="title">{{.Title}}</span>{{if .Done}}<span class="visually-hidden"> (done)</span>{{else}}<span class="hint">{{.Hint}}</span>
+        <span class="go"><a href="{{.Link}}">{{.LinkText}}</a><form method="post" action="/onboarding/{{.Key}}"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="link quiet">Mark done</button></form></span>{{end}}</span>
+    </li>
+    {{end}}
+  </ol>
+</section>
+{{end}}
+<nav class="view-switch" aria-label="Show the org">
+  <a href="/" {{if not (or .ByTeam .Picture)}}aria-current="page"{{end}}>Who reports to whom</a>
+  <a href="/?view=picture" {{if .Picture}}aria-current="page"{{end}}>Picture</a>
+  <a href="/?view=teams" {{if .ByTeam}}aria-current="page"{{end}}>By team</a>
+  {{if not .ByTeam}}<a href="#me" class="push">Find me</a>{{end}}
+</nav>
+{{if .Picture}}
+<section class="card org-picture-card">
+  {{with .Legend}}<ul class="legend">{{range .}}<li><span class="swatch tc-{{.Color}}"></span>{{.Name}}</li>{{end}}<li><span class="swatch ai"></span>AI agent</li></ul>{{end}}
+  <div class="org-picture-scroll">
+    <ul class="org-picture">{{range .Tree}}{{template "box" .}}{{end}}</ul>
+  </div>
+</section>
+{{else if not .ByTeam}}
+<section class="card">
+  <ul class="org-tree root">
+    {{range .Tree}}{{template "node" .}}{{end}}
+  </ul>
+</section>
+{{else}}
+<div class="teams">
+{{range .Teams}}
+  <section class="card team">
+    <header><h2>{{.Name}}</h2> {{if .Private}}<span class="badge">private</span>{{end}} {{if .Channel}}<span class="channel">{{.Channel}}</span>{{end}}</header>
+    <ul class="people">
+    {{range .People}}
+      <li>{{template "avatar" .}}<div><div class="name">{{if .Agent}}<a href="/staff/{{.Name}}">{{.Name}}</a> <span class="badge ai">AI</span>{{else}}<a href="/people/{{.Name}}">{{.Name}}</a>{{end}}{{if .Owner}} <span class="badge">owner</span>{{end}}{{if .Lead}} <span class="badge lead">lead</span>{{end}}</div><div class="role">{{.Role}}</div></div></li>
+    {{else}}
+      <li class="muted">Nobody yet.</li>
+    {{end}}
+    </ul>
+  </section>
+{{end}}
+</div>
+{{end}}
+{{end}}
+{{end}}
+
+{{/* What's waiting on you, leading the org chart: the first few, ready to
+     decide, and the rest a click away. */}}
+{{define "waiting"}}
+{{with .Chrome.Waiting}}
+<section class="waiting" aria-label="Waiting on you">
+  <h2>{{count (len .) "approval" "approvals"}} waiting on you</h2>
+  <ul>
+  {{range $i, $a := .}}{{if lt $i 3}}
+    <li>
+      <p><strong>{{.Agent}}</strong> {{if .OwnWords}}asks, in its own words, to “{{.Summary}}”{{else}}wants to {{.Summary}}{{end}} <span class="small">#{{.ID}}{{if .Channel}} in {{.Channel}}{{end}} · expires {{.ExpiresAt.Format "Mon 15:04 MST"}}</span></p>
+      <div class="actions">
+        <form method="post" action="/approvals/{{.ID}}/approve"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="back" value="/"><button class="small-button">Approve</button></form>
+        <form method="post" action="/approvals/{{.ID}}/deny"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="back" value="/"><button class="small-button outline">Deny</button></form>
+      </div>
+    </li>
+  {{end}}{{end}}
+  </ul>
+  <p class="small">{{if gt (len .) 3}}<a href="/approvals">{{minus (len .) 3}} more</a> · {{end}}<a href="/approvals">Deny with a reason</a></p>
+</section>
+{{end}}
+{{end}}
+
+{{/* One person on the reporting tree, and everyone under them. */}}
+{{define "node"}}
+<li data-person="{{.Name}}"{{if .Me}} id="me" class="you"{{end}}>
+  {{if .Reports}}<details open><summary>{{template "node-card" .}}</summary>
+    <ul class="org-tree">{{range .Reports}}{{template "node" .}}{{end}}</ul></details>
+  {{else}}{{template "node-card" .}}{{end}}
+</li>
+{{end}}
+
+{{define "node-card"}}<span class="node">{{template "avatar" .}}<span><span class="name">{{if eq .Kind "agent"}}<a href="/staff/{{.Name}}">{{.Name}}</a> <span class="badge ai">AI</span>{{else}}<a href="/people/{{.Name}}">{{.Name}}</a>{{end}}{{if .Owner}} <span class="badge">owner</span>{{end}}{{if .Lead}} <span class="badge lead">lead</span>{{end}}{{if eq .Kind "guest"}} <span class="badge">guest</span>{{end}}</span>
+  <span class="role">{{.Role}}{{if .Team}} · {{.Team}}{{end}}{{with .Reports}} · {{count (len .) "report" "reports"}}{{end}}{{with .SpendToday}} · {{.}}{{end}}</span></span></span>{{end}}
+{{/* One person as a box in the picture, with their reports below. */}}
+{{define "box"}}
+<li data-person="{{.Name}}"{{if .Me}} id="me"{{end}}>
+  <a class="box{{if ge .Color 0}} tc-{{.Color}}{{end}}{{if eq .Kind "agent"}} ai{{end}}{{if .Me}} you{{end}}" href="{{if eq .Kind "agent"}}/staff/{{.Name}}{{else}}/people/{{.Name}}{{end}}">
+    {{template "avatar" .}}
+    <span class="who">{{.Name}}{{if eq .Kind "agent"}} <span class="badge ai">AI</span>{{end}}{{if .Lead}} <span class="badge lead">lead</span>{{end}}</span>
+    <span class="what">{{.Role}}</span>
+    {{if .Team}}<span class="where">{{.Team}}</span>{{end}}
+    {{with .Reports}}<span class="reports">{{count (len .) "report" "reports"}}</span>{{end}}
+  </a>
+  {{if .Reports}}<ul>{{range .Reports}}{{template "box" .}}{{end}}</ul>{{end}}
+</li>
+{{end}}

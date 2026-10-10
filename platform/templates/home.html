@@ -1,0 +1,24 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{block "title" .}}{{brand}}{{end}}</title>
+{{template "icons"}}
+<link rel="stylesheet" href="{{static "tokens.css"}}">
+<link rel="stylesheet" href="{{static "console.css"}}">{{with brandCSS}}
+<link rel="stylesheet" href="{{.}}">{{end}}
+<script src="{{static "theme.js"}}"></script>
+<script src="/static/htmx-4.0.0.min.js" integrity="{{.HtmxIntegrity}}" defer></script>
+{{block "head" .}}{{end}}
+</head>
+<body class="site">
+{{template "site-header" .Site}}
+<main class="home{{block "wide" .}}{{end}}">
+  {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}{{if .Done}}<p class="done" role="status">{{.Done}}</p>{{end}}
+  {{template "main" .}}
+</main>
+{{template "site-footer" .Site}}
+</body>
+</html>

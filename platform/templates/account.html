@@ -1,0 +1,75 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{define "title"}}Your account · {{.Network}}{{end}}
+{{define "main"}}
+{{with .Data.View}}
+<h1>Your account</h1>
+{{if .Saved}}<p class="note" role="status">Password changed. You're signed out of the console everywhere else; IRC apps use the new one from their next connect.</p>{{end}}
+<form method="post" action="/account/password" class="card fields">
+  <input type="hidden" name="csrf" value="{{$.CSRF}}">
+  <h2 class="wide">Change your password</h2>
+  <p class="muted wide">For {{.Account}}: the password you sign in to the console and your IRC apps with. At least 12 characters, no spaces.</p>
+  <input type="text" name="username" value="{{.Account}}" autocomplete="username" hidden>
+  <label>Current password <input name="current" type="password" required autocomplete="current-password"></label>
+  <label>New password <input name="password" type="password" required minlength="12" autocomplete="new-password"></label>
+  <label>New password again <input name="confirm" type="password" required minlength="12" autocomplete="new-password"></label>
+  <button>Change password</button>
+  <p class="muted small wide">Forgot it? Ask the owner for a reset link. The owner can set a new one from their networks page on {{brand}}.</p>
+</form>
+
+{{if .TwoStepOffered}}{{with .TwoStep}}
+<section class="card fields">
+  <h2 class="wide">Two-step sign-in</h2>
+  {{if .On}}
+  <p class="wide">Two-step sign-in is on: after your password, the console asks for {{if and .App .Passkeys}}a passkey or a code from your authenticator app{{else if .App}}a code from your authenticator app{{else}}a passkey{{end}}. You have {{.Left}} recovery codes left.</p>
+  <ul class="people wide">
+    {{if .App}}<li><span><span class="name">Authenticator app</span></span></li>{{end}}
+    {{range .Passkeys}}
+    <li><span><span class="name">{{.Name}}</span><br><span class="role">Passkey, added {{when .Added}}{{if not .Used.IsZero}}, last used {{when .Used}}{{end}}</span></span>
+      <form method="post" action="/account/passkeys/{{.ID}}/remove" class="inline push"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="link">Remove</button></form></li>
+    {{end}}
+  </ul>
+  <div class="passkey-add wide">
+    <label>Name it <input name="passkey-name" maxlength="60" placeholder="Work laptop"></label>
+    <button type="button" class="outline" data-passkey="add" data-begin="/account/passkeys/begin" data-finish="/account/passkeys/finish">Add a passkey</button>
+    {{if not .App}}<a href="/account/two-step">Add an authenticator app</a>{{end}}
+    <p class="passkey-status muted small" role="status"></p>
+  </div>
+  {{if .Required}}<p class="muted small wide">You need it, so turning it off takes you straight to setting it up again: that's how to move it to a new phone.</p>{{end}}
+  <form method="post" action="/account/two-step/off" class="inline-form wide">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <label>A code from your app, or a recovery code <input name="code" autocomplete="one-time-code" maxlength="16" required></label>
+    <button class="outline">Turn it off</button>
+  </form>
+  {{else}}
+  <p class="muted wide">Add a passkey or an authenticator app to your password, so a password alone can't get into your account.{{if .Required}} You need it, as someone who can change things across the whole org.{{end}}</p>
+  <p class="wide"><a class="button" href="/account/two-step">Set up two-step sign-in</a></p>
+  {{end}}
+</section>
+{{end}}{{end}}
+
+{{with .Alerts}}{{if .CanEmail}}
+<section class="card fields">
+  <h2 class="wide">Email alerts</h2>
+  {{if $.Data.View.AlertsSaved}}<p class="note wide" role="status">Saved.</p>{{end}}
+  {{if .Owner}}
+  <p class="muted wide">As the owner, your alerts go to the address you sign in to {{brand}} with, <strong>{{.Email}}</strong>. Security alerts (keys, GitHub, your password) always go there.</p>
+  {{else}}
+  {{if .Email}}<p class="muted wide">Alerts go to <strong>{{.Email}}</strong>.</p>{{end}}
+  {{if .Pending}}<p class="note wide" role="status">{{if .Sent}}We sent a link to {{.Pending}}. {{end}}{{.Pending}} is waiting for you to confirm it: open the link in the email we sent.</p>{{end}}
+  <form method="post" action="/account/alerts/email" class="inline-form wide">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <label>{{if .Email}}A different address{{else}}Your email address{{end}}
+      <input name="email" type="email" required maxlength="254" autocomplete="email" placeholder="name@example.com"></label>
+    <button class="outline">Send a confirmation link</button>
+  </form>
+  {{end}}
+  <form method="post" action="/account/alerts" class="wide">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <label class="check"><input type="checkbox" name="approvals"{{if .Approvals}} checked{{end}}{{if not .Email}} disabled{{end}}> Email me when an approval is waiting on me</label>
+    {{if not .Email}}<p class="muted small">Confirm an address first.</p>{{end}}
+    <button{{if not .Email}} disabled{{end}}>Save</button>
+  </form>
+</section>
+{{end}}{{end}}
+{{end}}
+{{end}}

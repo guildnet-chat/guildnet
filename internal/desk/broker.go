@@ -1,0 +1,205 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+
+package desk
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
+	"sync"
+	"time"
+)
+
+// Broker is the platform's broker, as a network's runner asks it about
+// desks: where the sandbox is, with the network's token, and to wake the
+// sandbox VM when it's asleep.
+type Broker struct {
+	URL, Network, Secret string
+	// HTTP is how the broker is reached; nil means a plain client.
+	HTTP *http.Client
+}
+
+var brokerClient = &http.Client{Timeout: 15 * time.Second}
+
+func (b *Broker) do(ctx context.Context, method, path string) (*http.Response, error) {
+	return b.send(ctx, method, path, nil)
+}
+
+func (b *Broker) send(ctx context.Context, method, path string, body any) (*http.Response, error) {
+	var in io.Reader
+	if body != nil {
+		raw, err := json.Marshal(body)
+		if err != nil {
+			return nil, err
+		}
+		in = bytes.NewReader(raw)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(b.URL, "/")+path, in)
+	if err != nil {
+		return nil, err
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	req.Header.Set("GuildNet-Network", b.Network)
+	req.Header.Set("Authorization", "Bearer "+b.Secret)
+	client := b.HTTP
+	if client == nil {
+		client = brokerClient
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("asking the broker: %w", err)
+	}
+	return resp, nil
+}
+
+// Sandbox is where the network's desks are, and a token for them; nothing,
+// with no error, if the platform has no sandbox.
+func (b *Broker) Sandbox(ctx context.Context) (url, token string, err error) {
+	s, err := b.sandbox(ctx)
+	return s.URL, s.Token, err
+}
+
+// Pass is the network's egress pass, which opens its git repositories'
+// hosts at the desks' proxy: asked for fresh, as the owner may have added
+// one. "" if it has none.
+func (b *Broker) Pass(ctx context.Context) (string, error) {
+	s, err := b.sandbox(ctx)
+	return s.Egress, err
+}
+
+// sandboxAnswer is the broker's answer about the sandbox.
+type sandboxAnswer struct {
+	URL     string    `json:"url"`
+	Token   string    `json:"token"`
+	Expires time.Time `json:"expires"`
+	Egress  string    `json:"egress"`
+}
+
+func (b *Broker) sandbox(ctx context.Context) (sandboxAnswer, error) {
+	var out sandboxAnswer
+	resp, err := b.do(ctx, "GET", "/sandbox")
+	if err != nil {
+		return out, err
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case http.StatusOK:
+	case http.StatusNotFound:
+		return out, nil
+	default:
+		return out, fmt.Errorf("the broker didn't say where the sandbox is: %s", resp.Status)
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<16)).Decode(&out); err != nil || out.URL == "" || out.Token == "" {
+		return sandboxAnswer{}, fmt.Errorf("the broker's answer wasn't a sandbox")
+	}
+	return out, nil
+}
+
+// renewBefore is how long before a desk token runs out another is asked for.
+const renewBefore = 2 * time.Minute
+
+// Tokens are the network's desk tokens from the broker: one is kept until
+// shortly before it runs out (or a fresh one is asked for), then another
+// is asked for.
+func (b *Broker) Tokens() TokenSource {
+	var mu sync.Mutex
+	var token string
+	var until time.Time
+	return func(ctx context.Context, fresh bool) (string, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		if !fresh && token != "" && time.Now().Before(until.Add(-renewBefore)) {
+			return token, nil
+		}
+		s, err := b.sandbox(ctx)
+		if err != nil {
+			return "", err
+		}
+		t, expires := s.Token, s.Expires
+		if t == "" {
+			return "", errors.New("the platform has no sandbox now")
+		}
+		if expires.IsZero() {
+			expires = time.Now().Add(renewBefore * 2) // an older platform's: ask again soon
+		}
+		token, until = t, expires
+		return token, nil
+	}
+}
+
+// Turn is the platform's answer to a desk asking to work.
+type Turn struct {
+	// ID is what the desk's time is reported against; "" means it isn't
+	// counted here.
+	ID string
+	// Busy says the plan's desks are all working: ask again soon.
+	Busy bool
+	// Refused says why the desk may not work (its network is out of desk
+	// hours and credits), if it may not.
+	Refused string
+}
+
+// StartDesk asks whether agent's desk may work now: resume says it's
+// carrying on after an approval, which isn't refused for hours.
+func (b *Broker) StartDesk(ctx context.Context, agent string, resume bool) (Turn, error) {
+	resp, err := b.send(ctx, "POST", "/desks/start", map[string]any{"agent": agent, "resume": resume})
+	if err != nil {
+		return Turn{}, err
+	}
+	defer resp.Body.Close()
+	var out struct {
+		ID     string `json:"id"`
+		Reason string `json:"reason"`
+	}
+	json.NewDecoder(io.LimitReader(resp.Body, 1<<16)).Decode(&out)
+	switch resp.StatusCode {
+	case http.StatusOK:
+		if out.ID == "" {
+			return Turn{}, fmt.Errorf("the broker's answer had no desk")
+		}
+		return Turn{ID: out.ID}, nil
+	case http.StatusNotFound:
+		return Turn{}, nil
+	case http.StatusTooManyRequests:
+		return Turn{Busy: true}, nil
+	case http.StatusPaymentRequired:
+		if out.Reason == "" {
+			out.Reason = "the network is out of desk hours"
+		}
+		return Turn{Refused: out.Reason}, nil
+	}
+	return Turn{}, fmt.Errorf("the broker didn't say whether the desk may work: %s", resp.Status)
+}
+
+// DeskDone says how long a desk worked.
+func (b *Broker) DeskDone(ctx context.Context, id string, seconds int64) error {
+	resp, err := b.send(ctx, "POST", "/desks/done", map[string]any{"id": id, "seconds": seconds})
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("the broker didn't take the desk's time: %s", resp.Status)
+	}
+	return nil
+}
+
+// Wake asks for the sandbox VM to be started.
+func (b *Broker) Wake(ctx context.Context) error {
+	resp, err := b.do(ctx, "POST", "/sandbox/wake")
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted {
+		return fmt.Errorf("the broker didn't wake the sandbox: %s", resp.Status)
+	}
+	return nil
+}

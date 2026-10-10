@@ -1,0 +1,238 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* GuildNet's look for the chat app (our gamja fork), laid over gamja's own
+   style.css by the platform. Colours, type and radii come from tokens.css,
+   so chat follows the console's light and dark switch. gamja's own dark
+   rules (a prefers-color-scheme block) are overridden here property by
+   property, so the switch wins whichever way the system leans. */
+
+/* gamja's variables, mapped onto the tokens. */
+:root {
+  --main-background: var(--surface);
+  --main-color: var(--text);
+  --sidebar-background: var(--bg);
+  --expander-background: var(--selected);
+  --expander-background-hover: var(--line);
+  --expander-border: var(--faint);
+  --button-color: var(--on-accent);
+  --button-background: var(--accent);
+  --button-background-hover: var(--accent-hover);
+  --button-border: transparent;
+  --danger-button-color: var(--on-danger);
+  --danger-button-background: var(--danger);
+  --danger-button-background-hover: var(--danger);
+  --danger-button-border: transparent;
+  --buffer-button-background-hover: var(--selected);
+  --green: var(--ai);
+  --gray: var(--faint);
+  --red: var(--danger);
+
+  /* Nick colours: readable on white. */
+  --nick-1: #c2410c; --nick-2: #b91c1c; --nick-3: #b45309; --nick-4: #8a6d00;
+  --nick-5: #4d7c0f; --nick-6: #15803d; --nick-7: #047857; --nick-8: #0f766e;
+  --nick-9: #0e7490; --nick-10: #0369a1; --nick-11: #1d4ed8; --nick-12: #4338ca;
+  --nick-13: #6d28d9; --nick-14: #86198f; --nick-15: #be185d; --nick-16: #be123c;
+}
+/* ...and on the dark surface. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --nick-1: #fb923c; --nick-2: #f87171; --nick-3: #fbbf24; --nick-4: #e5d352;
+    --nick-5: #a3e635; --nick-6: #4ade80; --nick-7: #34d399; --nick-8: #2dd4bf;
+    --nick-9: #22d3ee; --nick-10: #38bdf8; --nick-11: #7aa2ff; --nick-12: #a5a8ff;
+    --nick-13: #c4a5ff; --nick-14: #f0abfc; --nick-15: #f472b6; --nick-16: #fb7185;
+  }
+}
+:root[data-theme="dark"] {
+  --nick-1: #fb923c; --nick-2: #f87171; --nick-3: #fbbf24; --nick-4: #e5d352;
+  --nick-5: #a3e635; --nick-6: #4ade80; --nick-7: #34d399; --nick-8: #2dd4bf;
+  --nick-9: #22d3ee; --nick-10: #38bdf8; --nick-11: #7aa2ff; --nick-12: #a5a8ff;
+  --nick-13: #c4a5ff; --nick-14: #f0abfc; --nick-15: #f472b6; --nick-16: #fb7185;
+}
+
+html { scrollbar-color: var(--line) transparent; }
+body { font-family: var(--font); font-size: var(--text-md); line-height: 1.5; background: var(--surface); color: var(--text); }
+
+/* tokens.css styles labels for the console's forms; gamja's dialogs put
+   checkboxes inside labels, so they go back to inline here. */
+label { display: inline; font-size: inherit; color: inherit; }
+.dialog form label { display: block; margin: 0 0 12px; }
+.dialog form label input[type="checkbox"], .dialog form label input[type="radio"] { height: auto; margin-right: 8px; }
+
+/* Buttons. */
+button { height: 36px; padding: 0 14px; border: 0; border-radius: var(--radius); background: var(--accent); color: var(--on-accent); font: inherit; font-size: var(--text-ui); font-weight: 600; transition: none; }
+button:hover { background: var(--accent-hover); }
+button.danger, button.danger:hover { background: var(--danger); color: var(--on-danger); }
+
+/* Channels and conversations. */
+#buffer-list { background: var(--bg); border-right: 1px solid var(--line); }
+#buffer-list ul { padding: 14px 8px; }
+/* Wide, the channel list stands open; narrow (the chat docked beside the
+   console, or a phone), gamja folds it away behind its toggle. */
+@media (min-width: 641px) { #buffer-list ul { min-width: 200px; } }
+@media (max-width: 640px) {
+	#buffer-list:not(.expand) ul { padding: 0; overflow: hidden; }
+}
+#buffer-list li a { padding: 6px 10px; border-radius: var(--radius); color: var(--muted); }
+#buffer-list li:not(.type-server) a { padding-left: 18px; }
+#buffer-list li.type-server a { color: var(--text); font-weight: 700; padding-left: 10px; }
+#buffer-list li a:hover { background: var(--selected); color: var(--text); text-decoration: none; }
+#buffer-list li.unread-message a { color: var(--text); font-weight: 600; }
+#buffer-list li.unread-highlight a { color: var(--accent); font-weight: 700; }
+#buffer-list li.error a { color: var(--danger); }
+#buffer-list li.active a, #buffer-list li.active a:hover { background: var(--tonal); color: var(--on-tonal); font-weight: 600; }
+
+/* The conversation's header. */
+#buffer-header { background: var(--surface); color: var(--text); border-bottom: 1px solid var(--line); padding: 10px 12px 10px 20px; align-items: center; }
+#buffer-header .title { display: block; padding: 0; font-size: 18px; font-weight: 700; }
+#buffer-header .description { padding: 2px 0 0; color: var(--faint); font-size: var(--text-ui); }
+#buffer-header .actions { gap: 6px; align-items: center; }
+#buffer-header .actions button { height: 32px; padding: 0 12px; background: transparent; color: var(--muted); border: 1px solid var(--line); font-weight: 500; }
+#buffer-header .actions button:hover { background: var(--selected); color: var(--text); }
+#buffer-header .actions button.danger { color: var(--danger); border-color: var(--danger); }
+/* Hide, docked beside the console (which asks for it): quieter still. */
+#buffer-header .actions button.dock-hide, .dock-hide-bar button.dock-hide { height: 32px; padding: 0 10px; background: transparent; color: var(--muted); border: 1px solid transparent; font-weight: 500; }
+#buffer-header .actions button.dock-hide:hover, .dock-hide-bar button.dock-hide:hover { background: var(--selected); color: var(--text); }
+/* Narrow (docked, or a phone): one compact bar, the channel's name a
+   button that opens the channel list, then the actions and Hide. */
+@media (max-width: 640px) {
+	#buffer-list:not(.expand) { border-right: 0; }
+	#buffer-header { padding: 6px 8px 6px 6px; gap: 6px; }
+	#buffer-header .actions { gap: 4px; }
+	#buffer-header .actions button { padding: 0 10px; }
+	#buffer-header .actions button.dock-hide { padding: 0 8px; }
+	#buffer-header .title { display: none; }
+	#buffer-header .buffer-switch { height: 40px; padding: 0 8px 0 10px; border-radius: var(--radius); background: transparent; color: var(--text); font-size: var(--text-lg); font-weight: 700; }
+	#buffer-header .buffer-switch:hover, #buffer-header .buffer-switch[aria-expanded="true"] { background: var(--selected); }
+	#buffer-header .buffer-switch-chevron { color: var(--muted); }
+}
+#buffer-header .status-here { color: var(--ai); }
+#buffer-header .status-gone { color: var(--on-warn-soft); }
+#buffer-header .status-offline { color: var(--danger); }
+
+/* Messages. */
+#buffer { background: var(--surface); color: var(--faint); }
+#buffer .logline-list { padding: 12px 20px 16px; }
+#buffer .logline { padding: 3px 8px; margin: 0 -8px; border-radius: 6px; font-size: var(--text-md); }
+#buffer .logline:hover { background: var(--bg); }
+#buffer .talk, #buffer .motd { color: var(--text); }
+#buffer .logline:not(.talk):not(.me-tell) { font-size: var(--text-ui); }
+#buffer .nag { color: var(--muted); }
+#buffer .timestamp { font-family: var(--mono); font-size: var(--text-xs); color: var(--faint); margin-right: 8px; }
+#buffer a.nick { font-weight: 700; }
+#buffer .nick-caret { color: var(--faint); }
+#buffer .error { color: var(--danger); }
+#buffer .me-tell { color: var(--on-warn-soft); }
+#buffer .highlight { background: var(--tonal); }
+#buffer .highlight .nick { color: var(--on-tonal); background: transparent; }
+#buffer .nick-1 { color: var(--nick-1); } #buffer .nick-2 { color: var(--nick-2); }
+#buffer .nick-3 { color: var(--nick-3); } #buffer .nick-4 { color: var(--nick-4); }
+#buffer .nick-5 { color: var(--nick-5); } #buffer .nick-6 { color: var(--nick-6); }
+#buffer .nick-7 { color: var(--nick-7); } #buffer .nick-8 { color: var(--nick-8); }
+#buffer .nick-9 { color: var(--nick-9); } #buffer .nick-10 { color: var(--nick-10); }
+#buffer .nick-11 { color: var(--nick-11); } #buffer .nick-12 { color: var(--nick-12); }
+#buffer .nick-13 { color: var(--nick-13); } #buffer .nick-14 { color: var(--nick-14); }
+#buffer .nick-15 { color: var(--nick-15); } #buffer .nick-16 { color: var(--nick-16); }
+#buffer .separator { margin: 10px 0; font-size: var(--text-xs); font-weight: 600; letter-spacing: .5px; text-transform: uppercase; font-variant: normal; gap: 12px; }
+#buffer .date-separator { color: var(--faint); }
+#buffer .date-separator::before, #buffer .date-separator::after { border-color: var(--line); }
+#buffer .unread-separator { color: var(--danger); }
+#buffer .unread-separator::before, #buffer .unread-separator::after { border-color: var(--danger); }
+a { color: var(--accent); }
+a.nick, a.timestamp { color: inherit; }
+
+/* Who's here. */
+#member-list { background: var(--bg); border-left: 1px solid var(--line); }
+#member-list-header { background: var(--bg); color: var(--faint); border: 0; padding: 16px 16px 8px; font-size: var(--text-xs); font-weight: 600; letter-spacing: .8px; text-transform: uppercase; }
+#member-list ul { padding: 0 8px 12px; min-width: 190px; }
+#member-list li a { padding: 5px 8px; border-radius: var(--radius); color: var(--text); }
+#member-list li a:hover { background: var(--selected); text-decoration: none; }
+#member-list li a.away { color: var(--faint); }
+.membership, .membership.owner, .membership.admin { color: var(--accent); font-weight: 700; }
+.membership.operator { color: var(--ai); font-weight: 700; }
+.membership.halfop { color: var(--on-warn-soft); }
+.membership.voice { color: var(--faint); }
+
+/* Groups in the member list, and the AI badge (IRCv3 bot mode). */
+#member-list li.member-group { padding: 14px 8px 4px; color: var(--faint); font-size: var(--text-xs); font-weight: 600; letter-spacing: .8px; text-transform: uppercase; }
+#member-list li.member-group:first-child { padding-top: 0; }
+.member-group-count { font-weight: 500; }
+.bot-badge { display: inline-block; font-family: var(--font); font-size: 11px; font-weight: 700; line-height: 1.5; letter-spacing: .3px; text-transform: uppercase; padding: 0 5px; border-radius: 3px; vertical-align: 2px; background: var(--selected); color: var(--text); }
+.bot-badge-ai { background: var(--ai); color: var(--on-ai); }
+/* Text for copies only: a badge copies as "[AI]" but shows as the word. */
+.copy-only { font-size: 0; }
+
+/* Markdown in messages. */
+#buffer code { font-variant-ligatures: none; font-family: var(--mono); font-size: .88em; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+#buffer pre.codeblock { font-variant-ligatures: none; display: block; margin: 6px 0 4px; padding: 10px 12px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); overflow-x: auto; white-space: pre; font-family: var(--mono); font-size: var(--text-sm); line-height: 1.55; color: var(--text); }
+#buffer pre.codeblock code { background: none; border: 0; padding: 0; font-size: inherit; }
+#buffer blockquote { display: block; margin: 4px 0; padding: 0 0 0 10px; border-left: 3px solid var(--line); color: var(--muted); }
+#buffer del { color: var(--faint); }
+
+/* Replies. */
+#buffer .reply-to { display: block; margin: 0 0 2px 0; padding-left: 10px; border-left: 2px solid var(--line); color: var(--faint); font-size: var(--text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#buffer .reply-to b { color: var(--muted); font-weight: 600; }
+#buffer .logline { position: relative; }
+#buffer .reply-button { position: absolute; top: 2px; right: 6px; height: 26px; padding: 0 10px; font-size: var(--text-xs); background: var(--surface); color: var(--muted); border: 1px solid var(--line); opacity: 0; }
+/* The word is drawn here, not written in the button, so copying messages leaves it out. */
+#buffer .reply-button::before { content: attr(data-label); }
+#buffer .logline:hover .reply-button, #buffer .reply-button:focus { opacity: 1; }
+#buffer .reply-button:hover { background: var(--selected); color: var(--text); }
+
+/* Approvals asking you: Approve and Deny in the message, then what was decided. */
+#buffer .approval-buttons, #buffer .approval-deny { display: inline-flex; align-items: center; gap: 6px; margin-left: 6px; vertical-align: middle; flex-wrap: wrap; }
+#buffer .approval-button { height: 26px; padding: 0 12px; font-size: var(--text-xs); font-weight: 600; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--text); cursor: pointer; }
+#buffer .approval-button.approve { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+#buffer .approval-button.approve:hover { background: var(--accent-hover); }
+#buffer .approval-button.deny { color: var(--danger); border-color: var(--danger); }
+#buffer .approval-button.deny:hover, #buffer .approval-button:hover { background: var(--selected); }
+#buffer .approval-button::before, #buffer .approval-outcome::before { content: attr(data-label); }
+#buffer .approval-deny input { height: 26px; min-width: 14em; padding: 0 8px; font-size: var(--text-sm); border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); }
+#buffer .approval-outcome { display: inline-block; margin-left: 6px; font-size: 11px; font-weight: 700; letter-spacing: .3px; text-transform: uppercase; padding: 1px 7px; border-radius: 3px; background: var(--selected); color: var(--muted); vertical-align: 1px; }
+#buffer .approval-outcome.approval-approved { background: var(--accent); color: var(--on-accent); }
+#buffer .approval-outcome.approval-denied { background: var(--danger-soft); color: var(--on-danger-soft); }
+
+/* Writing. */
+#composer { flex-wrap: wrap; }
+#composer .typing { position: absolute; left: 24px; top: -20px; font-size: var(--text-xs); color: var(--faint); pointer-events: none; }
+#composer .replying { flex-basis: 100%; order: -1; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 6px 6px 12px; margin-bottom: 6px; background: var(--tonal); color: var(--on-tonal); border-radius: var(--radius); font-size: var(--text-sm); }
+#composer .replying-text { opacity: .8; }
+/* Agents at work: each one's current step, above the message box, in place of a line per step. */
+#composer .working { flex-basis: 100%; order: -2; display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 2px 4px 6px; font-size: var(--text-xs); color: var(--muted); }
+#composer .working-agent { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#composer .working-agent::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: var(--ai); vertical-align: 1px; animation: working-pulse 1.6s ease-in-out infinite; }
+#composer .working-agent b { color: var(--text); font-weight: 600; }
+@keyframes working-pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { #composer .working-agent::before { animation: none; } }
+#composer .replying button { height: 24px; width: 24px; padding: 0; background: transparent; color: inherit; font-size: 16px; }
+#composer { background: var(--surface); border-top: 0; padding: 4px 20px 18px; align-items: center; gap: 6px; }
+#composer textarea, #composer textarea:focus { min-height: 46px; max-height: 200px; padding: 12px 14px; line-height: 1.45; resize: none; overflow-y: auto; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--surface); color: var(--text); font: inherit; }
+#composer textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+#composer-buttons { padding: 0; }
+#composer-buttons button { height: 36px; width: 36px; padding: 0; background: transparent; color: var(--muted); }
+#composer-buttons button:not([disabled]):hover { background: var(--selected); color: var(--text); }
+
+/* Forms in dialogs and the connect screen. */
+form input[type="text"], form input[type="username"], form input[type="password"],
+form input[type="url"], form input[type="email"], form input[type="search"] {
+  height: 40px; padding: 0 12px; border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--surface); color: var(--text); font: inherit;
+}
+form input[type="text"]:focus, form input[type="username"]:focus, form input[type="password"]:focus,
+form input[type="url"]:focus, form input[type="email"]:focus, form input[type="search"]:focus {
+  outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent;
+}
+
+.dialog { background-color: rgba(10, 12, 18, .5); }
+.dialog .dialog-body { background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: var(--radius-card); padding: 20px 22px; box-shadow: var(--shadow); }
+.dialog .dialog-header h2 { font-size: var(--text-xl); }
+#error-msg button, .dialog button.dialog-close { height: auto; background: transparent; color: inherit; }
+#error-msg { background: var(--danger-soft); color: var(--on-danger-soft); border-radius: var(--radius); padding: 10px 14px; }
+/* gamja's dark rules make links here black, unreadable on the dark error colour. */
+#error-msg a { color: var(--on-danger-soft); }
+#update-msg { background: var(--tonal); color: var(--on-tonal); border-radius: var(--radius); padding: 10px 14px; font-weight: 500; }
+#update-msg button { margin-left: 6px; }
+.error-text { color: var(--danger); }
+kbd { background: var(--bg); border: 1px solid var(--line); box-shadow: none; color: var(--text); font-family: var(--mono); }
+ul.switcher-list li a { border-radius: var(--radius); }
+ul.switcher-list li a.selected { background: var(--selected); }
+.expander { background: var(--selected); }

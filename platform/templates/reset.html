@@ -1,0 +1,16 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{define "title"}}New password · {{.Network}}{{end}}
+{{define "main"}}
+{{with .Data.View}}
+<div class="card signin">
+  <h1>A new password for {{.Account}}</h1>
+  <p class="muted">On <span class="hash">#</span>{{.Network}}: for the console and your IRC apps. You'll be signed out everywhere else. At least 12 characters, no spaces.</p>
+  <form method="post">
+    <input type="text" name="username" value="{{.Account}}" autocomplete="username" hidden>
+    <label>New password <input name="password" type="password" required minlength="12" autocomplete="new-password" autofocus></label>
+    <label>New password again <input name="confirm" type="password" required minlength="12" autocomplete="new-password"></label>
+    <button>Set password</button>
+  </form>
+</div>
+{{end}}
+{{end}}

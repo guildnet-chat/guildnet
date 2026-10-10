@@ -1,0 +1,127 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{define "title"}}{{with .Data.View}}{{.Team.Name}}{{end}} · {{.Network}}{{end}}
+{{define "main"}}
+{{with .Data.View}}
+{{$t := .Team}}
+{{$v := .}}
+<header class="page-head">
+  <div class="titles">
+    {{template "crumbs" (list "/teams" "Teams")}}
+    <h1>{{$t.Name}}{{if $t.Private}} <span class="badge">private</span>{{end}}</h1>
+    <p class="sub">{{if $t.Focus}}{{$t.Focus}}{{else}}No focus set yet.{{end}}{{if $t.Channel}} <span class="channel">{{$t.Channel}}</span>{{end}}</p>
+  </div>
+  {{if and .CanArrange (not $.Adding)}}<a class="button" href="/teams/{{$t.Name}}?add=1#add">{{template "plus"}}New objective</a>{{end}}
+</header>
+{{if and .CanArrange $.Adding}}
+<form method="post" action="/goals" class="card fields adding" id="add">
+  <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="team" value="{{$t.Name}}">
+  <header class="card-head wide"><h2>New objective</h2><a href="/teams/{{$t.Name}}" class="push quiet">Cancel</a></header>
+  <label class="wide">Objective <input name="text" required maxlength="300" placeholder="Answer every customer within 4 hours"></label>
+  <label>Measured by <input name="measure" maxlength="100" placeholder="Median first reply"></label>
+  <label>Target <input name="target" maxlength="100" placeholder="4h"></label>
+  <label>Now <input name="current" maxlength="100" placeholder="6h"></label>
+  {{if .Company}}<label>Serves
+    <select name="serves"><option value="">No company goal</option>{{range .Company}}<option value="{{.ID}}">#{{.ID}} {{.Text}}</option>{{end}}</select>
+  </label>{{end}}
+  <div class="wide"><button>Add objective</button></div>
+</form>
+{{end}}
+
+<section class="tiles" aria-label="{{$t.Name}} at a glance">
+  <div class="card tile"><span class="label">People</span><span class="n">{{.Stats.Humans}}</span><span class="muted small">including teams inside</span></div>
+  <div class="card tile"><span class="label">Agents</span><span class="n">{{.Stats.Agents}}</span></div>
+  <div class="card tile"><span class="label">Approvals waiting</span><span class="n">{{.Stats.Waiting}}</span><span class="muted small">{{with .Stats.Typical}}typically decided in {{.}}{{else}}none decided this month{{end}}</span></div>
+  {{with .Stats.SpendMonth}}<div class="card tile"><span class="label">Spent this month</span><span class="n">{{usd .}}</span><span class="muted small">by its agents</span></div>{{end}}
+</section>
+
+<dl class="card facts">
+  <dt>Leads</dt><dd>{{range $i, $l := $t.Leads}}{{if $i}}, {{end}}{{$l}}{{else}}<span class="muted">Nobody</span>{{end}}</dd>
+  {{if .Available}}<dt>Repos</dt><dd>{{if $t.Repos}}{{join $t.Repos ", "}}{{else}}<span class="muted">{{if $t.Parent}}those of {{$t.Parent}}{{else}}None{{end}}</span>{{end}}</dd>{{end}}
+  {{if .Services}}<dt>Connectors</dt><dd>{{with .ServiceTitles}}{{join . ", "}}{{else}}<span class="muted">{{if $t.Parent}}those of {{$t.Parent}}{{else}}None{{end}}</span>{{end}}</dd>{{end}}
+  <dt>Inside</dt><dd>{{if $t.Parent}}<a href="/teams/{{$t.Parent}}">{{$t.Parent}}</a>{{else}}<span class="muted">Nothing: at the top</span>{{end}}</dd>
+  {{if .Inside}}<dt>Teams inside</dt><dd>{{range $i, $x := .Inside}}{{if $i}}, {{end}}<a href="/teams/{{$x.Name}}">{{$x.Name}}</a>{{end}}</dd>{{end}}
+  <dt>Budget</dt><dd>{{if $t.MonthlyBudget}}{{usd $t.MonthlyBudget}}/month{{if .Committed}}: {{.Committed}} committed, {{.Left}} left{{end}}{{else}}<span class="muted">None set</span>{{end}}</dd>
+</dl>
+
+<section class="card">
+  <h2>Objectives</h2>
+  <ul class="people goals">
+    {{range .Objectives}}
+    <li>
+      <span><span class="name">{{.Text}}</span><br><span class="role">#{{.ID}}{{with measure .}} · {{.}}{{end}}{{if .Serves}} · serves #{{.Serves}}{{end}}</span></span>
+      {{if $v.CanArrange}}
+      <form method="post" action="/goals/{{.ID}}" class="inline push goal-progress"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="team" value="{{$t.Name}}">
+        <input name="current" value="{{.Current}}" aria-label="Where it stands" maxlength="100" size="6"><button class="link">Update</button></form>
+      <form method="post" action="/goals/{{.ID}}" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="team" value="{{$t.Name}}"><input type="hidden" name="drop" value="1"><button class="link danger">Drop</button></form>
+      {{end}}
+    </li>
+    {{else}}
+    <li class="muted">No objectives yet.</li>
+    {{end}}
+  </ul>
+</section>
+
+<section class="card">
+  <h2>People and agents</h2>
+  <ul class="people">
+    {{range .People}}
+    <li>{{if eq .Kind "agent"}}<span class="avatar agent" aria-hidden="true">{{initial .Name}}</span><span><a class="name" href="/staff/{{.Name}}">{{.Name}}</a> <span class="badge ai">AI</span>{{else}}<span class="avatar" aria-hidden="true">{{initial .Name}}</span><span><a class="name" href="/people/{{.Name}}">{{.Name}}</a>{{end}}{{if $t.LedBy .Name}} <span class="badge lead">lead</span>{{end}}<br><span class="role">{{.Role}}{{if .ReportsTo}} · reports to {{.ReportsTo}}{{end}}{{with index $v.Stats.LastSaid .Name}}{{if not .IsZero}} · last said something {{when .}}{{end}}{{end}}</span></span></li>
+    {{else}}
+    <li class="muted">Nobody yet.</li>
+    {{end}}
+  </ul>
+</section>
+
+{{if .Lines}}
+<section class="card">
+  <h2>Budget</h2>
+  <ul class="people">
+  {{range .Lines}}
+    <li><span class="name">{{.Name}}</span>{{if eq .Kind "agent"}} <span class="badge ai">AI</span>{{else if eq .Kind "team"}} <span class="badge">team</span>{{end}}{{if .Monthly}}<span class="amount">{{.Monthly}}/month</span>{{end}}</li>
+  {{end}}
+  </ul>
+  <p class="muted small">What people cost is shown only to those who may see spend here.</p>
+</section>
+{{end}}
+
+{{if or .CanArrange .CanBudget}}
+<form method="post" action="/teams/{{$t.Name}}" class="card fields">
+  <input type="hidden" name="csrf" value="{{$.CSRF}}">
+  <h2 class="wide">Change {{$t.Name}}</h2>
+  {{if .CanArrange}}
+  <label class="wide">Focus <input name="focus" value="{{$t.Focus}}" maxlength="300"></label>
+  <fieldset class="wide checks"><legend>Leads</legend>
+    <input type="hidden" name="leads" value="">
+    {{range .Everyone}}<label class="check"><input type="checkbox" name="leads" value="{{.}}" {{if $t.LedBy .}}checked{{end}}> {{.}}</label>{{end}}
+  </fieldset>
+  {{if .CanMove}}<label>Inside
+    <select name="parent">
+      {{if .TopLevel}}<option value="" {{if not $t.Parent}}selected{{end}}>Nothing: at the top</option>{{end}}
+      {{range .Parents}}<option {{if eq . $t.Parent}}selected{{end}}>{{.}}</option>{{end}}
+    </select>
+  </label>{{end}}
+  {{if .Available}}<fieldset class="wide checks"><legend>Repos it works on{{if not $t.Repos}}{{if $t.Parent}} (none ticked: {{$t.Parent}}'s){{end}}{{end}}</legend>
+    <input type="hidden" name="repos" value="">
+    {{range .Available}}<label class="check"><input type="checkbox" name="repos" value="{{.}}" {{if $t.Works .}}checked{{end}}> {{.}}</label>{{end}}
+  </fieldset>{{end}}
+  {{if .Services}}<fieldset class="wide checks"><legend>Connectors its agents use{{if not $t.Connectors}}{{if $t.Parent}} (none ticked: {{$t.Parent}}'s){{end}}{{end}}</legend>
+    <input type="hidden" name="connectors" value="">
+    {{range .Services}}<label class="check"><input type="checkbox" name="connectors" value="{{.ID}}" {{if $t.Uses .ID}}checked{{end}}> {{.Title}}</label>{{end}}
+  </fieldset>{{end}}
+  <label>What its channel sees of agents' work
+    <select name="chatter">
+      <option value="" {{if eq $t.Chatter ""}}selected{{end}}>{{if $t.Parent}}As {{$t.Parent}} has it{{else}}A summary (the default){{end}}</option>
+      <option value="summary" {{if eq $t.Chatter "summary"}}selected{{end}}>A summary: working, results, a closing line</option>
+      <option value="quiet" {{if eq $t.Chatter "quiet"}}selected{{end}}>Quiet: only what they achieve</option>
+      <option value="steps" {{if eq $t.Chatter "steps"}}selected{{end}}>Every step, as they go</option>
+    </select>
+  </label>
+  <input type="hidden" name="private_sent" value="1">
+  <label class="check"><input type="checkbox" name="private" {{if $t.Private}}checked{{end}}> Private</label>
+  {{end}}
+  {{if .CanBudget}}<label>Budget ($/month) <input name="budget" inputmode="decimal" value="{{printf "%.2f" $t.MonthlyBudget}}"></label>{{end}}
+  <div class="wide"><button>Save</button></div>
+</form>
+{{end}}
+{{end}}
+{{end}}

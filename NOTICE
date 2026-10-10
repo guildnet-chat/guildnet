@@ -1,0 +1,132 @@
+GuildNet
+Copyright 2026 The GuildNet Authors
+
+GuildNet is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License, version 3 only
+(LICENSE). If you run a changed copy for others, over a network, you must
+offer them its source (section 13).
+
+What's in examples/ is under the Apache License, version 2.0
+(examples/LICENSE), so you can copy it into code of your own.
+
+GuildNet includes, and runs alongside, the work of others, under their own
+licences:
+
+In this repository
+------------------
+
+platform/static/chart-4.5.1.umd.min.js
+    Chart.js 4.5.1, Copyright (c) 2014-2024 Chart.js Contributors.
+    MIT License: platform/static/chart-LICENSE.txt.
+
+platform/static/htmx-4.0.0.min.js
+    htmx 4.0.0. Zero-Clause BSD: platform/static/htmx-LICENSE.txt.
+
+platform/static/fonts/jetbrains-mono-*.woff2
+    JetBrains Mono, Copyright 2020 The JetBrains Mono Project Authors.
+    SIL Open Font License 1.1: platform/static/fonts/JetBrainsMono-OFL.txt.
+
+platform/static/fonts/space-grotesk-*.woff2
+    Space Grotesk, Copyright 2020 The Space Grotesk Project Authors.
+    SIL Open Font License 1.1: platform/static/fonts/SpaceGrotesk-OFL.txt.
+
+deploy/ergo/ircd.yaml
+    Ergo's default.yaml, changed for GuildNet. Ergo's licence:
+
+    The MIT License (MIT)
+
+    Copyright (c) 2012-2014 Jeremy Latt
+    Copyright (c) 2014-2015 Edmund Huber
+    Copyright (c) 2016-2020 Daniel Oaks
+    Copyright (c) 2017-2020 Shivaram Lingamneni
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+
+Alongside it
+------------
+
+The stack's images bring their own programs, under their own licences:
+Ergo, the IRC server (MIT); guildnet-chat, the web chat, a fork of gamja
+(AGPL-3.0-only); Caddy and caddy-l4 (Apache-2.0); PostgreSQL (the
+PostgreSQL License); Go (BSD-3-Clause); the Docker CLI (Apache-2.0); and
+their Alpine, Debian and distroless bases (various). Desks run under
+gVisor (Apache-2.0), installed on the machine.
+
+Go modules
+----------
+
+The Go modules GuildNet is built with, and their licences (from
+go-licenses; .github/notice.sh makes this list):
+
+github.com/segmentio/asm v1.2.1: MIT-0, https://github.com/segmentio/asm/blob/v1.2.1/LICENSE
+github.com/anthropics/anthropic-sdk-go v1.75.0: MIT, https://github.com/anthropics/anthropic-sdk-go/blob/v1.75.0/LICENSE
+github.com/bahlo/generic-list-go v0.2.0: BSD-3-Clause, https://github.com/bahlo/generic-list-go/blob/v0.2.0/LICENSE
+github.com/bluekeyes/go-gitdiff/gitdiff v0.9.0: MIT, https://github.com/bluekeyes/go-gitdiff/blob/v0.9.0/LICENSE
+github.com/bradleyfalzon/ghinstallation/v2 v2.19.0: Apache-2.0, https://github.com/bradleyfalzon/ghinstallation/blob/v2.19.0/LICENSE
+github.com/buger/jsonparser v1.1.2: MIT, https://github.com/buger/jsonparser/blob/v1.1.2/LICENSE
+github.com/coder/websocket v1.8.15: ISC, https://github.com/coder/websocket/blob/v1.8.15/LICENSE.txt
+github.com/ergochat/irc-go v0.7.0: ISC, https://github.com/ergochat/irc-go/blob/v0.7.0/LICENSE
+github.com/ergochat/irc-go/ircevent v0.7.0: BSD-3-Clause, https://github.com/ergochat/irc-go/blob/v0.7.0/ircevent/LICENSE
+github.com/fxamacker/cbor/v2 v2.9.4: MIT, https://github.com/fxamacker/cbor/blob/v2.9.4/LICENSE
+github.com/getsentry/sentry-go v0.49.0: MIT, https://github.com/getsentry/sentry-go/blob/v0.49.0/LICENSE
+github.com/go-viper/mapstructure/v2 v2.5.0: MIT, https://github.com/go-viper/mapstructure/blob/v2.5.0/LICENSE
+github.com/go-webauthn/webauthn v0.18.2: BSD-3-Clause, https://github.com/go-webauthn/webauthn/blob/v0.18.2/LICENSE
+github.com/go-webauthn/x/crypto/secp256k1 v0.3.1: ISC, https://github.com/go-webauthn/x/blob/v0.3.1/crypto/secp256k1/LICENSE
+github.com/go-webauthn/x/encoding/asn1 v0.3.1: BSD-3-Clause, https://github.com/go-webauthn/x/blob/v0.3.1/LICENSE
+github.com/go-webauthn/x/revoke v0.3.1: BSD-2-Clause, https://github.com/go-webauthn/x/blob/v0.3.1/revoke/LICENSE
+github.com/golang-jwt/jwt/v4 v4.5.2: MIT, https://github.com/golang-jwt/jwt/blob/v4.5.2/LICENSE
+github.com/golang-jwt/jwt/v5 v5.3.1: MIT, https://github.com/golang-jwt/jwt/blob/v5.3.1/LICENSE
+github.com/google/go-github/v88/github v88.0.0: BSD-3-Clause, https://github.com/google/go-github/blob/v88.0.0/LICENSE
+github.com/google/go-github/v92/github v92.0.0: BSD-3-Clause, https://github.com/google/go-github/blob/v92.0.0/LICENSE
+github.com/google/go-querystring/query v1.2.0: BSD-3-Clause, https://github.com/google/go-querystring/blob/v1.2.0/LICENSE
+github.com/google/go-tpm v0.9.8: Apache-2.0, https://github.com/google/go-tpm/blob/v0.9.8/LICENSE
+github.com/google/jsonschema-go/jsonschema v0.4.3: MIT, https://github.com/google/jsonschema-go/blob/v0.4.3/LICENSE
+github.com/google/uuid v1.6.0: BSD-3-Clause, https://github.com/google/uuid/blob/v1.6.0/LICENSE
+github.com/invopop/jsonschema v0.14.0: MIT, https://github.com/invopop/jsonschema/blob/v0.14.0/COPYING
+github.com/jackc/pgpassfile v1.0.0: MIT, https://github.com/jackc/pgpassfile/blob/v1.0.0/LICENSE
+github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761: MIT, https://github.com/jackc/pgservicefile/blob/5a60cdf6a761/LICENSE
+github.com/jackc/pgx/v5 v5.11.0: MIT, https://github.com/jackc/pgx/blob/v5.11.0/LICENSE
+github.com/jackc/puddle/v2 v2.2.2: MIT, https://github.com/jackc/puddle/blob/v2.2.2/LICENSE
+github.com/mfridman/interpolate v0.0.2: MIT, https://github.com/mfridman/interpolate/blob/v0.0.2/LICENSE.txt
+github.com/modelcontextprotocol/go-sdk v1.8.0: Apache-2.0, https://github.com/modelcontextprotocol/go-sdk/blob/v1.8.0/LICENSE
+github.com/modelcontextprotocol/go-sdk v1.8.0: MIT, https://github.com/modelcontextprotocol/go-sdk/blob/v1.8.0/LICENSE
+github.com/openai/openai-go/v3 v3.66.0: Apache-2.0, https://github.com/openai/openai-go/blob/v3.66.0/LICENSE
+github.com/pb33f/ordered-map/v2 v2.3.1: Apache-2.0, https://github.com/pb33f/ordered-map/blob/v2.3.1/LICENSE
+github.com/philhofer/fwd v1.2.0: MIT, https://github.com/philhofer/fwd/blob/v1.2.0/LICENSE.md
+github.com/pressly/goose/v3 v3.28.0: MIT, https://github.com/pressly/goose/blob/v3.28.0/LICENSE
+github.com/segmentio/encoding v0.5.4: MIT, https://github.com/segmentio/encoding/blob/v0.5.4/LICENSE
+github.com/sethvargo/go-retry v0.4.0: Apache-2.0, https://github.com/sethvargo/go-retry/blob/v0.4.0/LICENSE
+github.com/standard-webhooks/standard-webhooks/libraries/go v0.0.1: MIT, https://github.com/standard-webhooks/standard-webhooks/blob/libraries/v0.0.1/libraries/LICENSE
+github.com/tidwall/gjson v1.19.0: MIT, https://github.com/tidwall/gjson/blob/v1.19.0/LICENSE
+github.com/tidwall/match v1.1.1: MIT, https://github.com/tidwall/match/blob/v1.1.1/LICENSE
+github.com/tidwall/pretty v1.2.1: MIT, https://github.com/tidwall/pretty/blob/v1.2.1/LICENSE
+github.com/tidwall/sjson v1.2.5: MIT, https://github.com/tidwall/sjson/blob/v1.2.5/LICENSE
+github.com/tinylib/msgp/msgp v1.6.4: MIT, https://github.com/tinylib/msgp/blob/v1.6.4/LICENSE
+github.com/x448/float16 v0.8.4: MIT, https://github.com/x448/float16/blob/v0.8.4/LICENSE
+github.com/yosida95/uritemplate/v3 v3.0.2: BSD-3-Clause, https://github.com/yosida95/uritemplate/blob/v3.0.2/LICENSE
+go.uber.org/multierr v1.11.0: MIT, https://github.com/uber-go/multierr/blob/v1.11.0/LICENSE.txt
+go.yaml.in/yaml/v4 v4.0.0-rc.2: MIT, https://github.com/yaml/go-yaml/blob/v4.0.0-rc.2/LICENSE
+golang.org/x/crypto v0.57.0: BSD-3-Clause, https://cs.opensource.google/go/x/crypto/+/v0.57.0:LICENSE
+golang.org/x/oauth2 v0.35.0: BSD-3-Clause, https://cs.opensource.google/go/x/oauth2/+/v0.35.0:LICENSE
+golang.org/x/sync v0.23.0: BSD-3-Clause, https://cs.opensource.google/go/x/sync/+/v0.23.0:LICENSE
+golang.org/x/sys v0.48.0: BSD-3-Clause, https://cs.opensource.google/go/x/sys/+/v0.48.0:LICENSE
+golang.org/x/text v0.42.0: BSD-3-Clause, https://cs.opensource.google/go/x/text/+/v0.42.0:LICENSE
+golang.org/x/time/rate v0.15.0: BSD-3-Clause, https://cs.opensource.google/go/x/time/+/v0.15.0:LICENSE
+gopkg.in/yaml.v3 v3.0.1: MIT, https://github.com/go-yaml/yaml/blob/v3.0.1/LICENSE
+rsc.io/qr v0.2.0: BSD-3-Clause, https://github.com/rsc/qr/blob/v0.2.0/LICENSE

@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# GuildNet on GKE Autopilot (docs/self-host/gke.md), applied with
+# kubectl apply -k deploy/gke after its files beside this are made:
+#   guildnet.env      the install's settings and secrets (init.sh's .env,
+#                     with GUILDNET_DB_HOST added); never committed
+#   server-ca.pem     Cloud SQL's server CA
+#   address.yaml      the edge's reserved address (from address.yaml.example)
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: guildnet
+
+resources:
+  - namespace.yaml
+  - statefulset.yaml
+  - service.yaml
+  - db-init.yaml
+
+patches:
+  - path: address.yaml
+
+# Plain names, so restore.yaml (applied on its own) finds them. After
+# changing guildnet.env, apply again and restart the pod:
+#   kubectl -n guildnet rollout restart statefulset/guildnet
+generatorOptions:
+  disableNameSuffixHash: true
+
+secretGenerator:
+  - name: guildnet
+    envs: [guildnet.env]
+
+configMapGenerator:
+  - name: cloudsql-ca
+    files: [server-ca.pem]
+
+# The release: change with `kustomize edit set image`, all at once.
+images:
+  - {name: ghcr.io/guildnet-chat/caddy, newTag: "26.10.0"}
+  - {name: ghcr.io/guildnet-chat/platform, newTag: "26.10.0"}
+  - {name: ghcr.io/guildnet-chat/ergo, newTag: "26.10.0"}
+  - {name: ghcr.io/guildnet-chat/runner, newTag: "26.10.0"}
+  - {name: ghcr.io/guildnet-chat/postgres, newTag: "26.10.0"}

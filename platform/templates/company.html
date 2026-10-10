@@ -1,0 +1,69 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{define "title"}}Company · {{.Network}}{{end}}
+{{define "main"}}
+{{with .Data.View}}
+<header class="page-head">
+  <div class="titles"><h1>Company</h1><p class="sub">What {{$.Network}} is for. Every agent reads this page when it wakes: the description and goals here, and its own team's focus and objectives.</p></div>
+  {{if and .CanArrange (not $.Adding)}}<a class="button" href="/company?add=1#add">{{template "plus"}}New goal</a>{{end}}
+</header>
+
+{{if and .CanArrange $.Adding}}
+<form method="post" action="/goals" class="card fields adding" id="add">
+  <input type="hidden" name="csrf" value="{{$.CSRF}}">
+  <header class="card-head wide"><h2>New goal</h2><a href="/company" class="push quiet">Cancel</a></header>
+  <label class="wide">Goal <input name="text" required maxlength="300" placeholder="Grow to 100 weekly customers"></label>
+  <label>Measured by <input name="measure" maxlength="100" placeholder="Weekly active customers"></label>
+  <label>Target <input name="target" maxlength="100" placeholder="100"></label>
+  <label>Now <input name="current" maxlength="100" placeholder="40"></label>
+  <div class="wide"><button>Add goal</button></div>
+</form>
+{{end}}
+
+<section class="card">
+  <header class="card-head"><h2>What {{$.Network}} does</h2>{{if .CanArrange}}<a href="#describe" class="push">Edit</a>{{end}}</header>
+  <p class="lede">{{if .Company.Description}}{{.Company.Description}}{{else}}<span class="muted">No description yet.</span>{{end}}</p>
+</section>
+
+<section class="card">
+  <h2>Goals</h2>
+  <ul class="people goals">
+    {{range .Goals}}
+    <li>
+      <span><span class="name">{{.Text}}</span><br><span class="role">#{{.ID}}{{with measure .}} · {{.}}{{end}}</span></span>
+      {{if $.Data.View.CanArrange}}
+      <form method="post" action="/goals/{{.ID}}" class="inline push goal-progress"><input type="hidden" name="csrf" value="{{$.CSRF}}">
+        <input name="current" value="{{.Current}}" aria-label="Where it stands" maxlength="100" size="6"><button class="link">Update</button></form>
+      <form method="post" action="/goals/{{.ID}}" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="drop" value="1"><button class="link danger">Drop</button></form>
+      {{end}}
+    </li>
+    {{else}}
+    <li class="muted">No goals yet.</li>
+    {{end}}
+  </ul>
+</section>
+
+<section class="card">
+  <h2>Teams</h2>
+  <ul class="people tree">
+    {{range .Teams}}
+    <li class="depth-{{.Depth}}">
+      <span><a class="name" href="/teams/{{.Name}}">{{.Name}}</a><br><span class="role">{{if .Focus}}{{.Focus}}{{else}}No focus set yet.{{end}}</span>
+        {{range .Objectives}}<br><span class="role">· {{.Text}}{{with measure .}} ({{.}}){{end}}{{if .Serves}}, serving #{{.Serves}}{{end}}</span>{{end}}</span>
+    </li>
+    {{else}}
+    <li class="muted">No teams yet.</li>
+    {{end}}
+  </ul>
+</section>
+
+{{if .CanArrange}}
+<form method="post" action="/company" class="card fields" id="describe">
+  <input type="hidden" name="csrf" value="{{$.CSRF}}">
+  <h2 class="wide">Describe {{$.Network}}</h2>
+  <label class="wide">What the company does, for whom, and how
+    <textarea name="description" rows="5" maxlength="2000">{{.Company.Description}}</textarea></label>
+  <div class="wide"><button>Save</button></div>
+</form>
+{{end}}
+{{end}}
+{{end}}

@@ -1,0 +1,57 @@
+# Template: a small dev team. An engineer, a reviewer, and a product manager.
+# A new network's runner fills in {{owner}} and {{company}} (from
+# GUILDNET_OWNER and GUILDNET_COMPANY) and its timezone (GUILDNET_TIMEZONE).
+# This only seeds the network's database once; after that the owner changes
+# everything in the console or through GuildServ.
+
+channels: ["#general", "#engineering", "#product", "#ops"]
+ops_channel: "#ops"
+ledger_nick: ledger
+
+# Hard cap on the network's model spend per UTC day. The owner can raise it.
+daily_budget_usd: 2.00
+loop_limit: 4
+history_lines: 40
+relevance:
+  enabled: true
+  model: fast
+
+# The owner leads both teams to start; hand one to a teammate by making them
+# its lead.
+teams:
+  - name: Engineering
+    lead: "{{owner}}"
+    focus: Ship small, working, reviewed changes
+  - name: Product
+    lead: "{{owner}}"
+    focus: Work on what matters most, in the right order
+
+description: |
+  {{company}} is a small software team. (Say what you build and who it's for:
+  every agent reads this.)
+
+goals:
+  - text: Ship the next release
+  - text: Every change reviewed before it merges
+    team: Engineering
+
+personas_dir: personas
+
+# Shared context every agent gets. Keep it stable: it's prompt-cached.
+company: |
+  {{company}} is a small software team. {{owner}} owns this network and has
+  the final say; each team (Engineering, Product) has a lead who directs its
+  work.
+
+  This is {{company}}'s private GuildNet network: an IRC network where people
+  and AI agents work together as one team. Work happens in channels (#general
+  for anything, #engineering for code, #product for plans and priorities) and
+  in direct messages. GuildServ is the network's service: people use it to
+  hire agents, set budgets, and approve risky actions. The ledger bot posts
+  spending to #ops.
+
+  The agents: kit writes code, rey reviews it, and pia keeps the plan. Hand
+  work to each other by addressing them ("rey: can you review this?").
+
+  This is chat: keep answers short and concrete, use markdown code blocks for
+  code, and ask when a request is unclear.

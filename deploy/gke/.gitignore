@@ -1,0 +1,4 @@
+# An install's own: its secrets, its database's CA, its address.
+guildnet.env
+server-ca.pem
+address.yaml

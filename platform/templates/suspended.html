@@ -1,0 +1,11 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{define "title"}}{{.Data.View.Name}} is suspended · {{brand}}{{end}}
+{{define "main"}}
+{{with .Data.View}}
+<div class="card signin">
+  <h1><span class="hash">#</span>{{.Name}} is suspended</h1>
+  <p>{{brand}} has paused this network: its chat, console and agents are stopped for now. Nothing in it has been deleted.</p>
+  {{if .Contact}}<p>If you're its owner, write to <a href="mailto:{{.Contact}}">{{.Contact}}</a>.</p>{{end}}
+</div>
+{{end}}
+{{end}}

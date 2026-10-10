@@ -1,0 +1,138 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{define "title"}}Connectors · {{.Network}}{{end}}
+{{define "main"}}
+<header class="page-head"><h1>Connectors</h1></header>
+{{with .Data.View}}
+<p class="muted">GitHub and the services your agents use as tools, for the teams given them on each team's page. Reads just run; anything else asks a person first, unless it's set to run without asking. A tool the service changes, or adds, waits here until someone approves it.{{if not .Owner}} The owner connects them.{{end}}</p>
+{{if .GitHubOn}}
+<section class="card" id="github">
+  <h2>GitHub</h2>
+  {{with .GitHub.Account}}
+  <p>Connected to <strong>{{.}}</strong>. Each team's leads choose which of its repos the team works on, on the team's page.</p>
+  {{if $.Data.View.Owner}}
+  <p class="muted small">Protect your main branch on GitHub (require a review before merging) so GitHub enforces it too. To take {{brand}}'s access away completely, uninstall the app on GitHub.</p>
+  <form method="post" action="/github/disconnect"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="outline">Disconnect</button></form>
+  {{end}}
+  {{else}}
+  <p>Give {{$.Network}}'s agents your repos: they read the code in a workspace of their own, open pull requests, and ask before merging.{{if $.Data.View.Owner}} You choose the account and which repos on GitHub.{{else}} Not connected yet.{{end}}</p>
+  {{if $.Data.View.Owner}}<form method="post" action="/github/connect" hx-boost="false"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button>Connect GitHub</button></form>{{end}}
+  {{end}}
+</section>
+{{end}}
+{{if .GitOn}}
+<section class="card" id="git">
+  <h2>Git repositories</h2>
+  <p>Repositories on any git host (GitLab, Gitea, Bitbucket, your own server) for agents to work on at their desks: they clone with the read credential and push branches with the write one. People merge on the host.{{if not $.Data.View.Owner}} The owner adds them.{{end}}</p>
+  {{with .Tested}}
+  <p class="done" role="status"><strong>{{.Name}}</strong>: Reads: {{.Reads}}. Pushes: {{.Pushes}}.</p>
+  {{with .Warning}}<p class="error" role="alert">{{.}}</p>{{end}}
+  {{end}}
+  {{with .Repos}}
+  <div class="table-wrap">
+  <table class="data">
+    <tr><th>Repository</th><th>Agents</th><th>Added</th>{{if $.Data.View.Owner}}<th></th>{{end}}</tr>
+    {{range .}}
+    <tr>
+      <td class="wrap"><strong>{{.Name}}</strong><br><span class="muted small">{{.URL}}</span></td>
+      <td>{{if .Write}}Read and push{{else}}Read only{{end}}{{if not .Read}} <span class="muted small">(public)</span>{{end}}</td>
+      <td>{{when .At}}</td>
+      {{if $.Data.View.Owner}}
+      <td class="num">
+        <form method="post" action="/git/{{.Name}}/test" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="outline">Test</button></form>
+        <form method="post" action="/git/{{.Name}}/remove" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="outline">Remove</button></form>
+      </td>
+      {{end}}
+    </tr>
+    {{end}}
+  </table>
+  </div>
+  {{end}}
+  {{if $.Data.View.Owner}}
+  {{with .GitForm}}
+  <form method="post" action="/git" class="fields">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <h3 class="wide">Add a repository</h3>
+    <label>Name <span class="muted small">what teams know it by</span>
+      <input name="name" value="{{.Name}}" required pattern="[a-z0-9][a-z0-9._\-]{0,39}" maxlength="40" autocomplete="off" spellcheck="false"></label>
+    <label>Address <span class="muted small">its https:// address, as you'd clone it</span>
+      <input name="url" value="{{.URL}}" type="url" required placeholder="https://gitlab.com/team/repo.git" autocomplete="off" spellcheck="false"></label>
+    <label>Read: user name <span class="muted small">if the host wants one</span>
+      <input name="read_user" value="{{.ReadUser}}" autocomplete="off" spellcheck="false"></label>
+    <label>Read: token <span class="muted small">none for a public repository</span>
+      <input name="read_token" type="text" class="secret" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other"></label>
+    <label>Push: user name
+      <input name="write_user" value="{{.WriteUser}}" autocomplete="off" spellcheck="false"></label>
+    <label>Push: token <span class="muted small">none, and agents only read it</span>
+      <input name="write_token" type="text" class="secret" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other"></label>
+    <p class="wide muted small">Desks can reach the read token, so make it one that only reads this repository (a deploy token). Only {{brand}}'s runner ever has the push token, to push agents' branches; protect the main branch on the host so only people merge. Both are tried before the repository's added. Adding one with the same name replaces it.</p>
+    <button>Add repository</button>
+  </form>
+  {{end}}
+  {{end}}
+</section>
+{{end}}
+{{with .Connectors}}
+<section class="card" id="services">
+  <h2>Services</h2>
+  {{if $.Data.View.Owner}}<p>What an agent does through one shows as the account you connect with, so where the service allows it, connect a shared or bot account.</p>{{end}}
+  <div class="table-wrap">
+  <table class="data">
+    {{range .}}
+    <tr>
+      <td class="wrap"><strong>{{.Title}}</strong><br><span class="muted small">{{.About}}</span></td>
+      <td>{{if .Reconnect}}<span class="badge danger">Needs reconnecting</span>{{else if .Connected}}<span class="badge">Connected {{when .At}}</span>{{else}}<span class="muted">Not connected</span>{{end}}</td>
+      {{if $.Data.View.Owner}}
+      <td class="num">
+        {{if and .Connected (not .Reconnect)}}
+        <form method="post" action="/connectors/{{.ID}}/disconnect"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="outline">Disconnect</button></form>
+        {{else}}
+        <form method="post" action="/connectors/{{.ID}}/connect" hx-boost="false"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button>{{if .Reconnect}}Reconnect{{else}}Connect{{end}}</button></form>
+        {{end}}
+      </td>
+      {{end}}
+    </tr>
+    {{end}}
+  </table>
+  </div>
+</section>
+{{end}}
+{{range $s := .Services}}
+<section class="card" id="{{.ID}}">
+  <h2>{{.Title}}{{if .Reconnect}} <span class="badge danger">Needs reconnecting</span>{{end}}</h2>
+  {{if .Reconnect}}<p>{{.Title}} stopped accepting {{brand}}'s access, so its tools are off until the owner connects it again.</p>{{end}}
+  {{if .Tools}}
+  <div class="table-wrap">
+  <table class="data">
+    <tr><th>Tool</th><th>Without asking?</th>{{if $.Data.View.CanSet}}<th></th>{{end}}</tr>
+    {{range .Tools}}
+    <tr>
+      <td class="wrap"><strong>{{.Name}}</strong>{{if eq .State "changed"}} <span class="badge danger">Changed</span>{{else if eq .State "new"}} <span class="badge danger">New</span>{{end}}<br><span class="muted small">{{.Description}}</span></td>
+      <td>{{if .Waiting}}<span class="muted">Held back until approved</span>{{else if eq .Policy "allow"}}Runs{{else if eq .Policy "ask"}}Asks first{{else if eq .Policy "deny"}}Off{{else if eq .Default "allow"}}Runs <span class="muted small">(a read)</span>{{else if eq .Default "reads"}}Reads run, changes ask first{{else}}Asks first{{end}}</td>
+      {{if $.Data.View.CanSet}}
+      <td>
+        <form method="post" action="/connectors/{{$s.ID}}/tools/{{.Name}}" class="inline">
+          <input type="hidden" name="csrf" value="{{$.CSRF}}">
+          <select name="policy" aria-label="What {{.Name}} may do">
+            <option value="" {{if eq .Policy ""}}selected{{end}}>Default ({{if eq .Default "allow"}}runs{{else if eq .Default "reads"}}reads run, changes ask{{else}}asks first{{end}})</option>
+            <option value="allow" {{if eq .Policy "allow"}}selected{{end}}>Runs without asking</option>
+            <option value="ask" {{if eq .Policy "ask"}}selected{{end}}>Asks first</option>
+            <option value="deny" {{if eq .Policy "deny"}}selected{{end}}>Off</option>
+          </select>
+          <button class="link">Set</button>
+        </form>
+        {{if .Waiting}}
+        <form method="post" action="/connectors/{{$s.ID}}/tools/{{.Name}}" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="approve" value="1"><button>Approve</button></form>
+        {{end}}
+      </td>
+      {{end}}
+    </tr>
+    {{end}}
+  </table>
+  </div>
+  {{else if not .Reconnect}}
+  <p class="muted">No tools listed yet: {{brand}} asks {{.Title}} for them every few minutes.</p>
+  {{end}}
+</section>
+{{end}}
+{{end}}
+{{end}}

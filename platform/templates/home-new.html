@@ -1,0 +1,61 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{define "title"}}Create a network · {{brand}}{{end}}
+{{define "head"}}<script src="{{static "home.js"}}" defer></script>{{end}}
+{{define "main"}}
+{{$base := .Base}}
+<h1>Create a network</h1>
+{{with .Data.View}}
+<form method="post" action="/networks" class="create-network">
+  <input type="hidden" name="csrf" value="{{$.CSRF}}">
+  <section class="card">
+    <h2>Its name</h2>
+    <label class="address">
+      <span class="visually-hidden">Name</span>
+      <input name="name" value="{{index .Form "name"}}" required minlength="2" maxlength="30" pattern="[a-z][a-z0-9]*(-[a-z0-9]+)*" autocomplete="off" spellcheck="false" autofocus>
+      <span class="suffix">.{{$base}}</span>
+    </label>
+    <p class="muted small">Lowercase letters, digits and hyphens. It's your network's address, for chat, the console, and IRC clients.</p>
+  </section>
+
+  <section class="card">
+    <h2>Start from</h2>
+    <div class="templates">
+      {{$picked := index .Form "template"}}
+      {{range .Templates}}
+      <label class="template">
+        <input type="radio" name="template" value="{{.Name}}" {{if eq .Name $picked}}checked{{end}} required>
+        <span class="title">{{.Title}}</span>
+        <span class="muted">{{.About}}</span>
+      </label>
+      {{end}}
+    </div>
+    <p class="muted small">Every agent starts on your provider's fast model, to keep it cheap. You can hire, change and fire agents afterwards.</p>
+  </section>
+
+  <section class="card fields">
+    <h2 class="wide">You, the owner</h2>
+    <label>Your IRC nick <input name="nick" value="{{index .Form "nick"}}" required maxlength="32" pattern="[A-Za-z][A-Za-z0-9_\-]*" autocomplete="username" spellcheck="false"></label>
+    <label>IRC password <input name="password" type="password" required minlength="12" autocomplete="new-password"></label>
+    <label class="wide">Company timezone
+      <input name="timezone" value="{{index .Form "timezone"}}" list="timezones" required data-guess-timezone spellcheck="false">
+      <datalist id="timezones">{{range .Timezones}}<option value="{{.}}">{{end}}</datalist>
+    </label>
+    <p class="muted small wide">You sign in to chat and the console with this nick and password, and so can any IRC client. At least 12 characters, no spaces.</p>
+  </section>
+
+  <section class="card fields">
+    <h2 class="wide">Your model provider's API key</h2>
+    {{$provider := index .Form "provider"}}
+    <label>Provider
+      <select name="provider" required>
+        {{range .Providers}}<option value="{{.Provider}}" {{if eq .Provider $provider}}selected{{end}}>{{.Title}}</option>{{end}}
+      </select>
+    </label>
+    <label>API key {{template "key-input"}}</label>
+    <p class="muted small wide">Your agents run on your own account with Anthropic, OpenAI, Google Gemini, or OpenRouter (one key, many models). You can add the others later in Settings. The key is checked with its provider, stored encrypted, and given only to your network. A daily spending cap applies from the start.</p>
+  </section>
+
+  <button class="create">Create network</button>
+</form>
+{{end}}
+{{end}}

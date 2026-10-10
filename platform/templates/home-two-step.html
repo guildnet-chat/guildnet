@@ -1,0 +1,33 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{define "title"}}Two-step sign-in · {{brand}}{{end}}
+{{define "main"}}
+{{with .Data.View}}
+<h1>Two-step sign-in</h1>
+{{if .Codes}}
+<section class="card">
+  <p class="done" role="status">Two-step sign-in is on. You're signed out of {{brand}} everywhere else.</p>
+  <h2>Your recovery codes</h2>
+  <p class="muted">If you lose your phone, each of these signs you in once in place of the app's code. Keep them somewhere safe, like your password manager. They won't be shown again.</p>
+  <ol class="recovery">
+    {{range .Codes}}<li><code class="recovery-code">{{.}}</code></li>{{end}}
+  </ol>
+  <p><a class="button" href="/networks">I've saved them</a></p>
+</section>
+{{else}}
+{{if .Must}}<p class="note" role="status">Before you carry on: signing in to {{brand}} takes a code from an authenticator app too, after Google or an emailed link. Your networks' consoles and billing are reached from here. It takes a minute.</p>{{end}}
+<form method="post" action="/account/two-step" class="card fields">
+  <input type="hidden" name="csrf" value="{{$.CSRF}}">
+  <input type="hidden" name="secret" value="{{.Secret}}">
+  <p class="muted wide">Each time you sign in, after Google or the emailed link, {{brand}} will ask for a code from an authenticator app on your phone, such as Google Authenticator, Microsoft Authenticator, 1Password or Bitwarden.</p>
+  <ol class="setup-steps wide">
+    <li>In the app, add an account and scan this code.
+      {{if .QR}}<img class="qr" src="{{.QR}}" alt="QR code for your authenticator app" width="198" height="198">{{end}}
+      <span class="muted small">Can't scan it? <a href="{{.Link}}">Open it on this device</a>, or type this key: <code class="secret">{{.Secret}}</code></span></li>
+    <li>Enter the 6-digit code the app shows.</li>
+  </ol>
+  <label>Code <input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]{6,7}" maxlength="7" required autofocus></label>
+  <div class="wide"><button>Turn on two-step sign-in</button></div>
+</form>
+{{end}}
+{{end}}
+{{end}}

@@ -1,0 +1,305 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+
+package runner_test
+
+import (
+	"net/http"
+	"slices"
+	"strings"
+	"testing"
+)
+
+// Who may do what, and where. The owner can do anything. Everyone else gets
+// abilities (approve, hire, budgets, invite, arrange, spend, log) from their
+// access levels: Lead for the teams they lead, Manager for everyone below
+// them, Member for their own team, and any the owner gives them (Admin, or
+// levels the owner makes). Each works only within its scope, and nobody can
+// act on themselves or anyone above them, or give more than they hold.
+
+// salesOrg sets up, as the owner, through the API:
+//
+//	Sales ($10000/month), led by dana, with eli in it
+//	  EMEA ($4000/month), inside Sales, with eve in it (costing $3000)
+//	Engineering (from the seed, led by vera), with sam in it
+func salesOrg(t *testing.T) *network {
+	t.Helper()
+	n := startNetwork(t, &fakeBrain{}, withAPI())
+	owner := n.api("method")
+	must := func(method, path string, body map[string]any) {
+		t.Helper()
+		if status, out := owner.call(method, path, body); status >= 300 {
+			t.Fatalf("setting up, %s %s: %d %v", method, path, status, out)
+		}
+	}
+	must("POST", "/v1/teams", map[string]any{"name": "Sales", "budget": 10000})
+	must("POST", "/v1/members", map[string]any{"account": "dana", "role": "Head of Sales", "team": "Sales"})
+	must("POST", "/v1/members", map[string]any{"account": "eli", "role": "Account exec", "team": "Sales"})
+	must("POST", "/v1/people/dana/promote", nil)
+	must("POST", "/v1/teams", map[string]any{"name": "EMEA", "parent": "Sales", "budget": 4000})
+	must("POST", "/v1/members", map[string]any{"account": "eve", "role": "Account exec", "team": "EMEA", "cost": 3000})
+	must("POST", "/v1/members", map[string]any{"account": "sam", "role": "Engineer", "team": "Engineering"})
+	return n
+}
+
+// expectStatus calls the API as actor and checks the status.
+func expectStatus(t *testing.T, n *network, actor string, want int, method, path string, body map[string]any) map[string]any {
+	t.Helper()
+	status, out := n.api(actor).call(method, path, body)
+	if status != want {
+		t.Errorf("%s %s %s: %d %v, want %d", actor, method, path, status, out, want)
+	}
+	return out
+}
+
+func teamIn(t *testing.T, n *network, name string) map[string]any {
+	t.Helper()
+	_, out := n.api("method").call("GET", "/v1/org", nil)
+	for _, x := range out["teams"].([]any) {
+		if team := x.(map[string]any); team["name"] == name {
+			return team
+		}
+	}
+	t.Fatalf("no team %s in %v", name, out["teams"])
+	return nil
+}
+
+func strs(v any) []string {
+	var out []string
+	list, _ := v.([]any)
+	for _, x := range list {
+		out = append(out, x.(string))
+	}
+	return out
+}
+
+func TestATeamCanHaveSeveralLeads(t *testing.T) {
+	n := salesOrg(t)
+
+	expectStatus(t, n, "method", http.StatusOK, "POST", "/v1/people/eli/promote", nil)
+
+	if leads := strs(teamIn(t, n, "Sales")["leads"]); !slices.Equal(leads, []string{"dana", "eli"}) {
+		t.Errorf("Sales' leads = %v, want dana and eli", leads)
+	}
+	expectStatus(t, n, "eli", http.StatusCreated, "POST", "/v1/staff", map[string]any{"nick": "rex", "team": "Sales", "budget": 1})
+	expectStatus(t, n, "method", http.StatusOK, "POST", "/v1/people/eli/demote", nil)
+	if leads := strs(teamIn(t, n, "Sales")["leads"]); !slices.Equal(leads, []string{"dana"}) {
+		t.Errorf("after demoting eli, Sales' leads = %v, want just dana", leads)
+	}
+}
+
+func TestALeadRunsTheTeamsInsideTheirs(t *testing.T) {
+	n := salesOrg(t)
+
+	expectStatus(t, n, "dana", http.StatusCreated, "POST", "/v1/staff", map[string]any{"nick": "rex", "team": "EMEA", "budget": 1})
+	expectStatus(t, n, "dana", http.StatusCreated, "POST", "/v1/teams", map[string]any{"name": "APAC", "parent": "Sales"})
+	expectStatus(t, n, "dana", http.StatusForbidden, "POST", "/v1/teams", map[string]any{"name": "Growth"})
+	expectStatus(t, n, "dana", http.StatusForbidden, "POST", "/v1/staff", map[string]any{"nick": "bot", "team": "Engineering", "budget": 1})
+	if parent := teamIn(t, n, "APAC")["parent"]; parent != "Sales" {
+		t.Errorf("APAC's parent = %v, want Sales", parent)
+	}
+}
+
+func TestALeadOfAnInnerTeamCantReachOutOfIt(t *testing.T) {
+	n := salesOrg(t)
+	expectStatus(t, n, "method", http.StatusOK, "POST", "/v1/people/eve/promote", nil)
+
+	expectStatus(t, n, "eve", http.StatusCreated, "POST", "/v1/staff", map[string]any{"nick": "rex", "team": "EMEA", "budget": 1})
+	expectStatus(t, n, "eve", http.StatusForbidden, "POST", "/v1/staff", map[string]any{"nick": "bot", "team": "Sales", "budget": 1})
+}
+
+func TestALeadInvitesAndArrangesPeopleInTheirTeams(t *testing.T) {
+	n := salesOrg(t)
+
+	expectStatus(t, n, "dana", http.StatusCreated, "POST", "/v1/members", map[string]any{"account": "fay", "team": "EMEA"})
+	expectStatus(t, n, "dana", http.StatusOK, "PATCH", "/v1/members/eve", map[string]any{"role": "Senior account exec"})
+	expectStatus(t, n, "dana", http.StatusForbidden, "PATCH", "/v1/members/eve", map[string]any{"team": "Engineering"})
+	expectStatus(t, n, "dana", http.StatusForbidden, "PATCH", "/v1/members/sam", map[string]any{"role": "Salesperson"})
+	expectStatus(t, n, "dana", http.StatusForbidden, "POST", "/v1/members", map[string]any{"account": "gil", "team": "Engineering"})
+	expectStatus(t, n, "dana", http.StatusForbidden, "POST", "/v1/members", map[string]any{"account": "gil"})
+}
+
+func TestNobodyChangesThemselvesOrAnyoneAboveThem(t *testing.T) {
+	n := salesOrg(t)
+	// eve reports to dana; make dana report to eli, who is in Sales too.
+	expectStatus(t, n, "method", http.StatusOK, "PATCH", "/v1/members/dana", map[string]any{"reports_to": "eli"})
+
+	expectStatus(t, n, "dana", http.StatusForbidden, "PATCH", "/v1/members/dana", map[string]any{"role": "CEO"})
+	expectStatus(t, n, "dana", http.StatusForbidden, "PATCH", "/v1/members/eli", map[string]any{"role": "Intern"})
+	expectStatus(t, n, "dana", http.StatusForbidden, "PATCH", "/v1/members/method", map[string]any{"role": "Intern"})
+	expectStatus(t, n, "dana", http.StatusForbidden, "DELETE", "/v1/members/dana", nil)
+	expectStatus(t, n, "dana", http.StatusForbidden, "POST", "/v1/people/dana/demote", nil)
+}
+
+func TestTeamBudgetsNestInsideTheTeamAbove(t *testing.T) {
+	n := salesOrg(t)
+
+	expectStatus(t, n, "dana", http.StatusOK, "PATCH", "/v1/teams/EMEA", map[string]any{"budget": 6000})
+	expectStatus(t, n, "dana", http.StatusForbidden, "PATCH", "/v1/teams/EMEA", map[string]any{"budget": 50000})
+	expectStatus(t, n, "dana", http.StatusForbidden, "PATCH", "/v1/teams/Sales", map[string]any{"budget": 99999})
+	if b := teamIn(t, n, "EMEA")["monthly_budget"]; b != 6000.0 {
+		t.Errorf("EMEA's budget = %v, want 6000", b)
+	}
+}
+
+func TestATeamCantEndUpInsideItself(t *testing.T) {
+	n := salesOrg(t)
+
+	out := expectStatus(t, n, "method", http.StatusBadRequest, "PATCH", "/v1/teams/Sales", map[string]any{"parent": "EMEA"})
+	if !strings.Contains(errorOf(out), "inside") {
+		t.Errorf("refusal = %q, want it to say why", errorOf(out))
+	}
+}
+
+func TestTheOwnerDecidesWhatManagersMayDo(t *testing.T) {
+	n := salesOrg(t)
+	expectStatus(t, n, "method", http.StatusCreated, "POST", "/v1/staff", map[string]any{"nick": "bot", "team": "Engineering", "reports_to": "sam"})
+
+	expectStatus(t, n, "sam", http.StatusForbidden, "PATCH", "/v1/staff/bot", map[string]any{"role": "Build bot"})
+	expectStatus(t, n, "method", http.StatusOK, "PUT", "/v1/access/Manager", map[string]any{"abilities": []string{"approve", "spend", "hire"}})
+	expectStatus(t, n, "sam", http.StatusOK, "PATCH", "/v1/staff/bot", map[string]any{"role": "Build bot"})
+	expectStatus(t, n, "sam", http.StatusForbidden, "PATCH", "/v1/staff/kai", map[string]any{"role": "Build bot"})
+}
+
+func TestAnAdminRunsTheOrgButNotWhoMayDoWhat(t *testing.T) {
+	n := salesOrg(t)
+	expectStatus(t, n, "method", http.StatusOK, "POST", "/v1/people/dana/access/Admin", nil)
+
+	expectStatus(t, n, "dana", http.StatusCreated, "POST", "/v1/teams", map[string]any{"name": "Growth"})
+	expectStatus(t, n, "dana", http.StatusOK, "PATCH", "/v1/members/sam", map[string]any{"role": "Staff engineer"})
+	expectStatus(t, n, "dana", http.StatusForbidden, "PUT", "/v1/access/Ops", map[string]any{"abilities": []string{"spend"}, "scope": "org"})
+	expectStatus(t, n, "dana", http.StatusForbidden, "POST", "/v1/people/sam/access/Admin", nil)
+	expectStatus(t, n, "dana", http.StatusForbidden, "PATCH", "/v1/teams/Sales", map[string]any{"budget": 99999})
+}
+
+func TestTheOwnerMakesTheirOwnAccessLevels(t *testing.T) {
+	n := salesOrg(t)
+	expectStatus(t, n, "method", http.StatusOK, "PUT", "/v1/access/Ops", map[string]any{"abilities": []string{"spend", "log"}, "scope": "org"})
+	expectStatus(t, n, "method", http.StatusOK, "POST", "/v1/people/sam/access/Ops", nil)
+
+	if out := expectStatus(t, n, "sam", http.StatusOK, "GET", "/v1/members/eve", nil); out["monthly_cost"] != 3000.0 {
+		t.Errorf("sam, with Ops, should see what eve costs: %v", out)
+	}
+	expectStatus(t, n, "sam", http.StatusForbidden, "POST", "/v1/staff", map[string]any{"nick": "bot", "team": "Engineering"})
+	_, out := n.api("sam").call("GET", "/v1/access", nil)
+	var names []string
+	for _, x := range out["levels"].([]any) {
+		names = append(names, x.(map[string]any)["name"].(string))
+	}
+	for _, want := range []string{"Admin", "Lead", "Manager", "Member", "Ops"} {
+		if !slices.Contains(names, want) {
+			t.Errorf("access levels = %v, want %s among them", names, want)
+		}
+	}
+}
+
+func TestYouCantGiveMoreThanYouHold(t *testing.T) {
+	n := salesOrg(t)
+	expectStatus(t, n, "method", http.StatusOK, "PUT", "/v1/access/Sales helper", map[string]any{"abilities": []string{"invite"}, "scope": "teams", "teams": []string{"Sales"}})
+	expectStatus(t, n, "method", http.StatusOK, "PUT", "/v1/access/Recruiter", map[string]any{"abilities": []string{"invite"}, "scope": "org"})
+
+	expectStatus(t, n, "dana", http.StatusOK, "POST", "/v1/people/eve/access/Sales helper", nil)
+	expectStatus(t, n, "dana", http.StatusForbidden, "POST", "/v1/people/eve/access/Recruiter", nil)
+	expectStatus(t, n, "dana", http.StatusForbidden, "POST", "/v1/people/sam/access/Sales helper", nil)
+	expectStatus(t, n, "dana", http.StatusOK, "DELETE", "/v1/people/eve/access/Sales helper", nil)
+}
+
+func TestGuestsCantBeGivenAccessOrLead(t *testing.T) {
+	n := salesOrg(t)
+	expectStatus(t, n, "method", http.StatusCreated, "POST", "/v1/members", map[string]any{"account": "gus", "team": "Sales", "guest": true})
+
+	expectStatus(t, n, "method", http.StatusBadRequest, "POST", "/v1/people/gus/access/Admin", nil)
+	expectStatus(t, n, "method", http.StatusBadRequest, "POST", "/v1/people/gus/promote", nil)
+}
+
+func TestWhatYouMayDoIsSpelledOut(t *testing.T) {
+	n := salesOrg(t)
+
+	out := expectStatus(t, n, "dana", http.StatusOK, "GET", "/v1/me", nil)
+
+	hire, _ := out["abilities"].(map[string]any)["hire"].(map[string]any)
+	if teams := strs(hire["teams"]); !slices.Contains(teams, "Sales") || !slices.Contains(teams, "EMEA") || slices.Contains(teams, "Engineering") {
+		t.Errorf("dana may hire in %v, want Sales and EMEA but not Engineering", teams)
+	}
+	if hire["org"] == true {
+		t.Error("dana can't hire at the org level")
+	}
+	if people := strs(hire["people"]); !slices.Contains(people, "eve") || slices.Contains(people, "sam") || slices.Contains(people, "dana") {
+		t.Errorf("dana may change %v, want eve but not sam or herself", people)
+	}
+	if !slices.Contains(strs(out["access"]), "Lead") {
+		t.Errorf("dana's access = %v, want Lead", out["access"])
+	}
+	if owner := expectStatus(t, n, "method", http.StatusOK, "GET", "/v1/me", nil); owner["owner"] != true {
+		t.Errorf("the owner's /v1/me = %v", owner)
+	}
+}
+
+func TestTheLogShowsEachPersonTheChangesTheyMaySee(t *testing.T) {
+	n := salesOrg(t)
+	expectStatus(t, n, "dana", http.StatusCreated, "POST", "/v1/staff", map[string]any{"nick": "rex", "team": "EMEA", "budget": 1})
+	expectStatus(t, n, "method", http.StatusOK, "PATCH", "/v1/members/sam", map[string]any{"role": "Staff engineer"})
+
+	actions := func(actor string) []string {
+		t.Helper()
+		out := expectStatus(t, n, actor, http.StatusOK, "GET", "/v1/log", nil)
+		var got []string
+		for _, x := range out["entries"].([]any) {
+			e := x.(map[string]any)
+			got = append(got, e["actor"].(string)+" "+e["action"].(string)+" "+e["target"].(string))
+		}
+		return got
+	}
+	byOwner, byDana, bySam := actions("method"), actions("dana"), actions("sam")
+
+	if !slices.Contains(byOwner, "dana hire rex") || !slices.Contains(byOwner, "method set member sam") {
+		t.Errorf("the owner's log = %v, want both changes", byOwner)
+	}
+	if !slices.Contains(byDana, "dana hire rex") || slices.Contains(byDana, "method set member sam") {
+		t.Errorf("dana's log = %v, want her hire but not sam's change in Engineering", byDana)
+	}
+	if len(bySam) != 0 {
+		t.Errorf("sam may see no log, but got %v", bySam)
+	}
+}
+
+// GuildServ holds to the same rules.
+func TestLeadsManageTheirTeamsFromIRCToo(t *testing.T) {
+	n := salesOrg(t)
+	dana := n.joinAs("dana", "#general")
+
+	dana.say("GuildServ", `MEMBER ADD fay ROLE "SDR" TEAM EMEA`)
+	dana.expect("fay added", guildServSaying("dana", "added fay"))
+	dana.say("GuildServ", "TEAM CREATE APAC PARENT Sales")
+	dana.expect("APAC created", guildServSaying("dana", "created team APAC"))
+	dana.say("GuildServ", "TEAM CREATE Growth")
+	dana.expect("a refusal", guildServSaying("dana", "can't"))
+	dana.say("GuildServ", "ACCESS")
+	dana.expect("the access levels", guildServSaying("dana", "Manager"))
+}
+
+// The log says what changed, and only that: a form sends every field, and
+// the ones it didn't change aren't news.
+func TestTheLogOnlySaysWhatChanged(t *testing.T) {
+	n := salesOrg(t)
+	owner := n.api("method")
+	owner.call("PATCH", "/v1/teams/Sales", map[string]any{"focus": "", "parent": "", "budget": 12000})
+	kai, _ := n.store.Agent(t.Context(), "kai")
+	owner.call("PATCH", "/v1/staff/kai", map[string]any{"prompt": kai.Prompt, "role": "Staff engineer"})
+	owner.call("PATCH", "/v1/members/eve", map[string]any{"cost": 3500, "role": "Account exec"})
+
+	_, out := owner.call("GET", "/v1/log?limit=3", nil)
+	details := map[string]string{}
+	for _, x := range out["entries"].([]any) {
+		e := x.(map[string]any)
+		details[e["action"].(string)+" "+e["target"].(string)], _ = e["detail"].(string)
+	}
+	if got := details["set team Sales"]; got != "budget $10000.00/month → $12000.00/month" {
+		t.Errorf("Sales' change = %q, want just the budget", got)
+	}
+	if got := details["set agent kai"]; got != "role Backend engineer → Staff engineer" {
+		t.Errorf("kai's change = %q, want just the role (the prompt was sent unchanged)", got)
+	}
+	if got := details["set member eve"]; got != "cost changed" {
+		t.Errorf("eve's change = %q, want her cost said to change, but not what it is", got)
+	}
+}

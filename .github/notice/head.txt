@@ -1,0 +1,77 @@
+GuildNet
+Copyright 2026 The GuildNet Authors
+
+GuildNet is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License, version 3 only
+(LICENSE). If you run a changed copy for others, over a network, you must
+offer them its source (section 13).
+
+What's in examples/ is under the Apache License, version 2.0
+(examples/LICENSE), so you can copy it into code of your own.
+
+GuildNet includes, and runs alongside, the work of others, under their own
+licences:
+
+In this repository
+------------------
+
+platform/static/chart-4.5.1.umd.min.js
+    Chart.js 4.5.1, Copyright (c) 2014-2024 Chart.js Contributors.
+    MIT License: platform/static/chart-LICENSE.txt.
+
+platform/static/htmx-4.0.0.min.js
+    htmx 4.0.0. Zero-Clause BSD: platform/static/htmx-LICENSE.txt.
+
+platform/static/fonts/jetbrains-mono-*.woff2
+    JetBrains Mono, Copyright 2020 The JetBrains Mono Project Authors.
+    SIL Open Font License 1.1: platform/static/fonts/JetBrainsMono-OFL.txt.
+
+platform/static/fonts/space-grotesk-*.woff2
+    Space Grotesk, Copyright 2020 The Space Grotesk Project Authors.
+    SIL Open Font License 1.1: platform/static/fonts/SpaceGrotesk-OFL.txt.
+
+deploy/ergo/ircd.yaml
+    Ergo's default.yaml, changed for GuildNet. Ergo's licence:
+
+    The MIT License (MIT)
+
+    Copyright (c) 2012-2014 Jeremy Latt
+    Copyright (c) 2014-2015 Edmund Huber
+    Copyright (c) 2016-2020 Daniel Oaks
+    Copyright (c) 2017-2020 Shivaram Lingamneni
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+
+Alongside it
+------------
+
+The stack's images bring their own programs, under their own licences:
+Ergo, the IRC server (MIT); guildnet-chat, the web chat, a fork of gamja
+(AGPL-3.0-only); Caddy and caddy-l4 (Apache-2.0); PostgreSQL (the
+PostgreSQL License); Go (BSD-3-Clause); the Docker CLI (Apache-2.0); and
+their Alpine, Debian and distroless bases (various). Desks run under
+gVisor (Apache-2.0), installed on the machine.
+
+Go modules
+----------
+
+The Go modules GuildNet is built with, and their licences (from
+go-licenses; .github/notice.sh makes this list):
+
+github.com/segmentio/asm v1.2.1: MIT-0, https://github.com/segmentio/asm/blob/v1.2.1/LICENSE

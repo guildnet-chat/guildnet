@@ -1,0 +1,76 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{define "title"}}People · {{.Network}}{{end}}
+{{define "main"}}
+{{with .Data.View}}
+<header class="page-head">
+  <div class="titles"><h1>People</h1><p class="sub">Everyone in {{$.Network}}'s org who isn't an agent. <a href="/access">Who may do what</a></p></div>
+  {{if and .CanInvite (not $.Adding)}}<a class="button" href="/people?add=1#add">{{template "plus"}}Invite someone</a>{{end}}
+</header>
+
+{{if .NewInvite}}
+<div class="banner" role="status">
+  <strong>Here's the invite link.</strong>
+  {{if .Emailed}}<p>Emailed it to {{.Emailed}}. It works once, for a week; you won't see it again here.</p>
+  {{else if .Unsent}}<p>Couldn't email it to {{.Unsent}}, so send it to them yourself. It works once, for a week; you won't see it again here.</p>
+  {{else}}<p>Send it to them however you like. It works once, for a week; you won't see it again here.</p>{{end}}
+  <input class="link-box" readonly value="{{.NewInvite}}" aria-label="Invite link">
+</div>
+{{end}}
+{{if .ResetLink}}
+<div class="banner" role="status">
+  <strong>Here's {{.ResetFor}}'s password reset link.</strong>
+  <p>Send it to them. It lets them choose a new password, once, within a day; you won't see it again here.</p>
+  <input class="link-box" readonly value="{{.ResetLink}}" aria-label="Reset link">
+</div>
+{{end}}
+
+{{if and .CanInvite $.Adding}}
+<form method="post" action="/people/invite" class="card fields adding" id="add">
+  <input type="hidden" name="csrf" value="{{$.CSRF}}">
+  <header class="card-head wide"><h2>Invite someone</h2><a href="/people" class="push quiet">Cancel</a></header>
+  <p class="muted wide">You get a link to send them. They pick their own nick and password, and join with this place in the org.</p>
+  <label>Title <input name="role" placeholder="Team member" maxlength="64"></label>
+  <label>Team
+    <select name="team">
+      {{if .InviteNoTeam}}<option value="">No team</option>{{end}}
+      {{range .InviteTeams}}<option>{{.}}</option>{{end}}
+    </select>
+  </label>
+  {{if .CanEmail}}<label class="wide">Email it to them (optional) <input name="email" type="email" autocomplete="off" placeholder="name@example.com" maxlength="254"></label>{{end}}
+  <label class="check"><input type="checkbox" name="guest"> A guest (from outside the company)</label>
+  <div class="wide"><button>Make an invite link</button></div>
+</form>
+{{end}}
+
+<section class="card">
+  <h2>In the org</h2>
+  <ul class="people">
+    {{range .People}}
+    <li>
+      <span class="avatar" aria-hidden="true">{{initial .Name}}</span>
+      <span><a class="name" href="/people/{{.Name}}">{{.Name}}</a>{{if .Owner}} <span class="badge">owner</span>{{end}}{{if .Guest}} <span class="badge">guest</span>{{end}}{{range .Access}} <span class="badge">{{.}}</span>{{end}}<br>
+        <span class="role">{{.Role}}{{if .Team}} · {{.Team}}{{end}}{{if .ReportsTo}} · reports to {{.ReportsTo}}{{end}}</span></span>
+      {{if .CanReset}}<form method="post" action="/people/{{.Name}}/reset" class="inline push"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="link">Password reset link</button></form>{{end}}
+    </li>
+    {{end}}
+  </ul>
+  <p class="muted small">Forgot your password? The owner or an admin can make you a reset link. To change it, go to <a href="/account">your account</a>.</p>
+</section>
+
+{{if and .CanInvite .Invites}}
+<section class="card">
+  <h2>Waiting to join</h2>
+  <ul class="people">
+    {{range .Invites}}
+    <li>
+      <span class="avatar" aria-hidden="true">?</span>
+      <span><span class="name">{{.Role}}</span>{{if .Guest}} <span class="muted">(guest)</span>{{end}}<br>
+        <span class="role">{{if .Team}}{{.Team}} · {{end}}invited by {{.CreatedBy}}, good until {{when .Expires}}</span></span>
+      <form method="post" action="/people/invites/{{.ID}}/cancel" class="inline push"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="link">Cancel</button></form>
+    </li>
+    {{end}}
+  </ul>
+</section>
+{{end}}
+{{end}}
+{{end}}

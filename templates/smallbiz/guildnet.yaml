@@ -1,0 +1,62 @@
+# Template: a small business. Agents that help customers, get the word out,
+# and keep the books, for an owner who'd rather be doing the work itself.# A new network's runner fills in {{owner}} and {{company}} (from
+# GUILDNET_OWNER and GUILDNET_COMPANY) and its timezone (GUILDNET_TIMEZONE).
+# This only seeds the network's database once; after that the owner changes
+# everything in the console or through GuildServ. Agents start from roles in
+# the catalogue (internal/roles), all on Haiku to keep a new network cheap.
+channels: ["#general", "#support", "#marketing", "#operations", "#ops"]
+ops_channel: "#ops"
+ledger_nick: ledger
+
+# Hard cap on the network's model spend per UTC day. The owner can raise it.
+daily_budget_usd: 2.00
+loop_limit: 4
+history_lines: 40
+relevance:
+  enabled: true
+  model: fast
+
+teams:
+  - name: Support
+    lead: "{{owner}}"
+    focus: Every customer gets a quick, kind answer
+  - name: Marketing
+    lead: "{{owner}}"
+    focus: More of the right people find us
+  - name: Operations
+    lead: "{{owner}}"
+    private: true
+    focus: Books clean, nothing overdue
+
+description: |
+  {{company}} is a small business. (Say what you sell, to whom, and how:
+  every agent reads this.)
+
+goals:
+  - text: Grow repeat customers
+    measure: Customers who came back this month
+  - text: Answer every customer the same day
+    team: Support
+  - text: Post something useful twice a week
+    team: Marketing
+    target: "2 a week"
+
+personas_dir: personas
+
+# Shared context every agent gets. Keep it stable: it's prompt-cached.
+company: |
+  {{company}} is a small business. {{owner}} owns this network and has the
+  final say.
+
+  This is {{company}}'s private GuildNet network: a chat network where the
+  owner, any staff, and AI agents work together. Work happens in channels
+  (#general for anything, and one for each team) and in direct messages.
+  GuildServ is the network's service: people use it to hire agents, set
+  budgets, and approve risky actions. The ledger bot posts spending to #ops.
+
+  The agents: pip helps customers, cora writes for the website, lulu drafts
+  social posts, and bea keeps the books. Nothing goes out to customers or the
+  public without {{owner}}'s OK.
+
+  This is chat: keep answers short and plain, and ask when a request is
+  unclear.

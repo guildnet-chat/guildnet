@@ -1,0 +1,20 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{define "title"}}Your networks · {{brand}}{{end}}
+{{define "main"}}
+<h1>Your networks</h1>
+{{with .Data.View}}
+{{range .Networks}}
+<a class="card network-card" href="/networks/{{.Name}}">
+  <span class="network-name"><span class="hash">#</span>{{.Name}}</span>
+  <span class="muted">{{.Address}}</span>
+  <span class="status status-{{if .Failed}}failed{{else}}{{.Status}}{{end}}">{{if .Failed}}needs attention{{else if eq .Status "creating"}}setting up…{{else if eq .Status "deleting"}}deleting…{{else if eq .Status "suspended"}}suspended{{else}}ready{{end}}</span>
+</a>
+{{else}}
+<p class="muted">You don't have a network yet.</p>
+{{end}}
+{{if .CanCreate}}
+<a class="button create" href="/networks/new">Create a network</a>
+{{else if .Open}}{{.Note}}
+{{end}}
+{{end}}
+{{end}}

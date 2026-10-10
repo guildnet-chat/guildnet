@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: guildnet
+  labels:
+    # Nothing in it may run privileged, add capabilities beyond the
+    # baseline's, or share the node's namespaces.
+    pod-security.kubernetes.io/enforce: baseline

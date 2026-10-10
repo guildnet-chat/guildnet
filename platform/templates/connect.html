@@ -1,0 +1,7 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{define "title"}}Connect an IRC app · {{.Network}}{{end}}
+{{define "main"}}
+<h1>Connect an IRC app</h1>
+<p class="muted">{{.Network}} is real IRC: mIRC, HexChat, Goguma, Halloy, or any other IRC app works alongside the web chat.</p>
+<div class="card">{{template "irc-settings" .Data}}</div>
+{{end}}

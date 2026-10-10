@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# A self-hosted install's edge: HTTPS for its domain (the home page, where
+# first-run setup happens) and its network's console and web chat, with
+# certificates from Let's Encrypt; and IRC over TLS on 6697. No access logs,
+# so no visitors' addresses on disk. Where it sends each is the stack's
+# addresses unless GUILDNET_CONSOLE_UPSTREAM, GUILDNET_IRC_UPSTREAM and
+# GUILDNET_IRC_HINT_UPSTREAM say otherwise (localhost, in one pod or task).
+{
+	# IRC over TLS: <network>.<domain>:6697. TLS ends here with the network's
+	# certificate; the connection goes on to Ergo, with the visitor's address
+	# in a PROXY protocol header. An app that forgot TLS is told so by the
+	# console.
+	layer4 {
+		:6697 {
+			@network tls sni {$GUILDNET_NETWORK}.{$GUILDNET_DOMAIN}
+			route @network {
+				tls
+				proxy {
+					proxy_protocol v1
+					upstream {$GUILDNET_IRC_UPSTREAM:ergo:6668}
+				}
+			}
+			@plain not tls
+			route @plain {
+				proxy {$GUILDNET_IRC_HINT_UPSTREAM:platform:6699}
+			}
+		}
+	}
+}
+
+{$GUILDNET_DOMAIN}, {$GUILDNET_NETWORK}.{$GUILDNET_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy {$GUILDNET_CONSOLE_UPSTREAM:platform:8080}
+}

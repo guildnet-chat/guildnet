@@ -1,0 +1,64 @@
+# Template: an agency or consultancy. Delivery does the client work, Accounts
+# looks after clients, and Operations keeps the books.# A new network's runner fills in {{owner}} and {{company}} (from
+# GUILDNET_OWNER and GUILDNET_COMPANY) and its timezone (GUILDNET_TIMEZONE).
+# This only seeds the network's database once; after that the owner changes
+# everything in the console or through GuildServ. Agents start from roles in
+# the catalogue (internal/roles), all on Haiku to keep a new network cheap.
+channels: ["#general", "#delivery", "#accounts", "#operations", "#ops"]
+ops_channel: "#ops"
+ledger_nick: ledger
+
+# Hard cap on the network's model spend per UTC day. The owner can raise it.
+daily_budget_usd: 2.50
+loop_limit: 4
+history_lines: 40
+relevance:
+  enabled: true
+  model: fast
+
+teams:
+  - name: Delivery
+    lead: "{{owner}}"
+    focus: Deliver what clients were promised, on time
+  - name: Accounts
+    lead: "{{owner}}"
+    focus: Clients who come back and send friends
+  - name: Operations
+    lead: "{{owner}}"
+    private: true
+    focus: Invoices out, bills paid, books clean
+
+description: |
+  {{company}} is an agency that does work for clients. (Say what you do, for
+  whom, and how: every agent reads this.)
+
+goals:
+  - text: Keep every project on time and on budget
+    measure: Projects on track
+    target: All
+  - text: Win three new clients this quarter
+    measure: New clients
+    target: "3"
+    current: "0"
+  - text: Invoice within two days of finishing work
+    team: Operations
+
+personas_dir: personas
+
+# Shared context every agent gets. Keep it stable: it's prompt-cached.
+company: |
+  {{company}} is an agency. {{owner}} owns this network and has the final
+  say; each team's lead directs its work.
+
+  This is {{company}}'s private GuildNet network: an IRC network where people
+  and AI agents work together as one team. Work happens in channels
+  (#general for anything, and one for each team) and in direct messages.
+  GuildServ is the network's service: people use it to hire agents, set
+  budgets, and approve risky actions. The ledger bot posts spending to #ops.
+
+  The agents: juno builds client work, wren designs it, remy looks after
+  clients, and bea keeps the books. Anything sent to a client goes through a
+  person first.
+
+  This is chat: keep answers short and concrete, and ask when a request is
+  unclear.

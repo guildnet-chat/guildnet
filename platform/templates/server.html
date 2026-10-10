@@ -1,0 +1,50 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{define "title"}}Server · {{.Network}}{{end}}
+{{define "main"}}
+{{with .Data.View}}
+<h1>Server</h1>
+<p class="muted">This {{brand}} runs on your own server. Version: <strong>{{.Version}}</strong>.</p>
+{{if .Sent}}<p class="note" role="status">Sent: check your inbox.</p>{{end}}
+
+<section class="card">
+  <h2>What's running</h2>
+  <div class="table-wrap">
+  <table class="data">
+    {{range .Parts}}
+    <tr><td>{{.Name}}</td><td>{{if .OK}}<span class="badge">{{.State}}</span>{{else}}<span class="badge danger">{{.State}}</span>{{end}}</td></tr>
+    {{end}}
+  </table>
+  </div>
+  <p class="muted small">If a part isn't answering, its log says why: <code>docker compose logs</code> with its name.</p>
+</section>
+
+<section class="card">
+  <h2>What's set up</h2>
+  <div class="table-wrap">
+  <table class="data">
+    {{range .SetUp}}
+    <tr><td>{{.Name}}</td><td>{{if .OK}}<span class="badge">{{.State}}</span>{{else}}<span class="muted">{{.State}}</span>{{end}}</td>
+      <td class="muted small">{{if and (not .OK) .Docs}}See docs/self-host/{{.Docs}}{{end}}</td></tr>
+    {{end}}
+  </table>
+  </div>
+  {{if .Owner}}
+  <form method="post" action="/server/test-email" class="fields">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <p class="muted small wide">{{if .Email}}A test email goes to {{.Email}}, the address you confirmed for your alerts.{{else}}A test email goes to the address you confirm for your alerts, on your account page.{{end}}</p>
+    <button class="outline">Send me a test email</button>
+  </form>
+  {{end}}
+</section>
+
+<section class="card">
+  <h2>Locked out</h2>
+  <p>If {{$.Network}}'s owner loses their password and their second step, whoever runs the server makes them a link to set a new password with: <code>docker compose exec platform /platform reset-owner</code>. It works once, within the hour, and turns their two-step sign-in off until they set it up again.</p>
+</section>
+
+<section class="card">
+  <h2>Back up</h2>
+  <p>Everything {{$.Network}} has is in its stack's volumes: the console's and the runner's databases (Postgres), the IRC server's accounts and history (Ergo), and the runner's spending ledger. Back up all of them, and the install's settings (its <code>.env</code>), which hold the keys its secrets are sealed with.</p>
+</section>
+{{end}}
+{{end}}
