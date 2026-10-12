@@ -145,29 +145,16 @@ func TestTheReleasesAreNamedByDate(t *testing.T) {
 }
 
 // A release's images are built from exactly the bases they were tested on:
-// every FROM is pinned by digest, and Dependabot proposes each update.
+// every FROM is pinned by digest. Updates are made here, not proposed as
+// pull requests: nothing (Dependabot included) opens them.
 func TestEveryImagesBasesArePinned(t *testing.T) {
 	dockerfiles, err := filepath.Glob("../*/Dockerfile")
 	if err != nil || len(dockerfiles) == 0 {
 		t.Fatalf("no Dockerfiles (%v)", err)
 	}
-	b, err := os.ReadFile("../../.github/dependabot.yml")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var dependabot struct {
-		Updates []struct {
-			Ecosystem   string   `yaml:"package-ecosystem"`
-			Directories []string `yaml:"directories"`
-		} `yaml:"updates"`
-	}
-	if err := yaml.Unmarshal(b, &dependabot); err != nil {
-		t.Fatal(err)
-	}
-	var watched []string
-	for _, u := range dependabot.Updates {
-		if u.Ecosystem == "docker" {
-			watched = append(watched, u.Directories...)
+	for _, f := range []string{"../../.github/dependabot.yml", "../../.github/dependabot.yaml"} {
+		if _, err := os.Stat(f); err == nil {
+			t.Errorf("%s would open pull requests", f)
 		}
 	}
 	from := regexp.MustCompile(`(?im)^FROM\s+(\S+)`)
@@ -180,9 +167,6 @@ func TestEveryImagesBasesArePinned(t *testing.T) {
 			if !regexp.MustCompile(`@sha256:[0-9a-f]{64}$`).MatchString(m[1]) {
 				t.Errorf("%s: FROM %s isn't pinned by digest", f, m[1])
 			}
-		}
-		if dir := "/deploy/" + filepath.Base(filepath.Dir(f)); !slices.Contains(watched, dir) {
-			t.Errorf("Dependabot doesn't update %s's bases", dir)
 		}
 	}
 }
