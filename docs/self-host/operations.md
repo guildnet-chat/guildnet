@@ -98,7 +98,10 @@ tar -cf - -C backups <time> | age -r <age public key> > guildnet-<time>.tar.age
 age -d -i <age key file> guildnet-<time>.tar.age | tar -xf - -C backups
 ```
 
-`restore.sh` also rejects a backup containing anything a backup doesn't.
+`restore.sh` also rejects a backup containing anything a backup doesn't,
+or one whose `.env` says where images come from (`GUILDNET_REGISTRY`, or an
+image): if you set that yourself, take the line out of the backup's `env`,
+restore, then put it back in `.env`.
 
 Nightly at 03:00, keeping 14 days (`crontab -e`):
 
@@ -118,9 +121,9 @@ sh restore.sh /path/to/backups/<time>
 ```
 
 It installs the backup's `.env` and files, restores both databases, and
-starts the stack at the backup's release (`GUILDNET_VERSION` in its
-`.env`), fetching its images if they aren't there. Point DNS at the new
-host, then [upgrade](#upgrading) if the source is a later release.
+starts the stack at the release of the source you restore with (its
+`VERSION`, never an older one a backup names), fetching its images if they
+aren't there. Point DNS at the new host.
 
 ## Account recovery
 

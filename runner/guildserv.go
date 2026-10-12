@@ -107,6 +107,17 @@ func (r *Runner) guildCommand(from, actor, text string, console bool) {
 		return
 	}
 	cmd, args := word(words[0]), words[1:]
+	// GuildServ is the company's: someone with an account on the server who
+	// isn't in the org (or isn't logged in) gets no look at it, and no
+	// catch-ups on the network's budget.
+	if cmd != "HELP" && !r.inOrgAsPerson(actor) {
+		if actor == "" {
+			r.guildReply(from, "GuildServ answers people in this company: log in to your account (SASL, or /msg NickServ IDENTIFY) first.")
+		} else {
+			r.guildReply(from, "GuildServ answers people in this company, and "+actor+" isn't in it.")
+		}
+		return
+	}
 	if !console && changesTheOrg(cmd, args) {
 		if why := r.notOverIRC(actor); why != "" {
 			r.guildReply(from, why)
@@ -116,8 +127,9 @@ func (r *Runner) guildCommand(from, actor, text string, console bool) {
 
 	switch cmd {
 	case "HELP":
-		r.guildReply(from, "Anyone: CATCHUP [#channel] [3h], STAFF, ORG, TEAMS, BUDGET [team], INFO <name>, COMPANY, GOALS [team], ROLES [department] (the role catalogue), ACCESS (who may do what). Approvers: APPROVALS, APPROVE <n> [note], DENY <n> <reason>. Owner: APPROVALS AFTER <4h|off> (how long one waits on each person).")
-		r.guildReply(from, "Changing the org (what you may do depends on your access; the owner may do anything): HIRE <nick> [PRESET role] [ROLE \"...\"] [TEAM ...] [REPORTS-TO name] [MODEL ...] [CHANNELS #a,#b] [BUDGET usd] [PROMPT \"...\"], SET <nick> <field> <value>, FIRE <nick> [\"reason\"], TEAM CREATE <name> [PARENT team] [LEAD name] [CHANNEL #x] [BUDGET usd/month] [PRIVATE], TEAM SET <name> LEADS|PARENT|FOCUS|CHANNEL|BUDGET|PRIVATE <value>, COMPANY DESCRIBE \"...\", GOAL ADD \"...\" [TEAM name] [MEASURE \"...\" TARGET x CURRENT y] [SERVES n], GOAL SET <n> <field> <value>, GOAL DROP <n>.")
+		r.guildReply(from, "Anyone in the company: CATCHUP [#channel] [3h] (one every 10 minutes), STAFF, ORG, TEAMS, BUDGET [team], INFO <name>, COMPANY, GOALS [team], ROLES [department] (the role catalogue), ACCESS (who may do what). Approvers: APPROVALS, APPROVE <n> [note], DENY <n> <reason>. Owner: APPROVALS AFTER <4h|off> (how long one waits on each person).")
+		r.guildReply(from, "Changing the org (what you may do depends on your access; the owner may do anything): HIRE <nick> [PRESET role] [ROLE \"...\"] [TEAM ...] [REPORTS-TO name] [MODEL ...] [CHANNELS #a,#b] [BUDGET usd] [PROMPT \"...\"], SET <nick> <field> <value>, FIRE <nick> [\"reason\"], TEAM CREATE <name> [PARENT team] [LEAD name] [CHANNEL #x] [BUDGET usd/month] [PRIVATE].")
+		r.guildReply(from, "TEAM SET <name> LEADS|PARENT|FOCUS|CHANNEL|BUDGET|PRIVATE <value>, COMPANY DESCRIBE \"...\", COMPANY GUESTS on|off (owner: whether guests may have agents work for them), GOAL ADD \"...\" [TEAM name] [MEASURE \"...\" TARGET x CURRENT y] [SERVES n], GOAL SET <n> <field> <value>, GOAL DROP <n>.")
 		r.guildReply(from, "MEMBER ADD|SET|REMOVE <account> ... (COST usd/month), PROMOTE <name> [team], DEMOTE <name> [team], ACCESS GIVE|TAKE <person> <level>, LOG [n]. Owner: ACCESS SET <level> <abilities,...> [SCOPE org|led|reports|own|teams] [TEAMS a,b], ACCESS DROP <level>.")
 	case "STAFF":
 		r.guildStaff(from)
@@ -128,7 +140,7 @@ func (r *Runner) guildCommand(from, actor, text string, console bool) {
 	case "BUDGET":
 		r.guildBudget(from, actor, args)
 	case "CATCHUP":
-		r.guildCatchup(from, args)
+		r.guildCatchup(from, actor, args)
 	case "APPROVE", "DENY", "APPROVALS":
 		if actor == "" {
 			r.guildReply(from, "log in to your account (SASL, or /msg NickServ IDENTIFY) to decide approvals.")

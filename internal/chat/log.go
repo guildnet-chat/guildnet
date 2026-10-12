@@ -23,16 +23,23 @@ type Line struct {
 // String formats the line like an IRC client log, in UTC.
 func (l Line) String() string { return l.In(time.UTC) }
 
-// In formats the line like an IRC client log, with its time in loc.
+// In formats the line like an IRC client log, with its time in loc. A
+// message of several lines (multiline) shows each as its sender's, so none
+// of them can pass as someone else's.
 func (l Line) In(loc *time.Location) string {
 	if loc == nil {
 		loc = time.UTC
 	}
 	ts := l.At.In(loc).Format("15:04")
+	prefix := fmt.Sprintf("[%s] <%s> ", ts, l.Nick)
 	if l.Action {
-		return fmt.Sprintf("[%s] * %s %s", ts, l.Nick, l.Text)
+		prefix = fmt.Sprintf("[%s] * %s ", ts, l.Nick)
 	}
-	return fmt.Sprintf("[%s] <%s> %s", ts, l.Nick, l.Text)
+	lines := strings.Split(strings.ReplaceAll(l.Text, "\r\n", "\n"), "\n")
+	for i, s := range lines {
+		lines[i] = prefix + strings.TrimSuffix(s, "\r")
+	}
+	return strings.Join(lines, "\n")
 }
 
 // Log holds the last max lines per conversation key (an archive for

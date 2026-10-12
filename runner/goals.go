@@ -284,6 +284,23 @@ func (r *Runner) setFocusTopic(t org.Team) {
 // GuildServ's COMPANY, GOALS, and GOAL.
 
 func (r *Runner) guildCompany(from, actor string, args []string) {
+	if len(args) == 2 && strings.EqualFold(args[0], "GUESTS") {
+		on := strings.EqualFold(args[1], "on")
+		if !on && !strings.EqualFold(args[1], "off") {
+			r.guildReply(from, "usage: COMPANY GUESTS on|off: whether guests may have agents work for them.")
+			return
+		}
+		if err := r.setGuestsAsk(actor, on); err != nil {
+			r.guildReply(from, err.Error())
+			return
+		}
+		if on {
+			r.guildReply(from, "guests may now have agents work for them (private teams' agents still only for people in those teams).")
+		} else {
+			r.guildReply(from, "guests may no longer have agents work for them.")
+		}
+		return
+	}
 	if len(args) >= 2 && strings.EqualFold(args[0], "DESCRIBE") {
 		description := strings.Join(args[1:], " ")
 		if err := r.setCompany(actor, description); err != nil {

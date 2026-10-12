@@ -134,6 +134,35 @@ type joined struct {
 	read map[string]map[string]time.Time // agent -> source -> when it last read there
 }
 
+// Reader is a toolbox told when an agent read from somewhere its own tools
+// don't reach (a Managed Agents desk's web fetch, say), so a write soon
+// after asks first, as after reading with its tools.
+type Reader interface {
+	ReadFrom(p config.Persona, source string)
+}
+
+// Tracked is tb keeping track of what its agents read, as Join's toolboxes
+// do, even on its own; nil stays nil.
+func Tracked(tb Toolbox) Toolbox {
+	switch tb := tb.(type) {
+	case nil:
+		return nil
+	case *joined:
+		return tb
+	default:
+		return &joined{boxes: []Toolbox{tb}, read: map[string]map[string]time.Time{}}
+	}
+}
+
+func (j *joined) ReadFrom(p config.Persona, source string) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.read[p.Nick] == nil {
+		j.read[p.Nick] = map[string]time.Time{}
+	}
+	j.read[p.Nick][source] = time.Now()
+}
+
 func (j *joined) Tools(p config.Persona) []Tool {
 	var out []Tool
 	for _, b := range j.boxes {
@@ -187,12 +216,7 @@ func (j *joined) Run(ctx context.Context, p config.Persona, name string, input m
 		return "", err
 	}
 	if src := sourceOf(b, name); src != "" {
-		j.mu.Lock()
-		if j.read[p.Nick] == nil {
-			j.read[p.Nick] = map[string]time.Time{}
-		}
-		j.read[p.Nick][src] = time.Now()
-		j.mu.Unlock()
+		j.ReadFrom(p, src)
 	}
 	return b.Run(ctx, p, name, input)
 }

@@ -161,8 +161,14 @@ func (r *Runner) onAway(e ircmsg.Message) {
 	}
 }
 
-// guildCatchup runs CATCHUP [#channel] [window].
-func (r *Runner) guildCatchup(from string, args []string) {
+// catchupEvery is how often one person may ask for a catch-up: each is a
+// model call on the network's budget.
+const catchupEvery = 10 * time.Minute
+
+// guildCatchup runs CATCHUP [#channel] [window] for actor's account, away
+// from GuildServ's connection (writing one takes a while), at most one
+// every catchupEvery that was written.
+func (r *Runner) guildCatchup(from, actor string, args []string) {
 	if !r.cfg.Catchup.Enabled {
 		r.guildReply(from, "catch-ups are turned off on this network.")
 		return
@@ -189,12 +195,36 @@ func (r *Runner) guildCatchup(from string, args []string) {
 		}
 		r.mu.Unlock()
 	}
-	r.catchup(from, since, only, false)
+	key := strings.ToLower(actor)
+	r.mu.Lock()
+	last, had := r.catchupAt[key]
+	if had && r.now().Sub(last) < catchupEvery {
+		r.mu.Unlock()
+		r.guildReply(from, fmt.Sprintf("a catch-up is one every %d minutes: try again in %s.", int(catchupEvery/time.Minute), (catchupEvery-r.now().Sub(last)).Round(time.Minute)))
+		return
+	}
+	if r.catchupAt == nil {
+		r.catchupAt = map[string]time.Time{}
+	}
+	r.catchupAt[key] = r.now() // held while it's written
+	r.mu.Unlock()
+	go func() {
+		if !r.catchup(from, since, only, false) {
+			r.mu.Lock()
+			if had {
+				r.catchupAt[key] = last
+			} else {
+				delete(r.catchupAt, key)
+			}
+			r.mu.Unlock()
+		}
+	}()
 }
 
 // catchup summarizes what nick missed since then in their channels (or just
-// only). Automatic catch-ups stay quiet when there's nothing to say.
-func (r *Runner) catchup(nick string, since time.Time, only string, auto bool) {
+// only), and reports whether it asked the model to. Automatic catch-ups stay
+// quiet when there's nothing to say.
+func (r *Runner) catchup(nick string, since time.Time, only string, auto bool) (wrote bool) {
 	defer monitor.Recover()
 	// Approvals waiting on this person come first: something is stalled on them.
 	for _, line := range r.waitingOnYou(nick) {
@@ -246,6 +276,7 @@ func (r *Runner) catchup(nick string, since time.Time, only string, auto bool) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
+	wrote = true
 	text, u, err := r.brain.Catchup(ctx, agent.CatchupRequest{
 		Model: r.smallModel(r.cfg.Catchup.Model), For: nick, Since: since, Location: r.loc(), Channels: logs,
 	})
@@ -270,6 +301,7 @@ func (r *Runner) catchup(nick string, since time.Time, only string, auto bool) {
 		}
 		sent++
 	}
+	return
 }
 
 // parseWindow reads durations like 90m, 3h, or 2d, up to a week.

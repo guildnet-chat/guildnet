@@ -255,6 +255,24 @@ func TestAMergeIsRefusedIfThePullRequestChangedAfterApproval(t *testing.T) {
 	}
 }
 
+// The approver approved merging into one branch: a PR moved to another
+// since (its author may) isn't merged.
+func TestAMergeIsRefusedIfThePullRequestWasRetargetedAfterApproval(t *testing.T) {
+	c, f := newGitHub(t)
+	run(t, c, "github_open_pull_request", openPR("kai/healthz", file("health.go", "x")))
+	_, pinned, _ := c.Prepare(context.Background(), kai, "github_merge_pull_request", map[string]any{"repo": "guildnet", "number": 1.0})
+	f.retarget("guildnet", 1, "release")
+
+	_, err := run(t, c, "github_merge_pull_request", pinned)
+
+	if err == nil || !strings.Contains(err.Error(), "release") {
+		t.Errorf("err = %v, want a refusal naming the branch it moved to", err)
+	}
+	if len(f.merges) != 0 {
+		t.Errorf("merged anyway: %q", f.merges)
+	}
+}
+
 func TestAMergeThatWasNeverApprovedIsRefused(t *testing.T) {
 	c, f := newGitHub(t)
 	run(t, c, "github_open_pull_request", openPR("kai/healthz", file("health.go", "x")))

@@ -30,7 +30,7 @@ func TestSomeoneTakenOutCantDecideApprovals(t *testing.T) {
 	n.human.expect("dana removed", guildServSaying("method", "dana"))
 	dana.say("GuildServ", "APPROVE 1")
 
-	dana.expect("a refusal", guildServSaying("dana", "only"))
+	dana.expect("a refusal", guildServSaying("dana", "isn't in it"))
 	n.human.expectQuiet("kai carrying on", 300*time.Millisecond, fromContaining("kai", "#engineering", "merged"))
 }
 

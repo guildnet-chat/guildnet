@@ -3,6 +3,8 @@
 package runner_test
 
 import (
+	"net/http"
+	"slices"
 	"testing"
 	"time"
 )
@@ -52,6 +54,51 @@ func TestAnAgentGoesIntoAPrivateChannelOnlyFromSomeoneInIt(t *testing.T) {
 
 	n.human.say("GuildServ", `SET rex CHANNELS #general,#finance`)
 	n.human.expect("the owner may", guildServSaying("method", "rex"))
+}
+
+// An agent in a private team is in its channel, so hiring one into it, or
+// moving one there, is for someone in that channel too: an admin who isn't
+// can't read it through an agent.
+func TestAnAgentGoesIntoAPrivateTeamOnlyFromSomeoneInIt(t *testing.T) {
+	n := startNetwork(t, &fakeBrain{}, withAPI())
+	owner := n.api("method")
+	if s, out := owner.call("POST", "/v1/teams", map[string]any{"name": "Legal", "private": true, "budget": 1000}); s != http.StatusCreated {
+		t.Fatalf("Legal: %d %v", s, out)
+	}
+	owner.call("POST", "/v1/members", map[string]any{"account": "sam", "team": "Legal"})
+	owner.call("POST", "/v1/members", map[string]any{"account": "dana"})
+	if s, out := owner.call("POST", "/v1/people/dana/access/Admin", nil); s != http.StatusOK {
+		t.Fatalf("dana an admin: %d %v", s, out)
+	}
+
+	expectStatus(t, n, "dana", http.StatusForbidden, "POST", "/v1/staff", map[string]any{"nick": "spy", "team": "Legal"})
+	expectStatus(t, n, "dana", http.StatusCreated, "POST", "/v1/staff", map[string]any{"nick": "rex"})
+	expectStatus(t, n, "dana", http.StatusForbidden, "PATCH", "/v1/staff/rex", map[string]any{"team": "Legal"})
+
+	expectStatus(t, n, "sam", http.StatusForbidden, "POST", "/v1/staff", map[string]any{"nick": "nope", "team": "Legal"}) // in it, but may not hire
+	expectStatus(t, n, "method", http.StatusOK, "PATCH", "/v1/staff/rex", map[string]any{"team": "Legal"})
+}
+
+// A private team's repos and connected services are its own: someone
+// outside it can't give them to another team (theirs), whose agents would
+// then read them for anyone. Other teams' are shared as before.
+func TestAPrivateTeamsReposAndConnectorsAreSharedOnlyFromInsideIt(t *testing.T) {
+	n := startNetwork(t, &fakeBrain{}, withAPI(), withRepos("web", "secret"))
+	n.runner.UseConnectors(newFakeConnectors())
+	owner := n.api("method")
+	if s, out := owner.call("POST", "/v1/teams", map[string]any{"name": "Security", "private": true, "repos": []string{"secret"}, "connectors": []string{"linear"}}); s != http.StatusCreated {
+		t.Fatalf("Security: %d %v", s, out)
+	}
+	withSales(t, n)
+
+	expectStatus(t, n, "dana", http.StatusForbidden, "PATCH", "/v1/teams/Sales", map[string]any{"repos": []string{"secret"}})
+	expectStatus(t, n, "dana", http.StatusForbidden, "PATCH", "/v1/teams/Sales", map[string]any{"connectors": []string{"linear"}})
+	expectStatus(t, n, "dana", http.StatusOK, "PATCH", "/v1/teams/Sales", map[string]any{"repos": []string{"web"}, "connectors": []string{"notion"}})
+	if got := n.runner.ReposFor("Sales"); slices.Contains(got, "secret") {
+		t.Errorf("Sales works on %v", got)
+	}
+
+	expectStatus(t, n, "method", http.StatusOK, "PATCH", "/v1/teams/Sales", map[string]any{"repos": []string{"web", "secret"}})
 }
 
 // Agents work for the org: someone with an account on the server who isn't

@@ -424,11 +424,13 @@ func TestInIRCTooPeoplesCostsAreOnlyForTheOwnerAndTheirLead(t *testing.T) {
 	n.human.say("GuildServ", "TEAM CREATE Sales BUDGET 20000")
 	n.human.say("GuildServ", `MEMBER ADD eve ROLE "Account exec" TEAM Sales COST 5000`)
 	n.human.expect("eve added", guildServSaying("method", "added eve"))
-	stranger := joinHuman(t, n.srv.Addr(), "zed")
+	inOrg(t, n.human, "zed") // in Engineering
+	n.srv.AddAccount("zed", testPassword)
+	other := n.joinAs("zed")
 
-	stranger.say("GuildServ", "BUDGET Sales")
+	other.say("GuildServ", "BUDGET Sales")
 
-	m := stranger.expect("the budget", guildServSaying("zed", "Sales"))
+	m := other.expect("the budget", guildServSaying("zed", "Sales"))
 	if strings.Contains(m.text, "5000") || strings.Contains(m.text, "eve $") {
 		t.Errorf("someone who isn't the owner or Sales' lead saw eve's cost: %q", m.text)
 	}

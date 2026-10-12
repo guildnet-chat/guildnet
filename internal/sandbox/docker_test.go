@@ -105,6 +105,45 @@ func TestACommandsOutputExitAndInputThroughDocker(t *testing.T) {
 	}
 }
 
+// What sandboxd runs at a desk itself (the timeout around each command, the
+// shell that reads and writes files) is the image's, by its full path: a
+// program an earlier command left in the home, ahead on the PATH, doesn't
+// stand in for it and see what comes in on its input.
+func TestADesksOwnFilesDontStandInForWhatSandboxdRuns(t *testing.T) {
+	if os.Getenv("GUILDNET_DOCKER_TESTS") != "1" {
+		t.Skip("set GUILDNET_DOCKER_TESTS=1 to test against Docker")
+	}
+	image := "guildnet-desk-test-planted:latest"
+	build := exec.Command("docker", "build", "--quiet", "--tag", image, "-")
+	build.Stdin = strings.NewReader("FROM alpine:3.20\n" +
+		"RUN mkdir -p /workspace /home/desk/bin && for c in timeout sh; do printf '#!/bin/busybox sh\\necho planted\\n' > /home/desk/bin/$c; chmod +x /home/desk/bin/$c; done && chown -R 1000:1000 /workspace /home/desk\n" +
+		"ENV PATH=/home/desk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("building the test image: %v: %s", err, out)
+	}
+	network := "guildnet-desks-test"
+	exec.Command("docker", "network", "create", "--internal", network).Run()
+	d := sandbox.Desk{Network: "test", Nick: "planted"}
+	dk := &sandbox.Docker{Image: image, Network: network, Memory: "256m", CPUs: "1", Pids: 64}
+	t.Cleanup(func() { dk.Remove(context.Background(), d) })
+	dk.Remove(context.Background(), d)
+	if err := dk.Ensure(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+
+	out, _ := run(t, dk, d, 10*time.Second, "/bin/echo", "hi")
+	writeErr := dk.WriteFile(ctx, d, "/workspace/notes.md", []byte("kept"))
+	got, readErr := dk.ReadFile(ctx, d, "/workspace/notes.md", 100)
+
+	if strings.TrimSpace(out) != "hi" {
+		t.Errorf("a command ran as %q: the desk's own timeout stood in", out)
+	}
+	if writeErr != nil || readErr != nil || string(got) != "kept" {
+		t.Errorf("files through the desk's own sh: wrote %v, read %q, %v", writeErr, got, readErr)
+	}
+}
+
 func TestACommandThatRunsTooLongIsStopped(t *testing.T) {
 	dk, d := dockerRig(t)
 

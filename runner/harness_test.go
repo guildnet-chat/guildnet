@@ -243,6 +243,18 @@ type fakeBrain struct {
 	// calls are model calls a wake-up makes, one after another, each asking
 	// the wake-up's meter first and charged there as it returns.
 	calls []ledger.Usage
+
+	// catchupGate and pickGate, when set, hold catch-ups and relevance
+	// checks until they're closed; picks counts relevance checks.
+	catchupGate chan struct{}
+	pickGate    chan struct{}
+	picks       int
+}
+
+func (b *fakeBrain) pickCount() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.picks
 }
 
 // metered makes b's calls under ctx's meter, adding them to res; it stops
@@ -313,6 +325,9 @@ func (b *fakeBrain) lastResume(t *testing.T) resumeCall {
 }
 
 func (b *fakeBrain) Catchup(_ context.Context, req agent.CatchupRequest) (string, ledger.Usage, error) {
+	if b.catchupGate != nil {
+		<-b.catchupGate
+	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.catchups = append(b.catchups, req)
@@ -352,6 +367,13 @@ func (b *fakeBrain) Respond(ctx context.Context, req agent.Request, onStep func(
 }
 
 func (b *fakeBrain) PickResponders(context.Context, string, string, string, []chat.Line, []config.Persona) ([]string, ledger.Usage, error) {
+	b.mu.Lock()
+	b.picks++
+	gate := b.pickGate
+	b.mu.Unlock()
+	if gate != nil {
+		<-gate
+	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.pick, ledger.Usage{Input: 100, Output: 5}, nil

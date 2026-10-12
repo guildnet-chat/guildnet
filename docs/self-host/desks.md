@@ -93,6 +93,7 @@ persist.
 | Setting | Default | |
 | --- | --- | --- |
 | `GUILDNET_DESKS_AT_ONCE` | 1 | desks running at once. When full, the desk idle longest is stopped, or the request waits |
+| `GUILDNET_DESKS_PER_NETWORK` | unset | for a desks host shared by several networks: how many of those desks one network may have. At its share, a network's new desk stops one of its own idle ones, or waits |
 | `GUILDNET_DESK_MEMORY` | `2g` | memory per desk |
 | `GUILDNET_DESK_CPUS` | 2 | CPUs per desk |
 

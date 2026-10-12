@@ -497,13 +497,37 @@ func (t *Toolbox) Prepare(_ context.Context, p config.Persona, name string, inpu
 	}
 	tool, args := o.what(input)
 	summary := "use " + o.connector.Title + ": " + tool
-	if d := describe(args); d != "" {
+	d, whole := describe(args)
+	if d != "" {
 		summary += " (" + d + ")"
 	}
 	if ask, why := t.MustAsk(p, name, input); ask {
 		summary += "; asking because " + why
 	}
+	// What runs is exactly what's approved: when the few words leave
+	// something out, the approver sees all of it, named by its hash.
+	if !whole {
+		summary += "; " + inFull(input) // one line: IRC shows its start
+	}
 	return summary, input, nil
+}
+
+// maxInFull is the most of a call's input an approval shows.
+const maxInFull = 8 << 10
+
+// inFull is a call's whole input, as JSON (keys in order), with the start
+// of its SHA-256.
+func inFull(input map[string]any) string {
+	b, err := json.Marshal(input)
+	if err != nil {
+		return "In full: (it can't be shown: " + err.Error() + ")"
+	}
+	sum := sha256.Sum256(b)
+	s := string(b)
+	if len(s) > maxInFull {
+		s = s[:maxInFull] + fmt.Sprintf("… (%d bytes in all)", len(b))
+	}
+	return fmt.Sprintf("In full (sha256 %x): %s", sum[:6], s)
 }
 
 // Step describes a call for IRC.
@@ -521,7 +545,7 @@ func (t *Toolbox) Step(name string, input map[string]any) string {
 				}
 			}
 			step := "uses " + s.Title + ": " + tool
-			if d := describe(args); d != "" {
+			if d, _ := describe(args); d != "" {
 				step += " (" + d + ")"
 			}
 			return step
@@ -562,7 +586,8 @@ func (t *Toolbox) Run(ctx context.Context, p config.Persona, name string, input 
 	// A change that ran without asking (one that asked is on record already).
 	if !o.Ask && !o.reads(input) && !(o.runs != "" && o.defaulted) && t.o.Wrote != nil {
 		tool, args := o.what(input)
-		t.o.Wrote(p, o.connector.ID, tool, describe(args))
+		d, _ := describe(args)
+		t.o.Wrote(p, o.connector.ID, tool, d)
 	}
 	return agent.Untrusted(o.connector.ID, text), nil
 }
@@ -741,23 +766,32 @@ func contentText(content []mcp.Content) string {
 	return strings.Join(parts, "\n")
 }
 
-// describe is a call's input in a few words: its short text and numbers.
-func describe(input map[string]any) string {
+// describe is a call's input in a few words: its short text and numbers,
+// and whether that's all of it (nothing cut short or left out).
+func describe(input map[string]any) (string, bool) {
 	keys := make([]string, 0, len(input))
 	for k := range input {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 	var parts []string
+	whole := true
 	for _, k := range keys {
 		switch v := input[k].(type) {
 		case string:
-			parts = append(parts, fmt.Sprintf("%s: %s", k, oneLine(v, 80)))
+			short := oneLine(v, 80)
+			whole = whole && short == v
+			parts = append(parts, fmt.Sprintf("%s: %s", k, short))
 		case float64, bool, int:
 			parts = append(parts, fmt.Sprintf("%s: %v", k, v))
+		case nil:
+		default:
+			whole = false // a list or object: left out of the few words
 		}
 	}
-	return oneLine(strings.Join(parts, ", "), 240)
+	joined := strings.Join(parts, ", ")
+	short := oneLine(joined, 240)
+	return short, whole && short == joined
 }
 
 func oneLine(s string, max int) string {

@@ -354,6 +354,42 @@ func TestWhenEveryDeskIsWorkingTheSandboxIsFull(t *testing.T) {
 	}
 }
 
+// One network has only its share of the sandbox's desks at once: the rest
+// stay for other networks. At its share, a network makes room by stopping
+// one of its own idle desks, never another's.
+func TestOneNetworkHasOnlyItsShareOfTheDesks(t *testing.T) {
+	b := newBackend()
+	c := &clock{now: time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)}
+	s := sandbox.NewServer(sandbox.Options{Backend: b, PublicKeys: []ed25519.PublicKey{publicKey}, Now: c.Now, MaxRunning: 3, MaxPerNetwork: 2})
+	srv := httptest.NewServer(s)
+	t.Cleanup(srv.Close)
+	r := &rig{backend: b, server: s, url: srv.URL, clock: c}
+	ctx := context.Background()
+	r.client("acme").Open(ctx, "kai")
+	r.client("acme").Open(ctx, "vera")
+	c.add(30 * time.Second) // used a moment ago: still at work
+
+	if err := r.client("acme").Open(ctx, "sam"); !errors.Is(err, desk.ErrFull) {
+		t.Errorf("acme's third desk while its two work: %v", err)
+	}
+	if err := r.client("globex").Open(ctx, "hal"); err != nil {
+		t.Errorf("globex's desk, with room left: %v", err)
+	}
+
+	c.add(time.Hour) // all idle now
+	if err := r.client("acme").Open(ctx, "sam"); err != nil {
+		t.Fatalf("acme's third desk, its others idle: %v", err)
+	}
+	for _, d := range b.stopped {
+		if !strings.HasPrefix(d, "acme/") {
+			t.Errorf("stopped %s to make room for acme", d)
+		}
+	}
+	if len(b.stopped) != 1 {
+		t.Errorf("stopped %v, want one of acme's", b.stopped)
+	}
+}
+
 func TestADeskRunningACommandIsNeverStopped(t *testing.T) {
 	r := startHolding(t, 1)
 	ctx := context.Background()

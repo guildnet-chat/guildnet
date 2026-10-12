@@ -86,6 +86,24 @@ func (p *Postgres) MoveApproval(ctx context.Context, id int64, approver string, 
 	return nil
 }
 
+func (p *Postgres) Unresumed(ctx context.Context) ([]Approval, error) {
+	rows, err := p.pool.Query(ctx, `SELECT `+listColumns+` FROM approvals
+		WHERE status <> 'pending' AND resumed_at IS NULL ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Approval, error) { return scanApproval(r) })
+}
+
+func (p *Postgres) ClaimResume(ctx context.Context, id int64, at time.Time) (bool, error) {
+	tag, err := p.pool.Exec(ctx, `UPDATE approvals SET resumed_at = $2
+		WHERE id = $1 AND status <> 'pending' AND resumed_at IS NULL`, id, at)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
+}
+
 // orNull stores a zero time as NULL.
 func orNull(t time.Time) *time.Time {
 	if t.IsZero() {

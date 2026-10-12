@@ -215,15 +215,19 @@ func TestCarryingOnAfterAnApprovalIsCounted(t *testing.T) {
 	}
 }
 
-// If the platform can't be asked, desks work anyway: an outage of the
-// platform shouldn't stop agents working.
-func TestADeskWorksIfThePlatformCantBeAsked(t *testing.T) {
+// If the platform can't be asked, an agent still works, but in chat: its
+// desk's time can't be counted, so it isn't given away. It tries again for
+// a while first, as when every desk is busy.
+func TestADeskWaitsThenWorksInChatIfThePlatformCantBeAsked(t *testing.T) {
 	meter := &fakeMeter{fail: errors.New("connection refused")}
 	n := meteredDesks(t, meter, &fakeBrain{reply: replyWith("from my desk")})
 
 	n.human.say("#engineering", "kai: run the tests")
 
-	n.human.expect("kai answering from its desk", fromContaining("kai", "#engineering", "from my desk"))
+	n.human.expect("kai answering from chat", fromContaining("kai", "#engineering", "from chat"))
+	if asks := meter.asks(); len(asks) < 2 {
+		t.Errorf("asked %d times; want it tried again before giving up", len(asks))
+	}
 }
 
 // Managed Agents' desks run on the company's own Anthropic account, so

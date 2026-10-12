@@ -41,6 +41,9 @@ type Approval struct {
 	// is who's being asked now, until MovesAt (zero: it stays with them).
 	Route   []string
 	MovesAt time.Time
+	// resumed is when the agent carried on after the decision (memory
+	// store; Postgres keeps resumed_at).
+	resumed time.Time
 }
 
 // Approvals is where approvals are kept. Every Store is one.
@@ -53,6 +56,13 @@ type Approvals interface {
 	ApprovalsSince(ctx context.Context, since time.Time) ([]Approval, error)
 	// MoveApproval asks the next person on a pending approval's route.
 	MoveApproval(ctx context.Context, id int64, approver string, movesAt time.Time) error
+	// Unresumed are the decided approvals (approved, denied or expired)
+	// whose agent hasn't yet carried on: after a restart, they still need
+	// to.
+	Unresumed(ctx context.Context) ([]Approval, error)
+	// ClaimResume marks a decided approval as carried on with, and reports
+	// whether this was the first to: each is carried on with once.
+	ClaimResume(ctx context.Context, id int64, at time.Time) (bool, error)
 }
 
 // Settings are the org's own settings, by name; unset ones read as "".
@@ -125,6 +135,35 @@ func (m *Memory) MoveApproval(_ context.Context, id int64, approver string, move
 	a.Approver, a.MovesAt = approver, movesAt
 	m.approvals[id] = a
 	return nil
+}
+
+func (m *Memory) Unresumed(context.Context) ([]Approval, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []Approval
+	for _, a := range m.approvals {
+		if a.Status != Pending && a.resumed.IsZero() {
+			a.Resume = ""
+			out = append(out, a)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out, nil
+}
+
+func (m *Memory) ClaimResume(_ context.Context, id int64, at time.Time) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	a, ok := m.approvals[id]
+	if !ok {
+		return false, ErrNotFound
+	}
+	if a.Status == Pending || !a.resumed.IsZero() {
+		return false, nil
+	}
+	a.resumed = at
+	m.approvals[id] = a
+	return true, nil
 }
 
 func (m *Memory) Setting(_ context.Context, key string) (string, error) {

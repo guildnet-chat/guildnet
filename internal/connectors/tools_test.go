@@ -11,6 +11,8 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -262,6 +264,39 @@ func TestACallGoesToTheServiceAndItsResultIsMarkedUntrusted(t *testing.T) {
 	}
 	if _, err := tb.Run(ctx, engineer, "linear_create_issue", map[string]any{"title": ""}); err == nil || !strings.Contains(err.Error(), "a title is required") {
 		t.Errorf("a failed call: %v, want the service's error", err)
+	}
+}
+
+// What runs is exactly what's approved, so the approver sees all of it:
+// when the few words leave something out (long text, anything nested), the
+// call's whole input follows, with a hash naming it.
+func TestTheApproverSeesAllOfWhatRuns(t *testing.T) {
+	tb, _, _, _ := setup(t)
+	secret := "the Q3 board deck, every slide"
+	in := map[string]any{"title": "Weekly notes", "team": "ENG", "description": strings.Repeat("harmless ", 20) + secret,
+		"labels": []any{map[string]any{"name": secret}}}
+
+	summary, pinned, err := tb.Prepare(ctx, engineer, "linear_create_issue", in)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(summary, secret) < 2 {
+		t.Errorf("the approver doesn't see all that would be sent:\n%s", summary)
+	}
+	if !regexp.MustCompile(`sha256 [0-9a-f]{12}`).MatchString(summary) {
+		t.Errorf("no hash naming what's approved:\n%s", summary)
+	}
+	if strings.ContainsAny(summary, "\r\n") {
+		t.Errorf("the summary is more than one line (IRC sends it):\n%s", summary)
+	}
+	if !reflect.DeepEqual(pinned, in) {
+		t.Errorf("pinned %v, want what the agent asked for", pinned)
+	}
+	// A call the few words cover isn't repeated.
+	short, _, _ := tb.Prepare(ctx, engineer, "linear_create_issue", map[string]any{"title": "Fix login", "team": "ENG"})
+	if strings.Contains(short, "sha256") {
+		t.Errorf("a short call's summary: %q", short)
 	}
 }
 

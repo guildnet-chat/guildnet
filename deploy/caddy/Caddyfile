@@ -7,6 +7,11 @@
 # addresses unless GUILDNET_CONSOLE_UPSTREAM, GUILDNET_IRC_UPSTREAM and
 # GUILDNET_IRC_HINT_UPSTREAM say otherwise (localhost, in one pod or task).
 {
+	# No admin API: in one pod or task every container shares localhost,
+	# and could otherwise change where visitors are sent. Config changes
+	# take a restart.
+	admin off
+
 	# IRC over TLS: <network>.<domain>:6697. TLS ends here with the network's
 	# certificate; the connection goes on to Ergo, with the visitor's address
 	# in a PROXY protocol header. An app that forgot TLS is told so by the

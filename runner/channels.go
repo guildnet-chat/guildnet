@@ -6,11 +6,14 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/ergochat/irc-go/ircevent"
 	"github.com/ergochat/irc-go/ircmsg"
+
+	"github.com/guildnet-chat/guildnet/internal/org"
 )
 
 // Channel names people choose: a team's, and an agent's channels.
@@ -147,6 +150,57 @@ func (r *Runner) mayPutAgentIn(actor string, chans []string) error {
 		}
 	}
 	return nil
+}
+
+// mayShareFromPrivateTeams refuses to give a team (before, as after) repos
+// or connected services a private team uses, for someone who isn't in that
+// team's channel: the team's agents would read them, and can be asked
+// what's there. Other teams' are shared freely.
+func (r *Runner) mayShareFromPrivateTeams(actor string, before, after org.Team) error {
+	if r.isOwner(actor) {
+		return nil
+	}
+	repos, conns := addedFold(before.Repos, after.Repos), addedFold(before.Connectors, after.Connectors)
+	if len(repos) == 0 && len(conns) == 0 {
+		return nil
+	}
+	teams, err := r.store.Teams(context.Background())
+	if err != nil {
+		return r.storeRefusal(after.Name, err)
+	}
+	plans := r.plan()
+	for _, t := range teams {
+		if !t.Private || strings.EqualFold(t.Name, after.Name) {
+			continue
+		}
+		if p := plans[strings.ToLower(t.Channel)]; p != nil {
+			if _, in := p.ranks[strings.ToLower(actor)]; in {
+				continue
+			}
+		}
+		for _, repo := range repos {
+			if slices.ContainsFunc(t.Repos, func(x string) bool { return strings.EqualFold(x, repo) }) {
+				return refuse(forbidden, "%s is private team %s's: only someone in %s can share it.", repo, t.Name, t.Name)
+			}
+		}
+		for _, c := range conns {
+			if slices.ContainsFunc(t.Connectors, func(x string) bool { return strings.EqualFold(x, c) }) {
+				return refuse(forbidden, "%s is connected for private team %s: only someone in %s can share it.", c, t.Name, t.Name)
+			}
+		}
+	}
+	return nil
+}
+
+// addedFold is what's in after and not in before, ignoring letter case.
+func addedFold(before, after []string) []string {
+	var out []string
+	for _, x := range after {
+		if !slices.ContainsFunc(before, func(y string) bool { return strings.EqualFold(x, y) }) {
+			out = append(out, x)
+		}
+	}
+	return out
 }
 
 // added is what's in after and not in before.

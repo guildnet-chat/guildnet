@@ -270,6 +270,7 @@ type MemoryStore struct {
 	oauthClients map[string]connectors.Client
 	connMu       sync.Mutex         // connection changes, one at a time
 	gitRepos     map[string]GitRepo // by network|name
+	deskLeases   leaseMap           // by lease ID
 }
 
 func (s *MemoryStore) OnboardingDone(_ context.Context, network string) (map[string]bool, error) {

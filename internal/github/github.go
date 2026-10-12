@@ -418,7 +418,7 @@ func (c *Client) Prepare(ctx context.Context, p config.Persona, name string, in 
 	checks := c.checks(ctx, repo, pr.GetHead().GetSHA())
 	summary := fmt.Sprintf("merge PR #%d %q into %s in %s (%d files, +%d -%d; checks: %s)",
 		n, pr.GetTitle(), pr.GetBase().GetRef(), repo, pr.GetChangedFiles(), pr.GetAdditions(), pr.GetDeletions(), checks.short())
-	pinned := map[string]any{"repo": repo, "number": float64(n), "head_sha": pr.GetHead().GetSHA()}
+	pinned := map[string]any{"repo": repo, "number": float64(n), "head_sha": pr.GetHead().GetSHA(), "base_ref": pr.GetBase().GetRef()}
 	return summary, pinned, nil
 }
 
@@ -648,6 +648,17 @@ func (c *Client) merge(ctx context.Context, p config.Persona, in map[string]any)
 	head := str(in, "head_sha")
 	if head == "" {
 		return "", errors.New("merging needs a person's approval first, and this call wasn't approved")
+	}
+	// Into the branch that was approved: a PR's author can move it to
+	// another after.
+	if base := str(in, "base_ref"); base != "" {
+		pr, err := c.pull(ctx, repo, n)
+		if err != nil {
+			return "", err
+		}
+		if now := pr.GetBase().GetRef(); now != base {
+			return "", fmt.Errorf("PR #%d was moved from %s to %s after it was approved, so it wasn't merged; ask for approval again", n, base, now)
+		}
 	}
 	res, resp, err := c.gh.PullRequests.Merge(ctx, c.owner(), repo, n, "", &gh.PullRequestOptions{SHA: head, MergeMethod: "squash"})
 	if resp != nil && resp.StatusCode == http.StatusConflict {

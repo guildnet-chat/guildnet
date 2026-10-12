@@ -260,6 +260,10 @@ func (s *Server) config() ([]byte, error) {
 	}
 	accounts := conf["accounts"].(map[string]any)
 	accounts["jwt-auth"] = map[string]any{"enabled": true, "autocreate": false, "tokens": []any{token}}
+	// The image's own config lets nobody in without an account, or register
+	// one; tests connect people both ways, as deployments choose.
+	accounts["registration"].(map[string]any)["enabled"] = true
+	accounts["require-sasl"].(map[string]any)["enabled"] = false
 	if s.noMultiline {
 		conf["limits"].(map[string]any)["multiline"] = map[string]any{"max-bytes": 0, "max-lines": 0}
 	}

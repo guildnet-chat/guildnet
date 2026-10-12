@@ -305,15 +305,61 @@ func (r *Runner) guildDecide(from, actor string, allow bool, args []string) {
 func (r *Runner) resumeAfter(a org.Approval, allow bool, reason string) {
 	p, ok := r.persona(a.Agent)
 	if !ok {
-		return // fired meanwhile
+		// Fired meanwhile: there's no one to carry on.
+		r.store.ClaimResume(context.Background(), a.ID, r.now())
+		return
 	}
+	// One job per decision at a time, however it came (deciding, expiring,
+	// or replayDecisions after a restart).
+	r.mu.Lock()
+	if r.resuming[a.ID] {
+		r.mu.Unlock()
+		return
+	}
+	if r.resuming == nil {
+		r.resuming = map[int64]bool{}
+	}
+	r.resuming[a.ID] = true
+	r.mu.Unlock()
 	// Lists of approvals leave out what the agent carries on from.
 	if a.Resume == "" {
 		if full, err := r.store.Approval(context.Background(), a.ID); err == nil {
 			a.Resume = full.Resume
 		}
 	}
-	r.enqueue(job{persona: p, key: fmt.Sprintf("approval #%d", a.ID), decision: &decision{approval: a, allow: allow, reason: reason}})
+	if !r.enqueue(job{persona: p, key: fmt.Sprintf("approval #%d", a.ID), decision: &decision{approval: a, allow: allow, reason: reason}}) {
+		// The agent's queue is full: replayDecisions tries again.
+		r.mu.Lock()
+		delete(r.resuming, a.ID)
+		r.mu.Unlock()
+	}
+}
+
+// claimResume marks the decision j carries as carried on with, and reports
+// whether to go on: no one has, or will.
+func (r *Runner) claimResume(a org.Approval) bool {
+	claimed, err := r.store.ClaimResume(context.Background(), a.ID, r.now())
+	r.mu.Lock()
+	delete(r.resuming, a.ID)
+	r.mu.Unlock()
+	if err != nil {
+		monitor.Problem(r.logger, "carrying on after #%d: %v", a.ID, err)
+		return false // replayDecisions tries again
+	}
+	return claimed
+}
+
+// replayDecisions carries on after decisions no agent has yet: one made
+// just before a restart, or that found its agent's queue full.
+func (r *Runner) replayDecisions() {
+	decided, err := r.store.Unresumed(context.Background())
+	if err != nil {
+		monitor.Problem(r.logger, "decisions to carry on with: %v", err)
+		return
+	}
+	for _, a := range decided {
+		r.resumeAfter(a, a.Status == org.Approved, a.Reason)
+	}
 }
 
 // handleDecision carries an agent on after a decision and delivers what it
@@ -445,6 +491,7 @@ func (r *Runner) watchApprovals(stop <-chan struct{}) {
 		}
 		r.mu.Unlock()
 	}
+	r.replayDecisions()
 	every := r.cfg.ApprovalCheckEvery
 	if every <= 0 {
 		every = time.Minute
@@ -458,6 +505,7 @@ func (r *Runner) watchApprovals(stop <-chan struct{}) {
 		case <-t.C:
 			r.moveApprovals()
 			r.expireApprovals()
+			r.replayDecisions()
 		}
 	}
 }

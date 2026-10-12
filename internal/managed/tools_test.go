@@ -97,6 +97,34 @@ func says(text string) []managed.Event {
 	return []managed.Event{{Kind: managed.Message, Text: text}, {Kind: managed.Idle, Stop: "end_turn"}}
 }
 
+// sourcedToolbox says its tools are the team's code, as GitHub's do.
+type sourcedToolbox struct{ *fakeToolbox }
+
+func (sourcedToolbox) SourceOf(string) string { return agent.YourRepos }
+
+// What a desk's own tools brought in (a web page, a package's README) is
+// read from outside: a write to the team's code right after asks a person
+// first, as after reading anywhere else.
+func TestAWriteAfterTheDesksOwnWebFetchAsks(t *testing.T) {
+	desks := &fakeDesks{script: [][]managed.Event{
+		{{Kind: managed.ToolUse, ID: "w1", Tool: "web_fetch", Input: map[string]any{"url": "https://example.com/readme"}}, openPRCall("e1"), waitingOn("e1")},
+	}}
+	tools := &fakeToolbox{}
+	b := managed.New(desks, org.NewMemory(org.Seed{}), managed.Options{Company: "GuildNet builds GuildNet.", Owner: "ada", Toolbox: sourcedToolbox{tools}})
+
+	res, err := b.Respond(context.Background(), wake("kai: read that page and open a PR"), collect(new([]string)))
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Approval == nil || len(tools.calls()) != 0 {
+		t.Errorf("opened the PR without asking (approval %v, ran %q)", res.Approval, tools.calls())
+	}
+	if res.Approval != nil && !strings.Contains(res.Approval.Summary, "desk") {
+		t.Errorf("the approver isn't told why: %q", res.Approval.Summary)
+	}
+}
+
 func TestTheRunnerRunsTheAgentsToolAndSendsBackTheResult(t *testing.T) {
 	desks := &fakeDesks{script: [][]managed.Event{
 		{openPRCall("e1"), waitingOn("e1")},

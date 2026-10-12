@@ -364,6 +364,10 @@ func TestRestoreTrustsOnlyWhatABackupShouldHave(t *testing.T) {
 		"a path out of brand/":           "mkdir -p brand x; echo evil > x/c; tar -cf brand.tar brand x/c",
 		"Compose pointed elsewhere":      "echo 'COMPOSE_FILE=evil.yml' >> env",
 		"a line that isn't a setting":    "echo 'x' >> env",
+		// The images the stack runs come from GuildNet's registry, unless
+		// the one restoring says otherwise.
+		"images from elsewhere":       "echo 'GUILDNET_REGISTRY=evil.example/x' >> env",
+		"a desk image from elsewhere": "echo 'GUILDNET_DESK_IMAGE=evil.example/desk' >> env",
 	}
 	if runtime.GOOS != "windows" { // Git Bash can't make links without being an administrator
 		tampered["a link in the brand files"] = "mkdir brand; ln -s ../stack/compose.yml brand/logo.svg; tar -cf brand.tar brand"
@@ -377,6 +381,22 @@ func TestRestoreTrustsOnlyWhatABackupShouldHave(t *testing.T) {
 		if err == nil || strings.Contains(s.read("compose.yml"), "evil") || strings.Contains(s.calls(), "compose up") {
 			t.Errorf("%s: restored it, or started something:\n%s", name, out)
 		}
+	}
+}
+
+// The release a restored install runs is this checkout's, not what the
+// backup says: a backup can't take the install back to an older release.
+func TestRestoreRunsThisCheckoutsRelease(t *testing.T) {
+	s := newInstall(t, "restore.sh")
+	if out, err := s.run(makeBackup("echo 'GUILDNET_VERSION=25.01.0' >> env")); err != nil {
+		t.Fatalf("making the backup: %v\n%s", err, out)
+	}
+	if out, err := s.run(`sh restore.sh "$T/backup"`); err != nil {
+		t.Fatalf("restore.sh: %v\n%s", err, out)
+	}
+	env := s.read(".env")
+	if strings.Contains(env, "GUILDNET_VERSION=25.01.0") || !strings.Contains(env, "GUILDNET_VERSION="+strings.TrimSpace(s.read("../../VERSION"))) {
+		t.Errorf("the restored install's release:\n%s", env)
 	}
 }
 

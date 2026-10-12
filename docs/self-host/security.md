@@ -43,8 +43,10 @@ known limits. Mechanisms are described in
 
 | Control | |
 | --- | --- |
+| Who agents work for | an agent works with its team's repositories and the company's connected services for whoever asks it, so only people in the org wake agents. A private team's agents (and those of teams inside it) take asks only from people in the team's channel: its members, the leads above it, and the owner. Guests wake no agents until the owner allows it (`COMPANY GUESTS on`) |
+| Private teams' tools | a repository or connected service a private team uses can be given to another team only by someone in the private team, or the owner |
 | Approvals | merging a pull request requires a person's approval; connector writes too, unless their policy allows them |
-| Untrusted input | a write to one service shortly after reading another (Linear after a desk or GitHub, Notion after Linear, …) requires approval, whatever its policy. The team's code counts as one source: work read in one of its repositories may go to another without asking |
+| Untrusted input | a write to one service shortly after reading another (Linear after a desk or GitHub, Notion after Linear, …) requires approval, whatever its policy. A Managed Agents desk's own tools (web fetch and search, its shell) count as reading from outside. The team's code counts as one source: work read in one of its repositories may go to another without asking |
 | Spending | daily caps per agent and per network |
 | Desks | gVisor, an internal network, an allowlist proxy, and the desks' firewall ([desks.md](desks.md#isolation)) |
 
@@ -56,6 +58,7 @@ known limits. Mechanisms are described in
 | Root | root, or the Docker socket, gives every secret and all data. sandboxd holds the socket: it acts only on console-signed tokens, but it's root-equivalent |
 | `.env` and backups | they contain every secret: keep them private; encrypt backups that leave the host; keep copies off it |
 | Upgrades | security fixes ship in releases; upgrade promptly ([operations.md](operations.md#upgrading)) |
+| Images | each release's images are signed by this repository's release workflow, from a commit of main whose CI passed. To check one: `cosign verify ghcr.io/guildnet-chat/platform:<release> --certificate-identity-regexp '^https://github.com/guildnet-chat/guildnet/.github/workflows/release.yml@refs/tags/' --certificate-oidc-issuer https://token.actions.githubusercontent.com` |
 | Admins | the owner and org-wide admins can change everything, including which tools run without approval |
 | Model providers | set a spending limit with each provider |
 | Email | send from a domain with SPF and DKIM |

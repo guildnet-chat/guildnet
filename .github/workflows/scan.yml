@@ -1,0 +1,60 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# Each week, every image the self-host stack runs is built afresh from main,
+# as a release would build it, and scanned for known vulnerabilities with a
+# fix out (high and critical). A failure means a base image or module
+# needs updating, and a release. Nothing is published.
+name: scan
+
+on:
+  schedule:
+    - cron: "17 6 * * 1" # Mondays, 06:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {image: platform, context: .}
+          - {image: runner, context: .}
+          - {image: sandboxd, context: .}
+          - {image: desk, context: deploy/desk}
+          - {image: ergo, context: deploy/ergo}
+          - {image: caddy, context: deploy/caddy}
+          - {image: postgres, context: deploy/postgres}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          path: guildnet
+      # The console's image builds the web chat in: the release it ships.
+      - if: matrix.image == 'platform'
+        id: chat
+        run: echo "release=$(cat guildnet/deploy/platform/chat-release)" >> "$GITHUB_OUTPUT"
+      - if: matrix.image == 'platform'
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: guildnet-chat/guildnet-chat
+          ref: ${{ steps.chat.outputs.release }}
+          path: chat
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: guildnet/${{ matrix.context }}
+          file: guildnet/deploy/${{ matrix.image }}/Dockerfile
+          build-contexts: ${{ matrix.image == 'platform' && 'chat-src=chat' || '' }}
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: scan/${{ matrix.image }}:latest
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: scan/${{ matrix.image }}:latest
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"

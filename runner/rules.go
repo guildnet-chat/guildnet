@@ -83,6 +83,71 @@ func (r *Runner) inOrgAsPerson(account string) bool {
 	return err == nil
 }
 
+// mayAsk reports whether account may have agent p work for them: p works
+// with its team's repos and the company's connected services for whoever
+// asks, and answers them. A person in the org may; a guest only once the
+// owner lets guests use agents (COMPANY GUESTS on); and for an agent in a
+// private team, or a team inside one, only someone in that team's channel
+// (its people, and the leads above it) or the owner.
+func (r *Runner) mayAsk(account string, p config.Persona) bool {
+	if !r.inOrgAsPerson(account) {
+		return false
+	}
+	if r.isOwner(account) {
+		return true
+	}
+	ctx := context.Background()
+	if m, err := r.store.Member(ctx, account); err == nil && m.Guest {
+		if v, _ := r.store.Setting(ctx, guestsAskSetting); v == "" {
+			return false
+		}
+	}
+	var plans map[string]*channelPlan
+	seen := map[string]bool{}
+	for team := p.Team; team != "" && !seen[strings.ToLower(team)]; {
+		seen[strings.ToLower(team)] = true
+		t, err := r.store.Team(ctx, team)
+		if err != nil {
+			return false
+		}
+		if t.Private {
+			if plans == nil {
+				plans = r.plan()
+			}
+			plan := plans[strings.ToLower(t.Channel)]
+			if plan == nil {
+				return false
+			}
+			if _, in := plan.ranks[strings.ToLower(account)]; !in {
+				return false
+			}
+		}
+		team = t.Parent
+	}
+	return true
+}
+
+// guestsAskSetting is set ("on") when the owner lets guests have agents
+// work for them.
+const guestsAskSetting = "guests-ask-agents"
+
+// setGuestsAsk lets guests have agents work for them, or not: the owner's
+// call, since agents work with the company's accounts.
+func (r *Runner) setGuestsAsk(actor string, on bool) error {
+	if !r.isOwner(actor) {
+		return refuse(forbidden, "only the owner decides whether guests may have agents work for them.")
+	}
+	v := ""
+	if on {
+		v = "on"
+	}
+	if err := r.store.SetSetting(context.Background(), guestsAskSetting, v); err != nil {
+		return r.storeRefusal("the company", err)
+	}
+	r.logChange(actor, "set company", "", "", fmt.Sprintf("guests ask agents: %t", on))
+	return nil
+}
+
 // hireAgent hires an agent as actor. notes are worth passing on (a budget
 // warning, a platform hiccup).
 func (r *Runner) hireAgent(actor, nick string, fields []field) (p config.Persona, notes []string, err error) {
@@ -117,7 +182,7 @@ func (r *Runner) hireAgent(actor, nick string, fields []field) (p config.Persona
 	if err := r.allowed(actor, canHire, where(p.Team), "hire"); err != nil {
 		return p, nil, err
 	}
-	if err := r.mayPutAgentIn(actor, p.Channels); err != nil {
+	if err := r.mayPutAgentIn(actor, r.channelsFor(p)); err != nil {
 		return p, nil, err
 	}
 	if explicit["BUDGET"] {
@@ -186,7 +251,7 @@ func (r *Runner) setAgent(actor, nick string, fields []field) (p config.Persona,
 	if msg := deskProblem(p); msg != "" {
 		return p, nil, refuse(invalid, "%s", msg)
 	}
-	if err := r.mayPutAgentIn(actor, added(before.Channels, p.Channels)); err != nil {
+	if err := r.mayPutAgentIn(actor, added(r.channelsFor(before), r.channelsFor(p))); err != nil {
 		return p, nil, err
 	}
 	if budgetChanged {
@@ -434,6 +499,9 @@ func (r *Runner) createTeam(actor, name string, fields []field) (org.Team, error
 	if err := r.allowed(actor, canArrange, where(l.Parent), "create teams"); err != nil {
 		return l, err
 	}
+	if err := r.mayShareFromPrivateTeams(actor, org.Team{Name: l.Name}, l); err != nil {
+		return l, err
+	}
 	if msg := r.checkTeamChannel(l.Name, l.Channel); msg != "" {
 		return l, refuse(invalid, "%s", msg)
 	}
@@ -514,6 +582,9 @@ func (r *Runner) setTeam(actor, name string, fields []field) (org.Team, error) {
 		if err := r.mayTakeChannel(actor, l.Channel); err != nil {
 			return l, err
 		}
+	}
+	if err := r.mayShareFromPrivateTeams(actor, before, l); err != nil {
+		return l, err
 	}
 	if err := r.store.UpdateTeam(context.Background(), l); err != nil {
 		return l, r.storeRefusal(l.Name, err)

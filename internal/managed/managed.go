@@ -105,8 +105,14 @@ const maxRounds = 50
 
 // New returns a Brain whose desks are remembered in store.
 func New(desks Desks, store org.Desks, opts Options) *Brain {
+	// Reads by the desk's own tools are kept track of with the runner's.
+	opts.Toolbox = agent.Tracked(opts.Toolbox)
 	return &Brain{desks: desks, store: store, opts: opts}
 }
+
+// deskSource is where a desk's own tools (bash, a web fetch, a package's
+// files) read from, for the read-then-write rule: outside the company.
+const deskSource = "the web, at its Managed Agents desk"
 
 // Respond wakes the agent at its desk.
 func (b *Brain) Respond(ctx context.Context, req agent.Request, onStep func(agent.Step)) (agent.Result, error) {
@@ -276,6 +282,9 @@ func (b *Brain) work(ctx context.Context, p config.Persona, d org.Desk, events [
 				}
 			case ToolUse:
 				calls[e.ID] = e
+				if r, ok := b.opts.Toolbox.(agent.Reader); ok && !e.Custom {
+					r.ReadFrom(p, deskSource)
+				}
 			case Usage:
 				d.CostCents = max(d.CostCents, e.CostCents)
 			case Idle:
@@ -374,6 +383,12 @@ func (b *Brain) answer(ctx context.Context, p config.Persona, waiting []string, 
 			if err != nil {
 				out = append(out, failed(id, err.Error()))
 				continue
+			}
+			// Asking because of what it read, not the tool: say so.
+			if a, ok := b.opts.Toolbox.(agent.Asker); ok && !tool.Ask {
+				if _, why := a.MustAsk(p, e.Tool, e.Input); why != "" && !strings.Contains(s, why) {
+					s += "; asking because " + why
+				}
 			}
 			pend, summary = &pending{EventID: id, Custom: true, Tool: e.Tool, Input: pinned}, s
 		default:

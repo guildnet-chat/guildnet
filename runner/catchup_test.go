@@ -149,7 +149,8 @@ func TestCatchupForOneChannel(t *testing.T) {
 func TestCatchupOnlyCoversChannelsYoureIn(t *testing.T) {
 	brain := &fakeBrain{digest: "summary"}
 	n := startNetwork(t, brain)
-	dana := joinHuman(t, n.srv.Addr(), "dana", "#engineering")
+	inOrg(t, n.human, "dana")
+	dana := n.joinAs("dana", "#engineering")
 	n.waitForMembers("#engineering", "dana", "kai", "ledger", "method", "vera")
 	n.human.say("#general", "something in general")
 	n.human.say("#engineering", "something in engineering")

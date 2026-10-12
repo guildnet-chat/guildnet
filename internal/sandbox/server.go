@@ -52,6 +52,9 @@ type Options struct {
 	// past it, the desk left idle longest is stopped to make room, or, if
 	// every one is at work, ErrFull. 0 for no limit.
 	MaxRunning int
+	// MaxPerNetwork is how many of those one network's desks may be, so
+	// one network can't hold every one; 0 means MaxRunning.
+	MaxPerNetwork int
 }
 
 // Server is sandboxd's API.
@@ -219,31 +222,45 @@ func (s *Server) awake(ctx context.Context, d Desk, check bool) error {
 	return nil
 }
 
-// admit finds room for d to start: below MaxRunning, or by stopping the
-// desk left idle longest (idleBefore at least, and not at work). d is then
-// counted as starting. ErrFull if every running desk is at work.
+// admit finds room for d to start: below MaxRunning and its network's
+// share (MaxPerNetwork), or by stopping the desk left idle longest
+// (idleBefore at least, and not at work): its own network's, if it's at
+// its share. d is then counted as starting. ErrFull if there's none to
+// stop.
 func (s *Server) admit(ctx context.Context, d Desk) error {
 	if s.opts.MaxRunning <= 0 {
 		return nil
 	}
+	share := s.opts.MaxPerNetwork
+	if share <= 0 || share > s.opts.MaxRunning {
+		share = s.opts.MaxRunning
+	}
 	for {
 		now := s.opts.Now()
 		s.mu.Lock()
-		running := 0
+		running, ours := 0, 0
+		for k, st := range s.desks {
+			if k != d && (st.awake || st.starting) {
+				running++
+				if k.Network == d.Network {
+					ours++
+				}
+			}
+		}
+		atShare := ours >= share
 		var idle Desk
 		var idleSince time.Time
 		found := false
 		for k, st := range s.desks {
-			if k == d || !(st.awake || st.starting) {
+			if k == d || !(st.awake || st.starting) || (atShare && k.Network != d.Network) {
 				continue
 			}
-			running++
 			if st.awake && !st.starting && !st.stopping && st.busy == 0 && now.Sub(st.used) >= idleBefore &&
 				(!found || st.used.Before(idleSince)) {
 				idle, idleSince, found = k, st.used, true
 			}
 		}
-		if running < s.opts.MaxRunning {
+		if running < s.opts.MaxRunning && !atShare {
 			if st := s.desks[d]; st != nil {
 				st.starting = true
 			}

@@ -169,27 +169,37 @@ func (r *Router) metered(p config.Persona) bool {
 
 // deskTurn waits for nick's desk to be given a turn: why it can't have one
 // (so the agent works in chat), or an error if the wake-up ran out of time
-// waiting. If the platform can't be asked, the desk works uncounted.
+// waiting. If the platform can't be asked, it's asked again as when every
+// desk is busy: a desk's time that can't be counted isn't given away.
 func (r *Router) deskTurn(ctx context.Context, nick string, resume bool, onStep func(agent.Step)) (desk.Turn, string, error) {
 	m := r.meter
 	giveUp := time.Now().Add(m.Wait)
-	said := false
+	said, unasked := false, false
 	for {
 		turn, err := m.Meter.StartDesk(ctx, nick, resume)
 		switch {
 		case err != nil:
-			monitor.Problem(m.Logger, "desks: asking whether %s's desk may work: %v", nick, err)
-			return desk.Turn{}, "", nil
+			if !unasked {
+				monitor.Problem(m.Logger, "desks: asking whether %s's desk may work: %v", nick, err)
+				unasked = true
+			}
 		case turn.Refused != "":
 			return desk.Turn{}, turn.Refused, nil
 		case !turn.Busy:
 			return turn, "", nil
 		}
 		if !said {
-			onStep(agent.Step{Summary: "is waiting for a desk: all of this network's desks are working", Result: true})
+			why := "all of this network's desks are working"
+			if err != nil {
+				why = "its desk's time can't be counted just now"
+			}
+			onStep(agent.Step{Summary: "is waiting for a desk: " + why, Result: true})
 			said = true
 		}
 		if !resume && time.Now().After(giveUp) {
+			if err != nil {
+				return desk.Turn{}, "its desk's time couldn't be counted (GuildNet didn't answer)", nil
+			}
 			return desk.Turn{}, "all of this network's desks stayed busy", nil
 		}
 		select {

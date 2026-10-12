@@ -422,7 +422,8 @@ accounts:
     registration:
         # can users register new accounts for themselves? if this is false, operators with
         # the `accreg` capability can still create accounts with `/NICKSERV SAREGISTER`
-        enabled: true
+        # GuildNet: no; accounts come from the console's invites.
+        enabled: false
 
         # can users use the REGISTER command to register before fully connecting?
         allow-before-connect: true
@@ -517,7 +518,8 @@ accounts:
         # WARNING: for a private server, you MUST set accounts.registration.enabled
         # to false as well, in order to prevent non-administrators from registering
         # accounts.
-        enabled: false
+        # GuildNet: yes; a network is its company's people and agents only.
+        enabled: true
 
         # IPs/CIDRs which are exempted from the account requirement
         exempted:
@@ -664,7 +666,9 @@ accounts:
                 algorithm: "hmac" # either 'hmac', 'rsa', or 'eddsa' (ed25519)
                 # hmac takes a symmetric key, rsa and eddsa take PEM-encoded public keys;
                 # either way, the key can be specified either as a YAML string:
-                key: "your-shared-key"
+                # GuildNet: none built in; each deployment gives its own
+                # (ERGO__ACCOUNTS__JWT_AUTH__TOKENS).
+                key: ""
                 # or as a path to the file containing the key:
                 #key-file: "jwt_pubkey.pem"
                 # list of JWT claim names to search for the user's account name (make sure the format
@@ -765,47 +769,9 @@ oper-classes:
             - "metadata"     # modify arbitrary metadata on channels and users
 
 # ircd operators
-opers:
-    # default operator named 'admin'; log in with /OPER admin <password>
-    admin:
-        # which capabilities this oper has access to
-        class: "server-admin"
-
-        # traditionally, operator status is visible to unprivileged users in
-        # WHO and WHOIS responses. this can be disabled with 'hidden'.
-        hidden: true
-
-        # custom whois line (if `hidden` is enabled, visible only to other operators)
-        whois-line: is the server administrator
-
-        # custom hostname (ignored if `hidden` is enabled)
-        #vhost: "staff"
-
-        # modes are modes to auto-set upon opering-up. uncomment this to automatically
-        # enable snomasks ("server notification masks" that alert you to server events;
-        # see `/quote help snomasks` while opered-up for more information):
-        #modes: +is acdjknoqtuxv
-
-        # operators can be authenticated either by password (with the /OPER command),
-        # or by certificate fingerprint, or both. if a password hash is set, then a
-        # password is required to oper up (e.g., /OPER dan mypassword). to generate
-        # the hash, use `ergo genpasswd`.
-        password: "$2a$04$0123456789abcdef0123456789abcdef0123456789abcdef01234"
-
-        # if a SHA-256 certificate fingerprint is configured here, then it will be
-        # required to /OPER. if you comment out the password hash above, then you can
-        # /OPER without a password.
-        #certfp: "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
-        # if 'auto' is set (and no password hash is set), operator permissions will be
-        # granted automatically as soon as you connect with the right fingerprint.
-        #auto: true
-
-    # example of a moderator named 'alice'
-    # (log in with /OPER alice <password>):
-    #alice:
-    #    class: "chat-moderator"
-    #    whois-line: "can help with moderation issues!"
-    #    password: "$2a$04$0123456789abcdef0123456789abcdef0123456789abcdef01234"
+# GuildNet: no operators built in. Each deployment adds its own (GuildServ's,
+# ERGO__OPERS__GUILDSERV__*), so no password anyone could know opens one.
+opers: {}
 
 # logging, takes inspiration from Insp
 logging:
@@ -1242,5 +1208,6 @@ api:
     # these must be strong, unique, high-entropy printable ASCII strings.
     # to generate a new token, use `ergo gentoken` or:
     # python3 -c "import secrets; print(secrets.token_urlsafe(32))"
-    bearer-tokens:
-        - "example"
+    # GuildNet: none built in; each deployment gives its own
+    # (ERGO__API__BEARER_TOKENS).
+    bearer-tokens: []

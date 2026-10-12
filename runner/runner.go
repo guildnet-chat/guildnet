@@ -116,6 +116,13 @@ type Runner struct {
 	halted   map[string]bool      // conversation -> loop guard tripped
 	heard    map[string]time.Time // conversation|nick -> when their last line arrived
 	blocked  map[string]string    // agent -> day a budget notice was posted
+	// catchupAt is when each account last had a catch-up written (CATCHUP);
+	// routing is the channels whose unaddressed lines are being checked.
+	catchupAt map[string]time.Time
+	routing   map[string]bool
+	// resuming are the decisions queued (or held while paused) for their
+	// agents to carry on with.
+	resuming map[int64]bool
 	paused   bool
 	onHold   []job    // decisions that came in while paused, for !resume
 	twoSteps TwoSteps // how people sign in to the console; nil for no console
@@ -162,6 +169,14 @@ func (r *Runner) Start() error {
 		return err
 	}
 	r.importTeamRepos()
+	// A network someone paused stays paused through a restart.
+	paused, err := r.store.Setting(context.Background(), pausedSetting)
+	if err != nil {
+		return fmt.Errorf("loading whether agents are paused: %w", err)
+	}
+	r.mu.Lock()
+	r.paused = paused != ""
+	r.mu.Unlock()
 	agents, err := r.store.Agents(context.Background())
 	if err != nil {
 		return fmt.Errorf("loading staff: %w", err)
@@ -514,13 +529,16 @@ func (r *Runner) onLedgerPrivmsg(e ircmsg.Message) {
 	// "vera: ... kai ..." is for vera; kai is only being mentioned. With no
 	// one addressed first, every agent named in the message wakes.
 	var woken []config.Persona
+	mayWake := func(p config.Persona) bool {
+		return !strings.EqualFold(p.Nick, nick) && r.inChannel(p, target) && (fromAgent || r.mayAsk(account, p))
+	}
 	if p, ok := r.addressee(line.Text); ok {
-		if !strings.EqualFold(p.Nick, nick) && r.inChannel(p, target) {
+		if mayWake(p) {
 			woken = append(woken, p)
 		}
 	} else {
 		for _, p := range r.staff() {
-			if !strings.EqualFold(p.Nick, nick) && r.inChannel(p, target) && mentions(line.Text, p.Nick) {
+			if mentions(line.Text, p.Nick) && mayWake(p) {
 				woken = append(woken, p)
 			}
 		}
@@ -532,7 +550,7 @@ func (r *Runner) onLedgerPrivmsg(e ircmsg.Message) {
 		r.enqueue(job{persona: p, channel: target, key: target, trigger: line})
 	}
 	if len(woken) == 0 && !fromAgent && r.cfg.Relevance.Enabled && !r.mentionsAnyAgent(line.Text) {
-		go r.routeUnaddressed(target, line)
+		go r.routeUnaddressed(target, line, account)
 	}
 }
 
@@ -577,7 +595,7 @@ func (r *Runner) onAgentPrivmsg(agentKey string, e ircmsg.Message) {
 		return
 	}
 	fromAgent := r.isAgent(nick)
-	if !fromAgent && !r.inOrgAsPerson(accountOf(e)) {
+	if !fromAgent && !r.mayAsk(accountOf(e), p) {
 		return // not someone the agent works for
 	}
 
@@ -625,15 +643,33 @@ func (r *Runner) loopGuard(key, where string) bool {
 }
 
 // routeUnaddressed asks the relevance model which agents should answer a
-// human message that didn't name anyone.
-func (r *Runner) routeUnaddressed(channel string, line chat.Line) {
+// human message that didn't name anyone: one check per channel at a time,
+// so a busy channel isn't a model call a line. Lines said while one runs
+// aren't checked on their own.
+func (r *Runner) routeUnaddressed(channel string, line chat.Line, account string) {
 	defer monitor.Recover()
 	if r.isPaused() {
 		return
 	}
+	key := strings.ToLower(channel)
+	r.mu.Lock()
+	if r.routing[key] {
+		r.mu.Unlock()
+		return
+	}
+	if r.routing == nil {
+		r.routing = map[string]bool{}
+	}
+	r.routing[key] = true
+	r.mu.Unlock()
+	defer func() {
+		r.mu.Lock()
+		delete(r.routing, key)
+		r.mu.Unlock()
+	}()
 	var candidates []config.Persona
 	for _, p := range r.staff() {
-		if r.inChannel(p, channel) {
+		if r.inChannel(p, channel) && r.mayAsk(account, p) {
 			candidates = append(candidates, p)
 		}
 	}
@@ -663,18 +699,22 @@ func (r *Runner) routeUnaddressed(channel string, line chat.Line) {
 	}
 }
 
-func (r *Runner) enqueue(j job) {
+// enqueue queues j for its agent, and reports whether it did: a full queue
+// drops a wake-up (a decision is tried again by replayDecisions).
+func (r *Runner) enqueue(j job) bool {
 	// Hold staffMu so stopAgent can't close the queue mid-send.
 	r.staffMu.RLock()
 	defer r.staffMu.RUnlock()
 	q, ok := r.queues[strings.ToLower(j.persona.Nick)]
 	if !ok {
-		return
+		return false
 	}
 	select {
 	case q <- j:
+		return true
 	default:
 		r.logger.Printf("%s's queue is full; dropping wake from %s", j.persona.Nick, j.trigger.Nick)
+		return false
 	}
 }
 
@@ -718,6 +758,9 @@ func (r *Runner) handle(j job) {
 		// lost either.
 		if r.holdWhilePaused(j) {
 			return
+		}
+		if !r.claimResume(j.decision.approval) {
+			return // carried on with already
 		}
 		act := r.working(p.Nick, j)
 		defer act.finish()
@@ -1139,11 +1182,21 @@ func (r *Runner) command(reply, nick, account, text string) {
 	case "!spend":
 		r.ledgerConn.Privmsg(reply, r.ledger.Summary())
 	case "!pause":
+		if err := r.store.SetSetting(context.Background(), pausedSetting, account); err != nil {
+			monitor.Problem(r.logger, "pausing: %v", err)
+			r.ledgerConn.Privmsg(reply, nick+": that didn't work: the database had a problem. Try again.")
+			return
+		}
 		r.mu.Lock()
 		r.paused = true
 		r.mu.Unlock()
 		r.ledgerConn.Privmsg(reply, fmt.Sprintf("all agents paused by %s. !resume to wake them.", nick))
 	case "!resume":
+		if err := r.store.SetSetting(context.Background(), pausedSetting, ""); err != nil {
+			monitor.Problem(r.logger, "resuming: %v", err)
+			r.ledgerConn.Privmsg(reply, nick+": that didn't work: the database had a problem. Try again.")
+			return
+		}
 		r.mu.Lock()
 		r.paused = false
 		r.halted = map[string]bool{}
@@ -1159,6 +1212,10 @@ func (r *Runner) command(reply, nick, account, text string) {
 		r.ledgerConn.Privmsg(reply, "!spend shows today's model spend, !pause stops all agents, !resume starts them again.")
 	}
 }
+
+// pausedSetting holds who paused every agent (!pause), or "" when they
+// aren't: kept in the store, so a restart doesn't wake them.
+const pausedSetting = "paused"
 
 func (r *Runner) isPaused() bool {
 	r.mu.Lock()

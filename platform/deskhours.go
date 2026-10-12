@@ -3,7 +3,9 @@
 package platform
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"math"
 	"net/http"
@@ -36,22 +38,20 @@ const (
 	deskKept = 24 * time.Hour
 )
 
-// desksAtWork are desks working now, by lease ID.
+// desksAtWork are desks working now, by lease ID, for a store that keeps
+// none (DeskLeases); mu also makes each desk's start one at a time, so two
+// can't both take a network's last place.
 type desksAtWork struct {
 	mu     sync.Mutex
-	leases map[string]deskLease
-}
-
-type deskLease struct {
-	network, agent string
-	started        time.Time
+	leases leaseMap
+	start  sync.Mutex
 }
 
 // brokerDeskStart is a network's runner asking whether one of its desks may
 // work: yes (with the lease to report its time against), not now (as many
 // desks as the policy allows are working), or no (the policy refuses). An
-// agent carrying on after an approval isn't refused: its work was under
-// way.
+// agent carrying on after an approval is refused only if the policy says
+// so of that too (DeskLimits.ResumeRefused): its work was under way.
 func (p *Platform) brokerDeskStart(w http.ResponseWriter, r *http.Request) {
 	n, ok := p.runnerCalling(r)
 	if !ok {
@@ -72,32 +72,37 @@ func (p *Platform) brokerDeskStart(w http.ResponseWriter, r *http.Request) {
 		brokerError(w, http.StatusInternalServerError, "couldn't check the network's desk hours")
 		return
 	}
-	if !in.Resume && limits.Refused != "" {
-		writeJSONResponse(w, http.StatusPaymentRequired, map[string]any{"error": "out of desk hours", "reason": limits.Refused})
+	why := limits.Refused
+	if in.Resume {
+		why = limits.ResumeRefused
+	}
+	if why != "" {
+		writeJSONResponse(w, http.StatusPaymentRequired, map[string]any{"error": "out of desk hours", "reason": why})
 		return
 	}
 	now := p.opts.Now()
-	d := &p.desks
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	busy := 0
-	for id, l := range d.leases {
-		switch {
-		case now.Sub(l.started) > deskKept:
-			delete(d.leases, id)
-		case l.network == n.Name && now.Sub(l.started) < deskHeld:
-			busy++
-		}
+	leases := p.leases()
+	p.desks.start.Lock()
+	defer p.desks.start.Unlock()
+	if err := leases.ForgetDeskLeases(r.Context(), now.Add(-deskKept)); err != nil {
+		monitor.Problem(p.opts.Logger, "forgetting old desk leases: %v", err)
+	}
+	busy, err := leases.DesksAtWork(r.Context(), n.Name, now.Add(-deskHeld))
+	if err != nil {
+		monitor.Problem(p.opts.Logger, "desks at work on %s: %v", n.Name, err)
+		brokerError(w, http.StatusInternalServerError, "couldn't check the network's desks at work")
+		return
 	}
 	if limits.AtOnce > 0 && busy >= limits.AtOnce {
 		writeJSONResponse(w, http.StatusTooManyRequests, map[string]any{"error": "the plan's desks are all working", "at_once": limits.AtOnce})
 		return
 	}
-	if d.leases == nil {
-		d.leases = map[string]deskLease{}
-	}
 	id := newToken()
-	d.leases[id] = deskLease{network: n.Name, agent: in.Agent, started: now}
+	if err := leases.StartDeskLease(r.Context(), id, DeskLease{Network: n.Name, Agent: in.Agent, Started: now}); err != nil {
+		monitor.Problem(p.opts.Logger, "keeping %s's desk lease on %s: %v", in.Agent, n.Name, err)
+		brokerError(w, http.StatusInternalServerError, "couldn't keep the desk's place")
+		return
+	}
 	writeJSONResponse(w, http.StatusOK, map[string]any{"id": id, "plan": limits.Plan})
 }
 
@@ -118,22 +123,21 @@ func (p *Platform) brokerDeskDone(w http.ResponseWriter, r *http.Request) {
 		brokerError(w, http.StatusBadRequest, "say which desk, and how many seconds it worked")
 		return
 	}
-	d := &p.desks
-	d.mu.Lock()
-	l, ok := d.leases[in.ID]
-	if ok && l.network == n.Name {
-		delete(d.leases, in.ID)
-	}
-	d.mu.Unlock()
-	if !ok || l.network != n.Name {
+	l, err := p.leases().EndDeskLease(r.Context(), in.ID, n.Name)
+	if errors.Is(err, ErrNotFound) {
 		brokerError(w, http.StatusNotFound, "no such desk at work")
+		return
+	}
+	if err != nil {
+		monitor.Problem(p.opts.Logger, "ending a desk lease on %s: %v", n.Name, err)
+		brokerError(w, http.StatusInternalServerError, "couldn't find the desk at work")
 		return
 	}
 	now := p.opts.Now()
 	// By the second, part seconds rounded up, as the runner counts.
-	seconds := min(in.Seconds, int64(math.Ceil(now.Sub(l.started).Seconds())))
-	if err := p.hooks.Desks.Worked(r.Context(), n, l.agent, seconds, now); err != nil {
-		monitor.Problem(p.opts.Logger, "counting %s's desk time on %s: %v", l.agent, n.Name, err)
+	seconds := min(in.Seconds, int64(math.Ceil(now.Sub(l.Started).Seconds())))
+	if err := p.hooks.Desks.Worked(r.Context(), n, l.Agent, seconds, now); err != nil {
+		monitor.Problem(p.opts.Logger, "counting %s's desk time on %s: %v", l.Agent, n.Name, err)
 		brokerError(w, http.StatusInternalServerError, "couldn't count the desk's time")
 		return
 	}
@@ -142,14 +146,9 @@ func (p *Platform) brokerDeskDone(w http.ResponseWriter, r *http.Request) {
 
 // desksWorking is how many of network's desks are working now.
 func (p *Platform) desksWorking(network string) int {
-	now := p.opts.Now()
-	p.desks.mu.Lock()
-	defer p.desks.mu.Unlock()
-	busy := 0
-	for _, l := range p.desks.leases {
-		if l.network == network && now.Sub(l.started) < deskHeld {
-			busy++
-		}
+	busy, err := p.leases().DesksAtWork(context.Background(), network, p.opts.Now().Add(-deskHeld))
+	if err != nil {
+		monitor.Problem(p.opts.Logger, "desks at work on %s: %v", network, err)
 	}
 	return busy
 }

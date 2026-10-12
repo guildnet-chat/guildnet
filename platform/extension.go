@@ -211,8 +211,10 @@ type DeskPolicy interface {
 // DeskLimits are what a desk policy says before a desk starts.
 type DeskLimits struct {
 	// Refused, if set, is why the desk may not start: a new piece of work
-	// is turned away (402), but work under way, after an approval, isn't.
-	Refused string
+	// is turned away (402), but work under way, after an approval, isn't,
+	// unless ResumeRefused says why it is too (it has gone on unpaid for a
+	// while).
+	Refused, ResumeRefused string
 	// AtOnce is how many of the network's desks may work at once; 0 means
 	// no limit but the sandbox's.
 	AtOnce int

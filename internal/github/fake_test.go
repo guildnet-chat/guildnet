@@ -448,6 +448,13 @@ func (f *fakeGitHub) pushAsSomeoneElse(repo, branch string) {
 	r.refs[branch] = sha
 }
 
+// retarget changes PR n's base, as its author may.
+func (f *fakeGitHub) retarget(repo string, n int, base string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.repos[owner+"/"+repo].pulls[n-1].Base = base
+}
+
 func (f *fakeGitHub) lastGrant() tokenGrant {
 	f.mu.Lock()
 	defer f.mu.Unlock()

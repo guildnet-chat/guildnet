@@ -416,13 +416,20 @@ that commit with the same name and push the tag:
 git tag 26.10.0 && git push origin 26.10.0
 ```
 
-`.github/workflows/release.yml` then checks the tag against `VERSION`,
+`.github/workflows/release.yml` then checks the tag against `VERSION`, and
+that its commit is on main and passed CI (tag only once CI is green),
 builds the seven images (linux/amd64) as `deploy/selfhost/compose.yml`
 builds them, pushes each to `ghcr.io/guildnet-chat/<image>` tagged with the
-release and `latest`, with provenance and an SBOM, and drafts the GitHub
-release naming the chat's release. Edit the draft's notes, then publish
-it. `deploy/selfhost/images_test.go` keeps the workflow's image list in
-step with the stack's.
+release and `latest`, with provenance and an SBOM, signs each with cosign
+(keyless: the workflow's GitHub identity) and attests its build, and drafts
+the GitHub release naming the chat's release. Edit the draft's notes, then
+publish it. `deploy/selfhost/images_test.go` keeps the workflow's image list
+in step with the stack's.
+
+Every workflow's actions are pinned to a commit (`release_test.go` checks).
+`.github/workflows/scan.yml` rebuilds every image from main each Monday and
+fails on a high or critical vulnerability with a fix out: update the base
+image's digest or the module, and release.
 
 To rehearse a release first, run the workflow by hand (**Actions →
 release → Run workflow**, or `gh workflow run release.yml`): it builds

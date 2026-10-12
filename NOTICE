@@ -128,5 +128,5 @@ golang.org/x/sync v0.23.0: BSD-3-Clause, https://cs.opensource.google/go/x/sync/
 golang.org/x/sys v0.48.0: BSD-3-Clause, https://cs.opensource.google/go/x/sys/+/v0.48.0:LICENSE
 golang.org/x/text v0.42.0: BSD-3-Clause, https://cs.opensource.google/go/x/text/+/v0.42.0:LICENSE
 golang.org/x/time/rate v0.15.0: BSD-3-Clause, https://cs.opensource.google/go/x/time/+/v0.15.0:LICENSE
-gopkg.in/yaml.v3 v3.0.1: MIT, https://github.com/go-yaml/yaml/blob/v3.0.1/LICENSE
+gopkg.in/yaml.v3 v3.0.1: MIT, https://pkg.go.dev/gopkg.in/yaml.v3@v3.0.1?tab=licenses
 rsc.io/qr v0.2.0: BSD-3-Clause, https://github.com/rsc/qr/blob/v0.2.0/LICENSE

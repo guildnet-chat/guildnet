@@ -140,7 +140,10 @@ func serve(logger *log.Logger) error {
 		logger.Printf("stopping desks left running: %v", err)
 	}
 	cancel()
-	s := sandbox.NewServer(sandbox.Options{Backend: backend, PublicKeys: keys, AcceptV1: acceptV1, Logger: logger, MaxRunning: atOnce})
+	// Shared by several networks (guildnet.chat's sandbox VM), each has only
+	// so many of them, unless unset.
+	perNetwork, _ := strconv.Atoi(os.Getenv("GUILDNET_DESKS_PER_NETWORK"))
+	s := sandbox.NewServer(sandbox.Options{Backend: backend, PublicKeys: keys, AcceptV1: acceptV1, Logger: logger, MaxRunning: atOnce, MaxPerNetwork: perNetwork})
 	logger.Printf("room for %d desks at once, %s each", atOnce, backend.Memory)
 	go func() {
 		for range time.Tick(time.Minute) {

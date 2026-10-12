@@ -170,9 +170,10 @@ func TestInfoDescribesAnAgent(t *testing.T) {
 	}
 }
 
-func TestAnyoneCanListTheStaff(t *testing.T) {
+func TestAnyoneInTheOrgCanListTheStaff(t *testing.T) {
 	n := startNetwork(t, &fakeBrain{})
-	dana := joinHuman(t, n.srv.Addr(), "dana", "#engineering")
+	inOrg(t, n.human, "dana")
+	dana := n.joinAs("dana", "#engineering")
 
 	dana.say("GuildServ", "STAFF")
 

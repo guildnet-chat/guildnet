@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/guildnet-chat/guildnet/config"
 	"github.com/guildnet-chat/guildnet/internal/org"
 	"github.com/guildnet-chat/guildnet/pgtest"
@@ -597,6 +599,61 @@ func TestAnApprovalCanOnlyBeDecidedOnce(t *testing.T) {
 			t.Errorf("deciding an unknown approval: got %v, want ErrNotFound", err)
 		}
 	})
+}
+
+// A decision is carried on with once: until then it's among the unresumed
+// (a restart's runner carries on with it), and only the first claim wins.
+func TestADecisionIsCarriedOnWithOnce(t *testing.T) {
+	eachStore(t, org.Seed{}, func(t *testing.T, s org.Store) {
+		decided, _ := s.RaiseApproval(ctx, mergeRequest())
+		waiting, _ := s.RaiseApproval(ctx, mergeRequest())
+		now := time.Now().UTC()
+		s.DecideApproval(ctx, decided.ID, org.Approved, "ada", "", now)
+
+		if claimed, err := s.ClaimResume(ctx, waiting.ID, now); claimed || err != nil {
+			t.Errorf("claimed one still waiting: %v, %v", claimed, err)
+		}
+		if got, _ := s.Unresumed(ctx); len(got) != 1 || got[0].ID != decided.ID || got[0].Status != org.Approved {
+			t.Errorf("unresumed: %+v, want #%d", got, decided.ID)
+		}
+		first, err1 := s.ClaimResume(ctx, decided.ID, now)
+		second, err2 := s.ClaimResume(ctx, decided.ID, now)
+		if !first || second || err1 != nil || err2 != nil {
+			t.Errorf("claims: %v %v, %v %v; want only the first", first, second, err1, err2)
+		}
+		if got, _ := s.Unresumed(ctx); len(got) != 0 {
+			t.Errorf("unresumed after the claim: %+v", got)
+		}
+	})
+}
+
+// Upgrading a network's database counts what was decided before as carried
+// on with: the first start after the upgrade doesn't do it all again.
+func TestDecisionsFromBeforeTheUpgradeArentCarriedOnWithAgain(t *testing.T) {
+	s, url := newPostgres(t, org.Seed{})
+	a, _ := s.RaiseApproval(ctx, mergeRequest())
+	s.DecideApproval(ctx, a.ID, org.Approved, "ada", "", time.Now().UTC())
+	s.RaiseApproval(ctx, mergeRequest()) // still waiting
+	// The database as it was before (migration 16).
+	conn, err := pgx.Connect(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close(ctx)
+	if _, err := conn.Exec(ctx, `ALTER TABLE approvals DROP COLUMN resumed_at; DELETE FROM goose_db_version WHERE version_id >= 16`); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+
+	upgraded, err := org.OpenPostgres(ctx, url, org.Seed{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer upgraded.Close()
+
+	if got, _ := upgraded.Unresumed(ctx); len(got) != 0 {
+		t.Errorf("after the upgrade, decisions to carry on with: %+v", got)
+	}
 }
 
 func TestAnApprovalMovesAlongItsRoute(t *testing.T) {

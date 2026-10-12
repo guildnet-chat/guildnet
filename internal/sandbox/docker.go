@@ -131,11 +131,19 @@ func (dk *Docker) runArgs(ctx context.Context, d Desk) ([]string, error) {
 	return append(args, strings.TrimSpace(image), "sleep", "infinity"), nil
 }
 
+// What sandboxd runs at a desk itself is the image's, by its full path, so
+// nothing an earlier command left in the desk's home, ahead on the PATH,
+// stands in for it.
+const (
+	deskTimeout = "/usr/bin/timeout"
+	deskShell   = "/bin/sh"
+)
+
 // Exec runs a command at the desk, stopped (TERM, then KILL 5 seconds on)
 // by the desk's own timeout command once its time is up.
 func (dk *Docker) Exec(ctx context.Context, d Desk, e Exec) (Result, error) {
 	secs := max(int(e.Timeout/time.Second), 1)
-	args := []string{"exec", "--interactive", "--workdir", e.Dir, d.Name(), "timeout", "-k", "5", strconv.Itoa(secs)}
+	args := []string{"exec", "--interactive", "--workdir", e.Dir, d.Name(), deskTimeout, "-k", "5", strconv.Itoa(secs)}
 	args = append(args, e.Args...)
 	// The docker command itself gets a little longer, in case.
 	ctx, cancel := context.WithTimeout(ctx, e.Timeout+30*time.Second)
@@ -168,7 +176,7 @@ const readFile = `test -f "$1" || exit 3; size=$(stat -c %s -- "$1") || exit 3; 
 
 func (dk *Docker) ReadFile(ctx context.Context, d Desk, path string, max int64) ([]byte, error) {
 	var out bytes.Buffer
-	res, err := dk.Exec(ctx, d, Exec{Args: []string{"sh", "-c", readFile, "read", path, strconv.FormatInt(max, 10)},
+	res, err := dk.Exec(ctx, d, Exec{Args: []string{deskShell, "-c", readFile, "read", path, strconv.FormatInt(max, 10)},
 		Dir: "/", Output: &limited{w: &out, n: max + 1}, Timeout: time.Minute})
 	switch {
 	case err != nil:
@@ -188,7 +196,7 @@ const writeFile = `mkdir -p -- "$(dirname -- "$1")" && cat > "$1"`
 
 func (dk *Docker) WriteFile(ctx context.Context, d Desk, path string, data []byte) error {
 	var out bytes.Buffer
-	res, err := dk.Exec(ctx, d, Exec{Args: []string{"sh", "-c", writeFile, "write", path},
+	res, err := dk.Exec(ctx, d, Exec{Args: []string{deskShell, "-c", writeFile, "write", path},
 		Dir: "/", Stdin: bytes.NewReader(data), Output: &limited{w: &out, n: 4096}, Timeout: time.Minute})
 	if err != nil {
 		return err
