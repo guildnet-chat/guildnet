@@ -45,6 +45,10 @@ services:
       GUILDNET_DESK_MEMORY: ${GUILDNET_DESK_MEMORY:-2g}
       GUILDNET_DESK_CPUS: ${GUILDNET_DESK_CPUS:-2}
       GUILDNET_DESKS_AT_ONCE: ${GUILDNET_DESKS_AT_ONCE:-1}
+      # Desks' files in a folder on the host, limited on XFS
+      # (docs/self-host/desks.md#storage); unset, Docker volumes.
+      GUILDNET_DESK_FILES: ${GUILDNET_DESK_FILES:-}
+      GUILDNET_DESK_STORAGE_GB: ${GUILDNET_DESK_STORAGE_GB:-}
       GUILDNET_SENTRY_DSN: ${GUILDNET_SENTRY_DSN:-}
       GUILDNET_ENVIRONMENT: ${GUILDNET_ENVIRONMENT:-}
       # Its certificate, which the console signed (tls service).

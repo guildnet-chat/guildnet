@@ -83,6 +83,8 @@ Optional; see [desks.md](desks.md).
 | `GUILDNET_DESK_CPUS` | each desk's CPUs (default `2`) |
 | `GUILDNET_DESKS_AT_ONCE` | how many desks work at once (default `1`); the others wait their turn, or the one idle longest is stopped |
 | `GUILDNET_DESKS_PER_NETWORK` | on a desks host shared by several networks, how many of those one network may have (default: all of them) |
+| `GUILDNET_DESK_FILES` | a folder on the host for desks' files, one folder per network; on XFS with `prjquota`, each network's is limited ([desks.md](desks.md#storage)). Unset: Docker volumes, no limit |
+| `GUILDNET_DESK_STORAGE_GB` | how much each network's desks' files may take, in all, with `GUILDNET_DESK_FILES` on XFS (default: no limit) |
 | `GUILDNET_DESK_ALLOWED` | where desks may go, comma-separated; `*.example.com` takes its subdomains. Default: GitHub, and the Go, npm and Python registries |
 | `GUILDNET_DESK_RUNTIME` | the Docker runtime desks run in (default `runsc`, gVisor); `desks.sh --without-gvisor` sets `runc` |
 | `GUILDNET_MANAGED` | `on`: agents can have desks on Anthropic's Managed Agents instead (they need an Anthropic key, and Anthropic charges for them) |

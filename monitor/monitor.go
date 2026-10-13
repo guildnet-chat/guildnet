@@ -133,6 +133,49 @@ func Problem(l *log.Logger, format string, args ...any) {
 	if l != nil {
 		l.Output(2, line)
 	}
+	report(format, line)
+}
+
+// Check is something checked every few minutes (a runner asking the
+// platform for its keys, say). Each failure is logged, but reported only
+// once it has failed Times in a row (default 3): one failure, while the
+// platform restarts, mends itself by the next check.
+type Check struct {
+	Logger *log.Logger
+	Times  int
+
+	mu     sync.Mutex
+	failed int
+}
+
+// Failed logs a failure, as Problem would, and reports it if it's the
+// Times-th in a row. The format says where it happened.
+func (c *Check) Failed(format string, args ...any) {
+	line := fmt.Sprintf(format, args...)
+	if c.Logger != nil {
+		c.Logger.Output(2, line)
+	}
+	times := c.Times
+	if times == 0 {
+		times = 3
+	}
+	c.mu.Lock()
+	c.failed++
+	now := c.failed == times
+	c.mu.Unlock()
+	if now {
+		report(format, line)
+	}
+}
+
+// OK is a check that worked: the next failure starts the count again.
+func (c *Check) OK() {
+	c.mu.Lock()
+	c.failed = 0
+	c.mu.Unlock()
+}
+
+func report(format, line string) {
 	m := current.Load()
 	if m == nil || !m.allowed(format) {
 		return

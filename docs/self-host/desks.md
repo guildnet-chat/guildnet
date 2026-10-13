@@ -101,6 +101,40 @@ Leave 2–3 GB for the rest of the stack. Example, 16 GB host: 4 desks at once,
 3 GB each. Idle desks are stopped after 10 minutes; their files persist.
 Apply changes with `docker compose up -d`.
 
+## Storage
+
+By default each desk's files are on two Docker volumes, with no limit: one
+desk can fill the host's disk.
+
+To limit them, give desks' files a folder of their own on an XFS filesystem
+mounted with `prjquota`, and set:
+
+| Setting | |
+| --- | --- |
+| `GUILDNET_DESK_FILES` | the folder, on the host. Each network's desks' files go in a folder of the network's there |
+| `GUILDNET_DESK_STORAGE_GB` | how much each network's desks' files may take, in all. A console with a desk policy (plans) sets it per network instead |
+
+sandboxd sets each limit as an XFS project quota, from a short-lived
+privileged container of the desk image. A desk at its network's limit gets
+"No space left on device"; other networks' desks aren't affected. sandboxd
+reports when the folder's disk is 80% full: the limits can add up to more
+than the disk.
+
+An XFS filesystem in a file on an existing disk (here 30 GB, allocated in
+full so it can't fill the host's disk):
+
+```bash
+sudo apt-get install -y xfsprogs
+sudo fallocate -l 30G /var/lib/guildnet-desks.img
+sudo mkfs.xfs /var/lib/guildnet-desks.img
+sudo mkdir -p /var/lib/guildnet/desks
+echo '/var/lib/guildnet-desks.img /var/lib/guildnet/desks xfs loop,prjquota 0 0' | sudo tee -a /etc/fstab
+sudo mount /var/lib/guildnet/desks
+```
+
+Desks made before `GUILDNET_DESK_FILES` was set have their files moved into
+it the next time they're made, and their volumes are removed.
+
 ## Allowed hosts
 
 Default `GUILDNET_DESK_ALLOWED`: `github.com`, `api.github.com`,

@@ -314,9 +314,8 @@ func gitRepoEmail(n Network, page, what string, repo GitRepo, where string, at t
 // brokerGitRepos lists the calling network's repositories, for its runner:
 // never their credentials.
 func (p *Platform) brokerGitRepos(w http.ResponseWriter, r *http.Request) {
-	n, ok := p.runnerCalling(r)
+	n, ok := p.runnerCalling(w, r)
 	if !ok {
-		brokerError(w, http.StatusUnauthorized, "the network's secret is required")
 		return
 	}
 	list := []map[string]any{}
@@ -329,9 +328,8 @@ func (p *Platform) brokerGitRepos(w http.ResponseWriter, r *http.Request) {
 // brokerGitCredential gives the calling network's runner one of its
 // repository's credentials, to read or to push with, for one call.
 func (p *Platform) brokerGitCredential(w http.ResponseWriter, r *http.Request) {
-	n, ok := p.runnerCalling(r)
+	n, ok := p.runnerCalling(w, r)
 	if !ok {
-		brokerError(w, http.StatusUnauthorized, "the network's secret is required")
 		return
 	}
 	access := r.PathValue("access")

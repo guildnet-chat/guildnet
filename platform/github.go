@@ -387,9 +387,8 @@ func (p *Platform) Broker() http.Handler {
 	// The keys go only to the runner's memory: never to the host, its disk,
 	// or the runner's settings. Not cached along the way.
 	mux.HandleFunc("GET /model-keys", func(w http.ResponseWriter, r *http.Request) {
-		n, ok := p.runnerCalling(r)
+		n, ok := p.runnerCalling(w, r)
 		if !ok {
-			brokerError(w, http.StatusUnauthorized, "the network's secret is required")
 			return
 		}
 		w.Header().Set("Cache-Control", "no-store")
@@ -400,9 +399,8 @@ func (p *Platform) Broker() http.Handler {
 	// How someone signs in to the console, for GuildServ: two-step accounts
 	// change the org only from here.
 	mux.HandleFunc("GET /two-step", func(w http.ResponseWriter, r *http.Request) {
-		n, ok := p.runnerCalling(r)
+		n, ok := p.runnerCalling(w, r)
 		if !ok {
-			brokerError(w, http.StatusUnauthorized, "the network's secret is required")
 			return
 		}
 		account := r.URL.Query().Get("account")
@@ -473,9 +471,8 @@ func (p *Platform) brokered(h func(http.ResponseWriter, *http.Request, Network, 
 			brokerError(w, http.StatusNotFound, "GitHub isn't set up here")
 			return
 		}
-		n, ok := p.runnerCalling(r)
+		n, ok := p.runnerCalling(w, r)
 		if !ok {
-			brokerError(w, http.StatusUnauthorized, "the network's secret is required")
 			return
 		}
 		link, err := p.opts.Networks.GitHubOf(r.Context(), n.Name)
@@ -488,19 +485,44 @@ func (p *Platform) brokered(h func(http.ResponseWriter, *http.Request, Network, 
 }
 
 // runnerCalling is the network whose runner is calling: the one it names,
-// if it carries that network's secret.
-func (p *Platform) runnerCalling(r *http.Request) (Network, bool) {
+// if it carries that network's secret. If not, the runner has been told
+// why: a database out of reach isn't the runner's fault, and is worth
+// asking again.
+func (p *Platform) runnerCalling(w http.ResponseWriter, r *http.Request) (Network, bool) {
+	n, err := p.runnerOf(r)
+	switch {
+	case errors.Is(err, errNotTheRunner):
+		brokerError(w, http.StatusUnauthorized, "the network's secret is required")
+	case err != nil:
+		p.opts.Logger.Printf("checking a runner's secret: %v", err)
+		brokerError(w, http.StatusServiceUnavailable, "couldn't check the network's secret: try again")
+	default:
+		return n, true
+	}
+	return Network{}, false
+}
+
+// errNotTheRunner is a call without the named network's secret.
+var errNotTheRunner = errors.New("not the network's runner")
+
+func (p *Platform) runnerOf(r *http.Request) (Network, error) {
 	n, err := p.opts.Networks.Network(r.Context(), r.Header.Get("GuildNet-Network"))
+	if errors.Is(err, ErrNotFound) {
+		return Network{}, errNotTheRunner
+	}
+	if err != nil {
+		return Network{}, err
+	}
 	token, _ := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-	if err != nil || n.RunnerToken == "" || token == "" || subtle.ConstantTimeCompare([]byte(token), []byte(n.RunnerToken)) != 1 {
-		return Network{}, false
+	if n.RunnerToken == "" || token == "" || subtle.ConstantTimeCompare([]byte(token), []byte(n.RunnerToken)) != 1 {
+		return Network{}, errNotTheRunner
 	}
 	// A network that's suspended, or being deleted, gets nothing more: its
 	// runner may still be up, or its secret held by someone.
 	if n.Status == Suspended || n.Status == Deleting {
-		return Network{}, false
+		return Network{}, errNotTheRunner
 	}
-	return n, true
+	return n, nil
 }
 
 // reposKept is how long an installation's repos are kept between asking
@@ -517,7 +539,14 @@ func (p *Platform) installationRepos(ctx context.Context, installation int64) ([
 	if ok && now.Sub(kept.at) < reposKept {
 		return slices.Clone(kept.repos), nil
 	}
-	return p.freshInstallationRepos(ctx, installation)
+	repos, err := p.freshInstallationRepos(ctx, installation)
+	if err != nil && ok {
+		// GitHub failing for a moment (a 500, say): the list it last gave
+		// does until it's back. Only a failure that keeps on is reported.
+		kept.check.Failed("listing github repos: %v", err)
+		return slices.Clone(kept.repos), nil
+	}
+	return repos, err
 }
 
 // freshInstallationRepos asks GitHub for an installation's repos now, and
@@ -532,7 +561,12 @@ func (p *Platform) freshInstallationRepos(ctx context.Context, installation int6
 	if p.repos.m == nil {
 		p.repos.m = map[int64]keptRepos{}
 	}
-	p.repos.m[installation] = keptRepos{repos: slices.Clone(repos), at: now}
+	check := p.repos.m[installation].check
+	if check == nil {
+		check = &monitor.Check{Logger: p.opts.Logger}
+	}
+	check.OK()
+	p.repos.m[installation] = keptRepos{repos: slices.Clone(repos), at: now, check: check}
 	p.repos.mu.Unlock()
 	return repos, nil
 }
@@ -540,6 +574,7 @@ func (p *Platform) freshInstallationRepos(ctx context.Context, installation int6
 type keptRepos struct {
 	repos []string
 	at    time.Time
+	check *monitor.Check // GitHub failing to list them since
 }
 
 // reposByInstallation are installations' repos, as GitHub last said.

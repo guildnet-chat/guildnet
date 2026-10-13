@@ -218,6 +218,9 @@ type DeskLimits struct {
 	// AtOnce is how many of the network's desks may work at once; 0 means
 	// no limit but the sandbox's.
 	AtOnce int
+	// StorageGB is how much the network's desks' files may take, in all;
+	// 0 leaves it to sandboxd.
+	StorageGB int
 	// Plan names what the network is on, for the runner's logs.
 	Plan string
 }

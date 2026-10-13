@@ -66,7 +66,7 @@ All services listen on every interface of their container (`:port`), so a listen
 | `ergo` | `ghcr.io/ergochat/ergo:stable` + GuildNet config, uid 65534 | 6667 plain IRC; 6668 PROXY-protocol IRC; 8097 WebSocket; 8089 HTTP API (bearer); `edge`, `private` | none | `ergo-data` (accounts, channels, history); `welcome` (MOTD, shared with the runner) |
 | `runner` | `/app/runner` on distroless static, uid 65532 | 8090 runner API; `private`, `data` | Ergo :6667 and :8089, console broker :8082, Postgres, model providers, GitHub, git hosts (pushes), connectors' MCP servers, outside agents' webhooks, sandboxd | Postgres `runner`; `runner-data` (ledger files); `welcome` |
 | `postgres` | `postgres:18-alpine` | 5432; `data` | none | `postgres-data` |
-| `sandboxd` | `sandboxd serve` on `docker:28-cli` | 8443 HTTPS; `private` | Docker socket | per-desk Docker volumes `gn.<network>.<nick>.work` and `.home`; reads `sandbox-tls` |
+| `sandboxd` | `sandboxd serve` on `docker:28-cli` | 8443 HTTPS; `private` | Docker socket | per-desk Docker volumes `gn.<network>.<nick>.work` and `.home`, or with `GUILDNET_DESK_FILES`, `<files>/<network>/<nick>/work` and `home` (limited per network on XFS); reads `sandbox-tls` |
 | `egress` | `sandboxd proxy`, uid 65534 | 3128; `desks` (fixed 172.31.255.2), `outbound` | allowed public hosts on 443; networks' git hosts on their ports | none |
 | `desk` | `golang:1.27-bookworm` + Node, Python, git, ripgrep | image only, `scale: 0` | n/a | n/a |
 | `files` | `tar` in the Postgres image, profile `tools`, `network_mode: none` | none | none | mounts `ergo-data`, `runner-data` for `backup.sh` and `restore.sh` |
@@ -129,7 +129,7 @@ From outside, only Caddy's 80, 443 and 6697 are reachable. Internal listeners ar
 
 **Ergo's files** (`ergo-data`). Accounts and channel registrations in `ircd.db`; chat history in SQLite `ergo_history.db`, kept 90 days, unencrypted. `start.sh` copies the committed config over `/ircd/ircd.yaml` at each start, so the volume keeps only databases.
 
-**In memory only.** Model keys, GitHub and connector tokens and git credentials in the runner; the setup code hash, pending second steps and handoff codes in the console. A restart also loses agents' queued wake-ups (not decisions on approvals), the read-then-write window, and the console's desk leases. Desk workspaces are Docker volumes and are not backed up.
+**In memory only.** Model keys, GitHub and connector tokens and git credentials in the runner; the setup code hash, pending second steps and handoff codes in the console. A restart also loses agents' queued wake-ups (not decisions on approvals), the read-then-write window, and the console's desk leases. Desk workspaces (Docker volumes, or folders in `GUILDNET_DESK_FILES`) are not backed up.
 
 ## 6. Agents
 
@@ -163,11 +163,11 @@ Model keys, GitHub credentials and connector tokens stay in the runner for every
 | `POST /v1/desks/{nick}/open` | create or start the container |
 | `POST /v1/desks/{nick}/run` | run argv in a directory; timeout 2 min default, 10 min max; output capped at 64 KiB |
 | `POST /v1/desks/{nick}/read`, `/write` | read or write a file up to 8 MiB |
-| `DELETE /v1/desks/{nick}` | remove the container and its volumes |
+| `DELETE /v1/desks/{nick}` | remove the container and its files |
 | `DELETE /v1/desks` | `admin` scope: remove every desk of the network |
 | `GET /v1/idle` | seconds since any desk was used |
 
-**Containers** (`internal/sandbox/docker.go`). `docker run` with `--runtime runsc` (gVisor; `runc` with `desks.sh --without-gvisor`), `--network guildnet-desks`, `--cap-drop ALL`, `no-new-privileges`, read-only root, 1 GiB `/tmp` tmpfs, user 1000:1000, `--init`, memory (swap equal to memory), CPUs and PID limit (`GUILDNET_DESK_MEMORY` 2g, `GUILDNET_DESK_CPUS` 2, `GUILDNET_DESK_PIDS` 512), and `HTTPS_PROXY` pointing at egress by IP. Commands run through `docker exec` under `timeout`. A label hashes the run arguments and image ID; a stopped desk whose settings or image changed is recreated with its volumes kept.
+**Containers** (`internal/sandbox/docker.go`). `docker run` with `--runtime runsc` (gVisor; `runc` with `desks.sh --without-gvisor`), `--network guildnet-desks`, `--cap-drop ALL`, `no-new-privileges`, read-only root, 1 GiB `/tmp` tmpfs, user 1000:1000, `--init`, memory (swap equal to memory), CPUs and PID limit (`GUILDNET_DESK_MEMORY` 2g, `GUILDNET_DESK_CPUS` 2, `GUILDNET_DESK_PIDS` 512), and `HTTPS_PROXY` pointing at egress by IP. Commands run through `docker exec` under `timeout`. A label hashes the run arguments and image ID; a stopped desk whose settings or image changed is recreated with its files kept. With `GUILDNET_DESK_FILES`, its files are bind mounts of `<files>/<network>/<nick>/work` and `home` instead of volumes, made (and moved from its old volumes) by a short-lived container of the desk image; each network's folder is an XFS project, limited to the storage its token carries (`gb`, the plan's), set by a privileged one.
 
 **Capacity.** `GUILDNET_DESKS_AT_ONCE` (compose default 1; otherwise computed from host memory) limits running desks. A new desk stops the desk idle longest (at least 2 minutes, not busy); if all are busy sandboxd returns 429 and the runner waits up to 10 minutes. Desks idle for 10 minutes are stopped. sandboxd stops all desks at start and logs each operation.
 

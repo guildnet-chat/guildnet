@@ -27,6 +27,7 @@ type fakeDesks struct {
 	mu      sync.Mutex
 	refused string
 	atOnce  int
+	storage int
 	err     error
 	worked  []worked
 }
@@ -39,7 +40,7 @@ type worked struct {
 func (f *fakeDesks) Limits(_ context.Context, n platform.Network, agent string) (platform.DeskLimits, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return platform.DeskLimits{Refused: f.refused, AtOnce: f.atOnce, Plan: "house"}, f.err
+	return platform.DeskLimits{Refused: f.refused, AtOnce: f.atOnce, StorageGB: f.storage, Plan: "house"}, f.err
 }
 
 func (f *fakeDesks) Worked(_ context.Context, n platform.Network, agent string, seconds int64, _ time.Time) error {

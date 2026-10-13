@@ -64,6 +64,24 @@ func TestEveryActionIsPinnedToACommit(t *testing.T) {
 	}
 }
 
+// Workflows run on a named Ubuntu release: a new one is taken up on purpose,
+// not found out from a failed run when ubuntu-latest moves on.
+func TestWorkflowsRunOnANamedUbuntu(t *testing.T) {
+	files, err := filepath.Glob("../../.github/workflows/*.yml")
+	if err != nil || len(files) == 0 {
+		t.Fatalf("no workflows (%v)", err)
+	}
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(b), "ubuntu-latest") {
+			t.Errorf("%s runs on ubuntu-latest", filepath.Base(f))
+		}
+	}
+}
+
 func TestAReleaseIsOfACommitOfMainWhoseCIPassed(t *testing.T) {
 	wf := readWorkflow(t, "release.yml")
 	var gate string

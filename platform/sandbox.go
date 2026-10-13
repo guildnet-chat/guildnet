@@ -43,9 +43,8 @@ type sandboxWakes struct {
 // brokerSandbox tells a network's runner where sandboxd is, with its
 // network's token.
 func (p *Platform) brokerSandbox(w http.ResponseWriter, r *http.Request) {
-	n, ok := p.runnerCalling(r)
+	n, ok := p.runnerCalling(w, r)
 	if !ok {
-		brokerError(w, http.StatusUnauthorized, "the network's secret is required")
 		return
 	}
 	s := p.opts.Sandbox
@@ -53,9 +52,22 @@ func (p *Platform) brokerSandbox(w http.ResponseWriter, r *http.Request) {
 		brokerError(w, http.StatusNotFound, "there's no sandbox here, so no desks")
 		return
 	}
+	// The network's storage, its plan's, which sandboxd limits its desks'
+	// files to. Without it, no token: one saying nothing would leave the
+	// network at sandboxd's default.
+	var storage int
+	if p.hooks.Desks != nil {
+		l, err := p.hooks.Desks.Limits(r.Context(), n, "")
+		if err != nil {
+			p.opts.Logger.Printf("%s's desk limits: %v", n.Name, err)
+			brokerError(w, http.StatusServiceUnavailable, "couldn't find the network's storage: try again")
+			return
+		}
+		storage = l.StorageGB
+	}
 	now := p.opts.Now()
 	out := map[string]any{"url": s.URL,
-		"token": sandbox.TokenFor(s.Key, n.Name, sandbox.Desks, now, deskTokenTTL), "expires": now.Add(deskTokenTTL).UTC().Format(time.RFC3339)}
+		"token": sandbox.DesksTokenFor(s.Key, n.Name, storage, now, deskTokenTTL), "expires": now.Add(deskTokenTTL).UTC().Format(time.RFC3339)}
 	// The network's egress pass: its desks hand it to their proxy to reach
 	// its git repositories' hosts, and only its own.
 	if hosts := p.gitHosts(r.Context(), n.Name); len(hosts) > 0 {
@@ -72,9 +84,8 @@ const deskTokenTTL = 15 * time.Minute
 // brokerSandboxWake starts the sandbox VM for a runner whose desk can't
 // reach it.
 func (p *Platform) brokerSandboxWake(w http.ResponseWriter, r *http.Request) {
-	n, ok := p.runnerCalling(r)
+	n, ok := p.runnerCalling(w, r)
 	if !ok {
-		brokerError(w, http.StatusUnauthorized, "the network's secret is required")
 		return
 	}
 	if p.opts.Sandbox.Wake == nil {

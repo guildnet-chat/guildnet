@@ -53,9 +53,8 @@ type desksAtWork struct {
 // agent carrying on after an approval is refused only if the policy says
 // so of that too (DeskLimits.ResumeRefused): its work was under way.
 func (p *Platform) brokerDeskStart(w http.ResponseWriter, r *http.Request) {
-	n, ok := p.runnerCalling(r)
+	n, ok := p.runnerCalling(w, r)
 	if !ok {
-		brokerError(w, http.StatusUnauthorized, "the network's secret is required")
 		return
 	}
 	var in struct {
@@ -110,9 +109,8 @@ func (p *Platform) brokerDeskStart(w http.ResponseWriter, r *http.Request) {
 // worked: counted against the plan's hours, then credits, and never for
 // more than has passed since it started.
 func (p *Platform) brokerDeskDone(w http.ResponseWriter, r *http.Request) {
-	n, ok := p.runnerCalling(r)
+	n, ok := p.runnerCalling(w, r)
 	if !ok {
-		brokerError(w, http.StatusUnauthorized, "the network's secret is required")
 		return
 	}
 	var in struct {

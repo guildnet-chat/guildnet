@@ -45,6 +45,9 @@ type fakeGitHubApp struct {
 	// installations on a person's own account instead, by its login.
 	readers  map[string][]int64
 	personal map[int64]string
+	// listing is what listing an installation's repos answers with, while
+	// it's failing: a status and nothing more.
+	listing int
 }
 
 // loginOf is the GitHub login of the person who signed in with code.
@@ -154,6 +157,13 @@ func newFakeGitHubApp(t *testing.T) *fakeGitHubApp {
 		writeGH(w, 201, map[string]any{"token": "ghs_" + r.PathValue("id") + "_" + Itoa(int64(n)), "expires_at": time.Now().Add(time.Hour).UTC().Format(time.RFC3339)})
 	})
 	mux.HandleFunc("GET /installation/repositories", func(w http.ResponseWriter, r *http.Request) {
+		f.mu.Lock()
+		failing := f.listing
+		f.mu.Unlock()
+		if failing != 0 {
+			w.WriteHeader(failing)
+			return
+		}
 		writeGH(w, 200, map[string]any{"total_count": 2, "repositories": []map[string]any{{"name": "web"}, {"name": "docs"}}})
 	})
 	f.srv = httptest.NewServer(mux)
@@ -180,6 +190,13 @@ func (f *fakeGitHubApp) onPersonalAccount(installation int64, login string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.personal[installation] = login
+}
+
+// failListing makes listing repos answer with status, and nothing more.
+func (f *fakeGitHubApp) failListing(status int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.listing = status
 }
 
 func (f *fakeGitHubApp) lastMinted() mintedToken {
@@ -381,6 +398,28 @@ func TestTheRepoListIsntFetchedFromGitHubEachTime(t *testing.T) {
 	gh.mu.Unlock()
 	if minted != 1 {
 		t.Errorf("GitHub minted %d tokens for three lists, want 1", minted)
+	}
+}
+
+// GitHub sometimes fails to list an installation's repos (a 500 with
+// nothing in it). The broker gives the runner the list it last had rather
+// than failing it.
+func TestABriefGitHubFailureGivesTheRepoListLastHad(t *testing.T) {
+	w, gh := newGitHubWorld(t)
+	bob := w.CreateNetwork("bob@example.com", "bobco")
+	gh.canReach("bobs-code", 7)
+	callback(bob, "bobs-code", 7, connect(t, bob, "bobco"))
+	secret := RunnerSecret(w, "bobco")
+	if status, out := BrokerCall(t, w, "bobco", secret, "GET", "/github"); status != http.StatusOK {
+		t.Fatalf("listing bobco's repos: %d %v", status, out)
+	}
+
+	gh.failListing(http.StatusInternalServerError)
+	w.Clock.Advance(10 * time.Minute)
+	status, out := BrokerCall(t, w, "bobco", secret, "GET", "/github")
+
+	if repos, _ := out["repos"].([]any); status != http.StatusOK || len(repos) != 2 {
+		t.Errorf("while GitHub fails: %d %v, want web and docs, as last listed", status, out)
 	}
 }
 

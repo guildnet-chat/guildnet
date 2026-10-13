@@ -176,9 +176,8 @@ type newsEvent struct {
 // news takes what a network's runner says happened, and emails whoever
 // wants to hear it.
 func (p *Platform) news(w http.ResponseWriter, r *http.Request) {
-	n, ok := p.runnerCalling(r)
+	n, ok := p.runnerCalling(w, r)
 	if !ok {
-		brokerError(w, http.StatusUnauthorized, "the network's secret is required")
 		return
 	}
 	var e newsEvent

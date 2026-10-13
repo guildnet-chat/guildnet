@@ -382,15 +382,14 @@ func (p *Platform) openFirst(w http.ResponseWriter, r *http.Request) {
 // networkSettings is what the broker tells a self-hosted network's runner
 // once setup has made it: what it was made from, and who owns it.
 func (p *Platform) networkSettings(w http.ResponseWriter, r *http.Request) {
-	n, ok := p.runnerCalling(r)
-	if !ok {
-		if fr := p.opts.FirstRun; fr != nil && strings.EqualFold(r.Header.Get("GuildNet-Network"), fr.Network) {
-			if _, err := p.opts.Networks.Network(r.Context(), fr.Network); errors.Is(err, ErrNotFound) {
-				brokerError(w, http.StatusNotFound, "the network isn't set up yet: first-run setup gives its settings")
-				return
-			}
+	if fr := p.opts.FirstRun; fr != nil && strings.EqualFold(r.Header.Get("GuildNet-Network"), fr.Network) {
+		if _, err := p.opts.Networks.Network(r.Context(), fr.Network); errors.Is(err, ErrNotFound) {
+			brokerError(w, http.StatusNotFound, "the network isn't set up yet: first-run setup gives its settings")
+			return
 		}
-		brokerError(w, http.StatusUnauthorized, "the network's secret is required")
+	}
+	n, ok := p.runnerCalling(w, r)
+	if !ok {
 		return
 	}
 	if n.OwnerNick == "" || n.Template == "" {

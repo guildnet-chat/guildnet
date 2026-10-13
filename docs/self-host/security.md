@@ -49,6 +49,7 @@ known limits. Mechanisms are described in
 | Untrusted input | a write to one service shortly after reading another (Linear after a desk or GitHub, Notion after Linear, …) requires approval, whatever its policy. A Managed Agents desk's own tools (web fetch and search, its shell) count as reading from outside. The team's code counts as one source: work read in one of its repositories may go to another without asking |
 | Spending | daily caps per agent and per network |
 | Desks | gVisor, an internal network, an allowlist proxy, and the desks' firewall ([desks.md](desks.md#isolation)) |
+| Desk storage | with `GUILDNET_DESK_FILES` on XFS, each network's desks' files are limited, in all ([desks.md](desks.md#storage)); without it, a desk can fill the host's disk |
 
 ## Operator responsibilities
 

@@ -75,6 +75,12 @@ type Backend interface {
 	RemoveNetwork(ctx context.Context, network string) error
 }
 
+// Sized is a backend that can limit how much a network's desks' files may
+// take, in all.
+type Sized interface {
+	SetStorage(ctx context.Context, network string, gb int) error
+}
+
 // tokenPurpose keeps these signatures from meaning anything elsewhere.
 const tokenPurpose = "guildnet sandbox|"
 
@@ -163,6 +169,9 @@ type Claims struct {
 	// Hosts are what an egress pass opens: host, or host:port (443 if
 	// none).
 	Hosts []string `json:"hosts,omitempty"`
+	// StorageGB is how much the network's desks' files may take, in all
+	// (its plan's): 0 says nothing of it.
+	StorageGB int `json:"gb,omitempty"`
 }
 
 // tokenPurposeV2 keeps these signatures from meaning anything elsewhere.
@@ -173,6 +182,12 @@ const tokenPurposeV2 = "guildnet sandbox v2|"
 // that.
 func TokenFor(key ed25519.PrivateKey, network, scope string, now time.Time, ttl time.Duration) string {
 	return sign(key, Claims{Network: network, Scope: scope, Issued: now.UTC().Truncate(time.Second), Expires: now.Add(ttl).UTC().Truncate(time.Second)})
+}
+
+// DesksTokenFor is a token for network's desks that says how much their
+// files may take, in all (storageGB; 0 for nothing said).
+func DesksTokenFor(key ed25519.PrivateKey, network string, storageGB int, now time.Time, ttl time.Duration) string {
+	return sign(key, Claims{Network: network, Scope: Desks, StorageGB: storageGB, Issued: now.UTC().Truncate(time.Second), Expires: now.Add(ttl).UTC().Truncate(time.Second)})
 }
 
 // PassFor is network's egress pass, opening hosts (host, or host:port), signed

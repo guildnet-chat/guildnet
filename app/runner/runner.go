@@ -171,12 +171,15 @@ func Run(build Config) {
 		// again every couple of minutes).
 		broker := github.Broker{URL: os.Getenv("GUILDNET_GITHUB_BROKER"), Network: os.Getenv("GUILDNET_NETWORK"), Secret: cfg.API.Token, HTTP: brokerHTTP}
 		live := &github.Live{}
+		check := &monitor.Check{Logger: logger}
 		refresh := func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 			if err := live.Refresh(ctx, broker); err != nil {
-				monitor.Problem(logger, "github: asking the broker: %v", err)
+				check.Failed("github: asking the broker: %v", err)
+				return
 			}
+			check.OK()
 		}
 		refresh()
 		go func() {
@@ -222,12 +225,15 @@ func Run(build Config) {
 				}
 			},
 		})
+		check := &monitor.Check{Logger: logger}
 		refresh := func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 			defer cancel()
 			if err := conn.Refresh(ctx); err != nil {
-				monitor.Problem(logger, "connectors: %v", err)
+				check.Failed("connectors: %v", err)
+				return
 			}
+			check.OK()
 		}
 		go func() {
 			refresh()
@@ -278,12 +284,14 @@ func Run(build Config) {
 	if keyBroker != nil {
 		// Keys can change while the network runs: fetched again every few
 		// minutes, and whenever the platform says they changed.
+		check := &monitor.Check{Logger: logger}
 		refresh := func() {
 			k, err := keyBroker.Keys(context.Background())
 			if err != nil {
-				monitor.Problem(logger, "model keys: %v", err)
+				check.Failed("model keys: %v", err)
 				return
 			}
+			check.OK()
 			chat.SetKeys(k)
 			if outside != nil {
 				outside.SetKeys(k)
@@ -316,12 +324,15 @@ func Run(build Config) {
 	var git *gitremote.Live
 	if url := connectorBroker(os.Getenv); url != "" {
 		git = &gitremote.Live{Broker: gitremote.Broker{URL: url, Network: os.Getenv("GUILDNET_NETWORK"), Secret: cfg.API.Token, HTTP: brokerHTTP}}
+		check := &monitor.Check{Logger: logger}
 		refresh := func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 			if err := git.Refresh(ctx); err != nil {
-				monitor.Problem(logger, "git repositories: asking the broker: %v", err)
+				check.Failed("git repositories: asking the broker: %v", err)
+				return
 			}
+			check.OK()
 		}
 		go func() {
 			refresh()

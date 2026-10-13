@@ -55,6 +55,9 @@ type Options struct {
 	// MaxPerNetwork is how many of those one network's desks may be, so
 	// one network can't hold every one; 0 means MaxRunning.
 	MaxPerNetwork int
+	// DefaultStorageGB is how much a network's desks' files may take, in
+	// all, when its token doesn't say (a Sized backend); 0 for no limit.
+	DefaultStorageGB int
 }
 
 // Server is sandboxd's API.
@@ -68,6 +71,8 @@ type Server struct {
 	// deleted): no token signed before then works for it again, not even
 	// for a network made later with its name.
 	removed map[string]time.Time
+	// storage is each network's limit as set, in GB.
+	storage map[string]int
 }
 
 // claims are what the request's token says, if it's good for scope.
@@ -104,7 +109,7 @@ func NewServer(o Options) *Server {
 	if o.Now == nil {
 		o.Now = time.Now
 	}
-	s := &Server{opts: o, mux: http.NewServeMux(), desks: map[Desk]*state{}, since: o.Now(), removed: map[string]time.Time{}}
+	s := &Server{opts: o, mux: http.NewServeMux(), desks: map[Desk]*state{}, since: o.Now(), removed: map[string]time.Time{}, storage: map[string]int{}}
 	s.mux.HandleFunc("POST /v1/desks/{nick}/open", s.desk(s.open))
 	s.mux.HandleFunc("POST /v1/desks/{nick}/run", s.desk(s.run))
 	s.mux.HandleFunc("POST /v1/desks/{nick}/read", s.desk(s.read))
@@ -149,7 +154,11 @@ func (s *Server) desk(h handler) http.HandlerFunc {
 		s.begin(d)
 		defer s.end(d)
 		r.Body = http.MaxBytesReader(w, r.Body, maxFile*2)
-		if err := h(w, r, d); err != nil {
+		err := s.limitStorage(r.Context(), c)
+		if err == nil {
+			err = h(w, r, d)
+		}
+		if err != nil {
 			switch {
 			case errors.Is(err, ErrNoFile):
 				jsonError(w, http.StatusNotFound, err.Error())
@@ -166,6 +175,37 @@ func (s *Server) desk(h handler) http.HandlerFunc {
 			}
 		}
 	}
+}
+
+// limitStorage sets the network's storage before its desks are used: as
+// its token says, or the default for a network not yet limited. It's set
+// again only when it changes.
+func (s *Server) limitStorage(ctx context.Context, c Claims) error {
+	b, ok := s.opts.Backend.(Sized)
+	if !ok {
+		return nil
+	}
+	s.mu.Lock()
+	have, set := s.storage[c.Network]
+	s.mu.Unlock()
+	gb := c.StorageGB
+	if gb == 0 {
+		if set || s.opts.DefaultStorageGB <= 0 {
+			return nil
+		}
+		gb = s.opts.DefaultStorageGB
+	}
+	if set && have == gb {
+		return nil
+	}
+	if err := b.SetStorage(ctx, c.Network, gb); err != nil {
+		return fmt.Errorf("limiting the network's storage to %d GB: %w", gb, err)
+	}
+	s.mu.Lock()
+	s.storage[c.Network] = gb
+	s.mu.Unlock()
+	s.logf("%s: storage %d GB", c.Network, gb)
+	return nil
 }
 
 type badRequest struct{ error }
@@ -427,6 +467,7 @@ func (s *Server) removeNetwork(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.removed[network] = s.opts.Now()
+	delete(s.storage, network) // its files have gone, and their limit
 	s.mu.Unlock()
 	s.logf("%s: every desk removed", network)
 	w.WriteHeader(http.StatusNoContent)

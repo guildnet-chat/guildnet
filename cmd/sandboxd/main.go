@@ -89,6 +89,10 @@ func main() {
 	}
 }
 
+// filesFull is how full, in percent, the desks' disk may get before it's
+// reported.
+const filesFull = 80
+
 func serve(logger *log.Logger) error {
 	// The platform's key, or keys while it's changed (comma-separated).
 	var keys []ed25519.PublicKey
@@ -114,7 +118,13 @@ func serve(logger *log.Logger) error {
 		Memory:  env("GUILDNET_DESK_MEMORY", "3g"),
 		CPUs:    env("GUILDNET_DESK_CPUS", "2"),
 		Pids:    pids,
+		// Desks' files in a folder on the host, one per network, rather than
+		// volumes: on XFS mounted with prjquota, each network's is limited.
+		Files: os.Getenv("GUILDNET_DESK_FILES"),
 	}
+	// A network's desks' files' limit when its token doesn't say (a console
+	// of one's own): GB, or none.
+	defaultGB, _ := strconv.Atoi(os.Getenv("GUILDNET_DESK_STORAGE_GB"))
 	// How many desks run at once: as many as fit the VM's memory at each
 	// desk's limit, unless set.
 	atOnce, _ := strconv.Atoi(os.Getenv("GUILDNET_DESKS_AT_ONCE"))
@@ -143,7 +153,7 @@ func serve(logger *log.Logger) error {
 	// Shared by several networks (guildnet.chat's sandbox VM), each has only
 	// so many of them, unless unset.
 	perNetwork, _ := strconv.Atoi(os.Getenv("GUILDNET_DESKS_PER_NETWORK"))
-	s := sandbox.NewServer(sandbox.Options{Backend: backend, PublicKeys: keys, AcceptV1: acceptV1, Logger: logger, MaxRunning: atOnce, MaxPerNetwork: perNetwork})
+	s := sandbox.NewServer(sandbox.Options{Backend: backend, PublicKeys: keys, AcceptV1: acceptV1, Logger: logger, MaxRunning: atOnce, MaxPerNetwork: perNetwork, DefaultStorageGB: defaultGB})
 	logger.Printf("room for %d desks at once, %s each", atOnce, backend.Memory)
 	go func() {
 		for range time.Tick(time.Minute) {
@@ -152,6 +162,23 @@ func serve(logger *log.Logger) error {
 			cancel()
 		}
 	}()
+	if backend.Files != "" {
+		logger.Printf("desks' files in %s", backend.Files)
+		// Networks' limits can add up to more than the disk: it's watched.
+		go func() {
+			for range time.Tick(10 * time.Minute) {
+				ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+				pct, err := backend.DiskUse(ctx)
+				cancel()
+				switch {
+				case err != nil:
+					logger.Printf("how full the desks' disk is: %v", err)
+				case pct >= filesFull:
+					monitor.Problem(logger, "the desks' disk is %d%% full: give it more room (docs/self-host/desks.md#storage)", pct)
+				}
+			}
+		}()
+	}
 	listen := env("GUILDNET_SANDBOX_LISTEN", ":8443")
 	runtime := backend.Runtime
 	if runtime == "" {

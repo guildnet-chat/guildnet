@@ -347,9 +347,8 @@ const refreshAhead = 5 * time.Minute
 
 // brokerConnectors lists the calling network's connections, for its runner.
 func (p *Platform) brokerConnectors(w http.ResponseWriter, r *http.Request) {
-	n, ok := p.runnerCalling(r)
+	n, ok := p.runnerCalling(w, r)
 	if !ok {
-		brokerError(w, http.StatusUnauthorized, "the network's secret is required")
 		return
 	}
 	list := []map[string]any{}
@@ -375,9 +374,8 @@ func (p *Platform) brokerConnectors(w http.ResponseWriter, r *http.Request) {
 // for one of its connections, refreshed first if it's near its end. The
 // refresh token never leaves the platform.
 func (p *Platform) brokerConnectorToken(w http.ResponseWriter, r *http.Request) {
-	n, ok := p.runnerCalling(r)
+	n, ok := p.runnerCalling(w, r)
 	if !ok {
-		brokerError(w, http.StatusUnauthorized, "the network's secret is required")
 		return
 	}
 	if p.opts.Connections == nil {

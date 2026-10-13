@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"os/exec"
 	"slices"
@@ -21,8 +22,9 @@ import (
 // the sandbox VM with gVisor (runsc) as their runtime, locally with Docker's
 // own. Each desk's container is locked down: no capabilities, a read-only
 // root, a non-root user, limits on memory, CPU and processes, and only the
-// desks' network, which has no way out but the proxy. Its files are on two
-// volumes of its own, /workspace and its home, which outlive the container.
+// desks' network, which has no way out but the proxy. Its files, /workspace
+// and its home, outlive the container: in its network's folder in Files, or
+// without Files, on two volumes of its own.
 type Docker struct {
 	Image   string // the desk image
 	Runtime string // "runsc" for gVisor; "" for Docker's own
@@ -32,6 +34,12 @@ type Docker struct {
 	CPUs    string // e.g. "2"
 	Pids    int    // most processes
 	Bin     string // the docker command; "" for docker
+	// Files, if set, is a folder on the Docker host for desks' files: one
+	// folder for each network, one in that for each desk (work and home).
+	// On XFS mounted with prjquota, each network's can be limited
+	// (SetStorage). sandboxd reaches it only through short-lived containers
+	// of the desk image.
+	Files string
 }
 
 func (dk *Docker) bin() string {
@@ -77,6 +85,11 @@ func (dk *Docker) Ensure(ctx context.Context, d Desk) error {
 	case !strings.Contains(strings.ToLower(out), "no such"):
 		return err
 	}
+	if dk.Files != "" {
+		if err := dk.ready(ctx, d); err != nil {
+			return err
+		}
+	}
 	n := len(args) - 3 // the image and its command come last
 	run := append(append(slices.Clone(args[:n]), "--label", "guildnet.made="+made(args)), args[n:]...)
 	_, err = dk.docker(ctx, run...)
@@ -106,9 +119,14 @@ func (dk *Docker) runArgs(ctx context.Context, d Desk) ([]string, error) {
 		"--cap-drop", "ALL", "--security-opt", "no-new-privileges",
 		"--read-only", "--tmpfs", "/tmp:rw,exec,nosuid,size=1g",
 		"--user", "1000:1000",
-		"--volume", name + ".work:/workspace", "--volume", name + ".home:/home/desk",
 		"--workdir", "/workspace",
 		"--env", "HOME=/home/desk",
+	}
+	if dk.Files != "" {
+		dir := dk.Files + "/" + d.Network + "/" + d.Nick
+		args = append(args, "--mount", "type=bind,src="+dir+"/work,dst=/workspace", "--mount", "type=bind,src="+dir+"/home,dst=/home/desk")
+	} else {
+		args = append(args, "--volume", name+".work:/workspace", "--volume", name+".home:/home/desk")
 	}
 	if dk.Runtime != "" {
 		args = append(args, "--runtime", dk.Runtime)
@@ -222,8 +240,14 @@ func (dk *Docker) Remove(ctx context.Context, d Desk) error {
 			return err
 		}
 	}
+	if dk.Files != "" {
+		return dk.files(ctx, false, nil, removeFolder, d.Network+"/"+d.Nick)
+	}
 	return nil
 }
+
+// removeFolder deletes $1, a network's or a desk's folder in Files.
+const removeFolder = `rm -rf -- "/files/$1"`
 
 // RemoveNetwork deletes every container labelled with network, and every
 // volume of a desk of its (gn.<network>.<nick>.work and .home), whether or
@@ -254,7 +278,103 @@ func (dk *Docker) RemoveNetwork(ctx context.Context, network string) error {
 			return err
 		}
 	}
+	if dk.Files != "" {
+		return dk.files(ctx, false, nil, removeFolder, network)
+	}
 	return nil
+}
+
+// files runs script (sh, with args as $1...) as root in a short-lived
+// container of the desk image, with Files at /files and the volumes given,
+// and no network: privileged to set limits.
+func (dk *Docker) files(ctx context.Context, privileged bool, volumes []string, script string, args ...string) error {
+	run := []string{"run", "--rm", "--network", "none", "--user", "0", "--entrypoint", "/bin/sh", "--volume", dk.Files + ":/files"}
+	if privileged {
+		run = append(run, "--privileged")
+	}
+	for _, v := range volumes {
+		run = append(run, "--volume", v)
+	}
+	run = append(append(run, dk.Image, "-c", script, "files"), args...)
+	_, err := dk.docker(ctx, run...)
+	return err
+}
+
+// readyFiles makes a desk's folders the first time: its home as the
+// image's, or its files moved from the volumes of before (/old).
+const readyFiles = `set -e
+d="/files/$1/$2"
+mkdir -p "$d/work" "$d/home"
+if [ ! -e "$d/.made" ]; then
+  if [ -d /old/work ]; then cp -a /old/work/. "$d/work/"; fi
+  if [ -d /old/home ]; then cp -a /old/home/. "$d/home/"; else cp -a /home/desk/. "$d/home/"; fi
+  chown 1000:1000 "$d/work" "$d/home"
+  touch "$d/.made"
+fi`
+
+// ready makes d's folders in Files if they aren't there, moving its files
+// from the volumes it had before, which then go.
+func (dk *Docker) ready(ctx context.Context, d Desk) error {
+	name := d.Name()
+	var old []string
+	for _, part := range []string{"work", "home"} {
+		if _, err := dk.docker(ctx, "volume", "inspect", name+"."+part); err == nil {
+			old = append(old, name+"."+part+":/old/"+part)
+		}
+	}
+	if err := dk.files(ctx, false, old, readyFiles, d.Network, d.Nick); err != nil {
+		return fmt.Errorf("readying the desk's files: %w", err)
+	}
+	for _, v := range old {
+		if _, err := dk.docker(ctx, "volume", "rm", strings.Split(v, ":")[0]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// setStorage puts network's folder in Files in its XFS project ($2), limited
+// to $3 GB.
+const setStorage = `set -e
+mkdir -p "/files/$1"
+xfs_quota -x -c "project -s -p /files/$1 $2" -c "limit -p bhard=$3g $2" /files >/dev/null`
+
+// SetStorage limits network's folder in Files to gb, its desks' files in
+// all: an XFS project quota, the project's ID from the network's name.
+func (dk *Docker) SetStorage(ctx context.Context, network string, gb int) error {
+	if dk.Files == "" {
+		return nil
+	}
+	if !validName.MatchString(network) {
+		return fmt.Errorf("%q isn't a network's name", network)
+	}
+	if err := dk.files(ctx, true, nil, setStorage, network, strconv.FormatUint(uint64(projectID(network)), 10), strconv.Itoa(gb)); err != nil {
+		return fmt.Errorf("%w (limits need Files on XFS, mounted with prjquota)", err)
+	}
+	return nil
+}
+
+// projectID is network's XFS project: from its name, never 0 (no project).
+// Two names sharing one would share a limit; with 2^31 to choose from, a
+// few thousand networks are unlikely to.
+func projectID(network string) uint32 {
+	h := fnv.New32a()
+	h.Write([]byte(network))
+	return h.Sum32()&0x7fffffff | 1
+}
+
+// DiskUse is how full the disk Files is on is, in percent.
+func (dk *Docker) DiskUse(ctx context.Context) (int, error) {
+	out, err := dk.docker(ctx, "run", "--rm", "--network", "none", "--entrypoint", "/bin/sh", "--volume", dk.Files+":/files:ro", dk.Image, "-c", "df -P /files | tail -n 1")
+	if err != nil {
+		return 0, err
+	}
+	for _, f := range strings.Fields(out) {
+		if pct, ok := strings.CutSuffix(f, "%"); ok {
+			return strconv.Atoi(pct)
+		}
+	}
+	return 0, fmt.Errorf("df said %q", strings.TrimSpace(out))
 }
 
 // limited writes at most n bytes to w, and quietly drops the rest.
