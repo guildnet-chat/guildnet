@@ -123,8 +123,8 @@ SSH in again (for the `docker` group), then get the release, keeping a
 link to the one in use, and start it ([install.md](install.md) steps 2–5):
 
 ```bash
-curl -fsSL https://github.com/guildnet-chat/guildnet/archive/refs/tags/26.10.0.tar.gz | tar -xz
-ln -sfn guildnet-26.10.0 guildnet
+curl -fsSL https://github.com/guildnet-chat/guildnet/archive/refs/tags/26.10.1.tar.gz | tar -xz
+ln -sfn guildnet-26.10.1 guildnet
 cd guildnet/deploy/selfhost
 sh init.sh chat.example.com hq
 docker compose pull

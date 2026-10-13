@@ -113,6 +113,38 @@ func TestEveryTableEndsWithABlankLine(t *testing.T) {
 	}
 }
 
+// An install gets the release VERSION names: every download, checkout and
+// template parameter in the install instructions names it. Upgrades
+// (operations.md) name an old release and a new one.
+func TestInstallsGetThisRelease(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "VERSION"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	version := strings.TrimSpace(string(b))
+	pages, _ := filepath.Glob(filepath.Join("self-host", "*.md"))
+	pages = slices.DeleteFunc(append(pages, filepath.Join("..", "README.md")), func(p string) bool {
+		return filepath.Base(p) == "operations.md"
+	})
+	release := regexp.MustCompile(`archive/refs/tags/([0-9][^/\s]*)\.tar\.gz|cd guildnet-([0-9][^/\s]*)/|--branch ([0-9][^\s]*)|Release=([0-9][^\s]*)`)
+	found := 0
+	for _, page := range pages {
+		b, err := os.ReadFile(page)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, m := range release.FindAllStringSubmatch(string(b), -1) {
+			found++
+			if got := m[1] + m[2] + m[3] + m[4]; got != version {
+				t.Errorf("%s: %q gets %s, not this release (%s)", page, m[0], got, version)
+			}
+		}
+	}
+	if found < 10 {
+		t.Fatalf("found only %d install commands: is the pattern right?", found)
+	}
+}
+
 // Every link between the self-hosting docs (and from the READMEs and the
 // community files to them) leads to a file that's there, and to a heading
 // in it if it names one.

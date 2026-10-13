@@ -41,7 +41,7 @@ Get the release the console runs ([install.md](install.md#2-get-the-release)),
 then, with the VM's private address:
 
 ```bash
-cd guildnet-26.10.0/deploy/desks-host
+cd guildnet-26.10.1/deploy/desks-host
 sh init.sh 10.0.0.5
 ```
 

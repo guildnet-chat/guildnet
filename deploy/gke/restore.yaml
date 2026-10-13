@@ -18,7 +18,7 @@ spec:
     seccompProfile: {type: RuntimeDefault}
   containers:
     - name: restore
-      image: ghcr.io/guildnet-chat/postgres:26.10.0
+      image: ghcr.io/guildnet-chat/postgres:26.10.1
       command: [sleep, "3600"]
       env:
         - {name: PGHOST, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_DB_HOST}}}

@@ -30,17 +30,17 @@ Prompt are not supported.
 
 ## 2. Get the release
 
-Releases are named by date (`YY.0M.N`, e.g. `26.10.0`) and listed on
+Releases are named by date (`YY.0M.N`, e.g. `26.10.1`) and listed on
 [GitHub](https://github.com/guildnet-chat/guildnet/releases). Download the
 latest one's source and change to its Compose stack:
 
 ```bash
-curl -fsSL https://github.com/guildnet-chat/guildnet/archive/refs/tags/26.10.0.tar.gz | tar -xz
-cd guildnet-26.10.0/deploy/selfhost
+curl -fsSL https://github.com/guildnet-chat/guildnet/archive/refs/tags/26.10.1.tar.gz | tar -xz
+cd guildnet-26.10.1/deploy/selfhost
 ```
 
 A clone at the release's tag works the same
-(`git clone --branch 26.10.0 https://github.com/guildnet-chat/guildnet`).
+(`git clone --branch 26.10.1 https://github.com/guildnet-chat/guildnet`).
 `main` changes without notice between releases, and its images aren't
 published: build those from source.
 
@@ -120,7 +120,7 @@ image builds the web chat from `../guildnet-chat`, at the guildnet-chat
 release named in `deploy/platform/chat-release`.
 
 ```bash
-git clone --branch 26.10.0 https://github.com/guildnet-chat/guildnet
+git clone --branch 26.10.1 https://github.com/guildnet-chat/guildnet
 git clone --branch "$(cat guildnet/deploy/platform/chat-release)" https://github.com/guildnet-chat/guildnet-chat
 cd guildnet/deploy/selfhost
 sh init.sh chat.example.com hq

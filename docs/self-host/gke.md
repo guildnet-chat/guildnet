@@ -59,7 +59,7 @@ settings with the Compose stack's `init.sh`, then move them into
 `deploy/gke`:
 
 ```bash
-cd guildnet-26.10.0/deploy/selfhost
+cd guildnet-26.10.1/deploy/selfhost
 sh init.sh chat.example.com hq
 cd ../gke
 grep -v '^#' ../selfhost/.env | grep . > guildnet.env && chmod 600 guildnet.env
