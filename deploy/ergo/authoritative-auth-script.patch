@@ -1,0 +1,102 @@
+diff --git a/irc/accounts.go b/irc/accounts.go
+index 3a56863..6413102 100644
+--- a/irc/accounts.go
++++ b/irc/accounts.go
+@@ -1508,6 +1508,8 @@ func (am *AccountManager) AuthenticateByPassphrase(client *Client, accountName s
+ 			}
+ 			account, err = am.loadWithAutocreation(accountName, config.Accounts.AuthScript.Autocreate)
+ 			return
++		} else if config.Accounts.AuthScript.Authoritative && !output.Fallback {
++			return errAccountInvalidCredentials
+ 		}
+ 	}
+ 
+@@ -2101,6 +2103,9 @@ func (am *AccountManager) checkCertOrCookieAuth(ip net.IP, certfp string, peerCe
+ 		} else if output.Success && output.AccountName != "" {
+ 			clientAccount, err = am.loadWithAutocreation(output.AccountName, config.Accounts.AuthScript.Autocreate)
+ 			return
++		} else if config.Accounts.AuthScript.Authoritative && !output.Fallback {
++			err = errAccountInvalidCredentials
++			return
+ 		}
+ 	}
+ 
+diff --git a/irc/authscript.go b/irc/authscript.go
+index 05f8f06..6877cf7 100644
+--- a/irc/authscript.go
++++ b/irc/authscript.go
+@@ -37,6 +37,9 @@ type AuthScriptOutput struct {
+ 	AccountName string `json:"accountName"`
+ 	Success     bool   `json:"success"`
+ 	Error       string `json:"error"`
++	// Fallback, with an authoritative script, lets the local database
++	// decide (an account the script doesn't manage).
++	Fallback bool `json:"fallback"`
+ }
+ 
+ func CheckAuthScript(sem utils.Semaphore, config ScriptConfig, input AuthScriptInput) (output AuthScriptOutput, err error) {
+diff --git a/irc/config.go b/irc/config.go
+index ab53eb1..ede0ced 100644
+--- a/irc/config.go
++++ b/irc/config.go
+@@ -393,6 +393,11 @@ type ScriptConfig struct {
+ type AuthScriptConfig struct {
+ 	ScriptConfig `yaml:",inline"`
+ 	Autocreate   bool
++	// Authoritative makes the script's answer final: when it runs and says
++	// no, the local database isn't checked (unless the script says
++	// "fallback"), and users can't change their own credentials or
++	// unregister their own accounts (operators with accreg still can).
++	Authoritative bool
+ }
+ 
+ type IPCheckScriptConfig struct {
+diff --git a/irc/nickserv.go b/irc/nickserv.go
+index dd1ee16..7486edd 100644
+--- a/irc/nickserv.go
++++ b/irc/nickserv.go
+@@ -1092,6 +1092,13 @@ func nsSaverifyHandler(service *ircService, server *Server, client *Client, comm
+ 	}
+ }
+ 
++// credentialsManagedExternally says whether client may not change its own
++// credentials or unregister: an authoritative auth-script manages them, and
++// only operators with accreg may.
++func credentialsManagedExternally(server *Server, client *Client) bool {
++	return server.Config().Accounts.AuthScript.Authoritative && !client.HasRoleCapabs("accreg")
++}
++
+ func nsUnregisterHandler(service *ircService, server *Server, client *Client, command string, params []string, rb *ResponseBuffer) {
+ 	erase := command == "erase"
+ 
+@@ -1105,6 +1112,10 @@ func nsUnregisterHandler(service *ircService, server *Server, client *Client, co
+ 		service.Notice(rb, client.t("You must specify an account"))
+ 		return
+ 	}
++	if credentialsManagedExternally(server, client) {
++		service.Notice(rb, client.t("Your account is managed externally and cannot be unregistered here"))
++		return
++	}
+ 
+ 	var accountName string
+ 	var registeredAt time.Time
+@@ -1234,6 +1245,8 @@ func nsPasswdHandler(service *ircService, server *Server, client *Client, comman
+ 
+ 		if target == "" {
+ 			errorMessage = `You're not logged into an account`
++		} else if credentialsManagedExternally(server, client) {
++			errorMessage = `Your account credentials are managed externally and cannot be changed here`
+ 		} else if newPassword != checkPassword {
+ 			errorMessage = `Passwords do not match`
+ 		} else {
+@@ -1434,6 +1447,10 @@ func nsCertHandler(service *ircService, server *Server, client *Client, command
+ 	}
+ 
+ 	hasPrivs := client.HasRoleCapabs("accreg")
++	if verb != "list" && credentialsManagedExternally(server, client) {
++		service.Notice(rb, client.t("Your account credentials are managed externally and cannot be changed here"))
++		return
++	}
+ 	if target != "" && !hasPrivs {
+ 		service.Notice(rb, client.t("Insufficient privileges"))
+ 		return

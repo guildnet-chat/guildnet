@@ -107,6 +107,10 @@ type Options struct {
 	// KeysByBroker says networks' runners fetch their model keys from this
 	// platform's broker, so the host is never sent them.
 	KeysByBroker bool
+	// ErgoAsks says networks' IRC servers ask this console about people's
+	// logins (at its broker): their passwords are kept here only. Without
+	// it (no broker: a developer's machine), Ergo keeps a copy to check.
+	ErgoAsks bool
 	// Links keeps invitations and password resets; nil means neither.
 	Links Links
 	// TwoSteps keeps two-step sign-in to consoles; nil means it can't be
@@ -162,12 +166,13 @@ type Platform struct {
 	sectionPages *template.Template
 	static       func(name string) (string, error) // a static file's versioned address
 	staticFiles  layers                            // the console's static files, and the extension's
-	attempts     *limit.Tries                      // wrong passwords, by network and account
 	// codeAttempts: wrong second-step codes, by network and account; steps:
 	// sign-ins waiting for theirs.
 	codeAttempts *limit.Tries
 	steps        pendingSteps
-	stepped      stepped // sign-ins whose second step was just shown
+	stepped      stepped  // sign-ins whose second step was just shown
+	signIns      signIns  // people's IRC passwords, for a store that keeps none
+	signInLocks  sync.Map // network|account -> *sync.Mutex: one sign-in at a time
 	repos        reposByInstallation
 	// githubConnects: connecting GitHub from networks' consoles.
 	githubConnects consoleGitHubConnects
@@ -217,7 +222,7 @@ func New(opts Options) *Platform {
 	if opts.FirstRun != nil && opts.Host == nil {
 		opts.Host, opts.KeysByBroker = fixedHost{opts.FirstRun}, true
 	}
-	p := &Platform{opts: opts, pages: map[string]*template.Template{}, attempts: limit.New(5, 15*time.Minute), codeAttempts: limit.New(10, 15*time.Minute),
+	p := &Platform{opts: opts, pages: map[string]*template.Template{}, codeAttempts: limit.New(10, 15*time.Minute),
 		inviteMails: limit.New(inviteMailsADay, 24*time.Hour), linksByAddress: limit.New(linksAnAddress, time.Hour), linksByVisitor: limit.New(linksAVisitor, time.Hour)}
 	p.version = buildVersion(opts.ChatDir)
 	p.connectorHTTP = newConnectorHTTP(opts.ConnectorEgress)

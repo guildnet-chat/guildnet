@@ -445,18 +445,24 @@ Resources:
             - {Name: ERGO__ACCOUNTS__JWT_AUTH__AUTOCREATE, Value: "false"}
             - {Name: ERGO__OPERS__GUILDSERV__CLASS, Value: server-admin}
             - {Name: ERGO__OPERS__GUILDSERV__HIDDEN, Value: "true"}
+            # People's logins: Ergo asks the console (guildnet-ircauth), which
+            # keeps their passwords, at its broker, over TLS from its CA.
+            - {Name: GUILDNET_IRC_AUTH_URL, Value: "https://localhost:8082/irc/login"}
+            - {Name: GUILDNET_BROKER_CA_FILE, Value: /var/lib/guildnet-broker/ca.crt}
           # Made from the settings when the secret's written (fargate.md):
           # Ergo's API token and the web chat's key, in the forms Ergo reads.
           Secrets:
             - {Name: ERGO__API__BEARER_TOKENS, ValueFrom: !Sub "${SettingsSecret}:ERGO__API__BEARER_TOKENS::"}
             - {Name: ERGO__ACCOUNTS__JWT_AUTH__TOKENS, ValueFrom: !Sub "${SettingsSecret}:ERGO__ACCOUNTS__JWT_AUTH__TOKENS::"}
             - {Name: GUILDNET_OPER_PASSWORD, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_OPER_PASSWORD::"}
+            - {Name: GUILDNET_ERGO_TOKEN, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_ERGO_API_TOKEN::"}
           ReadonlyRootFilesystem: true
           LinuxParameters: {Capabilities: {Drop: [ALL]}}
           MountPoints:
             - {SourceVolume: ergo, ContainerPath: /ircd}
             - {SourceVolume: welcome, ContainerPath: /welcome}
             - {SourceVolume: ergo-tmp, ContainerPath: /tmp}
+            - {SourceVolume: broker-ca-shared, ContainerPath: /var/lib/guildnet-broker, ReadOnly: true}
           LogConfiguration: {LogDriver: awslogs, Options: {awslogs-group: !Ref Logs, awslogs-region: !Ref AWS::Region, awslogs-stream-prefix: guildnet}}
 
         - Name: runner

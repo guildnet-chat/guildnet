@@ -90,32 +90,6 @@ func ergoStatus(ctx context.Context, n Network) (ergoStats, error) {
 // errAccountExists means the account is there with another password.
 var errAccountExists = errors.New("that account exists with another password")
 
-// registerAccount makes account on a network's Ergo with password. If it
-// already has that password (a retry), that's fine.
-func registerAccount(ctx context.Context, n Network, account, password string) error {
-	var out struct {
-		Success   bool   `json:"success"`
-		ErrorCode string `json:"errorCode"`
-	}
-	if err := ergoCall(ctx, n, "/v1/ns/saregister", map[string]string{"accountName": account, "passphrase": password}, &out); err != nil {
-		return err
-	}
-	if out.Success {
-		return nil
-	}
-	if out.ErrorCode != "ACCOUNT_EXISTS" {
-		return fmt.Errorf("making account %s: %s", account, out.ErrorCode)
-	}
-	ok, err := checkPassword(ctx, n, account, password)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return errAccountExists
-	}
-	return nil
-}
-
 // createAccount makes a new account on a network's Ergo; errAccountExists
 // if the name is taken, whatever its password.
 func createAccount(ctx context.Context, n Network, account, password string) error {
@@ -146,6 +120,22 @@ func setPassword(ctx context.Context, n Network, account, password string) error
 	}
 	if !out.Success {
 		return fmt.Errorf("setting %s's password: %s", account, out.ErrorCode)
+	}
+	return nil
+}
+
+// clearErgoPassword leaves account on a network's Ergo with no password:
+// the console keeps it.
+func clearErgoPassword(ctx context.Context, n Network, account string) error {
+	var out struct {
+		Success   bool   `json:"success"`
+		ErrorCode string `json:"errorCode"`
+	}
+	if err := ergoCall(ctx, n, "/v1/ns/passwd", map[string]string{"accountName": account, "passphrase": ""}, &out); err != nil {
+		return err
+	}
+	if !out.Success {
+		return fmt.Errorf("clearing %s's password: %s", account, out.ErrorCode)
 	}
 	return nil
 }

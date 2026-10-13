@@ -271,6 +271,7 @@ type MemoryStore struct {
 	connMu       sync.Mutex         // connection changes, one at a time
 	gitRepos     map[string]GitRepo // by network|name
 	deskLeases   leaseMap           // by lease ID
+	ircPasswords signIns            // people's IRC passwords, and sign-ins
 }
 
 func (s *MemoryStore) OnboardingDone(_ context.Context, network string) (map[string]bool, error) {

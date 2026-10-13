@@ -51,7 +51,7 @@ func TestTheOwnerInvitesSomeoneAndTheyJoinTheOrg(t *testing.T) {
 	if r.Status != http.StatusSeeOther || r.Header.Get("Location") != "/" {
 		t.Fatalf("joining: %d %s", r.Status, r.Text())
 	}
-	if pw, ok := w.Ergo.Password("acme", "dee"); !ok || pw != "a-long-enough-password" {
+	if _, ok := w.Ergo.Password("acme", "dee"); !ok || !SignsInOverIRC(t, w, "acme", "dee", "a-long-enough-password") {
 		t.Error("dee has no IRC account with the password she chose")
 	}
 	m, err := w.Networks["acme"].Store.Member(context.Background(), "dee")
@@ -187,7 +187,7 @@ func TestEveryoneCanChangeTheirOwnPassword(t *testing.T) {
 		t.Fatalf("changing: %d %s", r.Status, r.Text())
 	}
 
-	if pw, _ := w.Ergo.Password("acme", "cy"); pw != "cys-new-password" {
+	if !SignsInOverIRC(t, w, "acme", "cy", "cys-new-password") {
 		t.Error("cy's IRC password didn't change")
 	}
 	if r := cy.Get("/"); r.Status != http.StatusOK {
@@ -216,7 +216,7 @@ func TestTheOwnerMakesAResetLinkForSomeoneWhoForgot(t *testing.T) {
 	if r := cy.Post(link, url.Values{"password": {"cys-new-password"}, "confirm": {"cys-new-password"}}); r.Status != http.StatusSeeOther {
 		t.Fatalf("resetting: %d %s", r.Status, r.Text())
 	}
-	if pw, _ := w.Ergo.Password("acme", "cy"); pw != "cys-new-password" {
+	if !SignsInOverIRC(t, w, "acme", "cy", "cys-new-password") {
 		t.Error("cy's IRC password didn't change")
 	}
 	if r := cyElsewhere.Get("/"); r.Status != http.StatusSeeOther {
@@ -265,7 +265,7 @@ func TestAnOwnerWhoForgotTheirPasswordSetsANewOneFromTheHomePage(t *testing.T) {
 	if r.Status != http.StatusSeeOther {
 		t.Fatalf("setting a new password: %d %s", r.Status, r.Text())
 	}
-	if pw, _ := w.Ergo.Password("bobco", "ada"); pw != "bobs-new-password" {
+	if !SignsInOverIRC(t, w, "bobco", "ada", "bobs-new-password") {
 		t.Error("the owner's IRC password didn't change")
 	}
 	eve := w.OnHome("eve@example.com")

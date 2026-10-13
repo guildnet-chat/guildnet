@@ -157,19 +157,27 @@ func (p *Platform) signin(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusUnauthorized, "That account and password didn't match.")
 		return
 	}
-	key := strings.ToLower(n.Name + "|" + account)
-	now := p.opts.Now()
-	if !p.attempts.Try(key, now) {
+	// The same check, and the same holding back of guessing, as IRC's.
+	res, err := p.checkSignIn(r.Context(), n, account, password, p.visitor(r))
+	switch {
+	case err != nil:
+		monitor.Problem(p.opts.Logger, "checking a password on %s: %v", n.Name, err)
+		fail(http.StatusBadGateway, "Couldn't check that just now. Try again in a moment.")
+		return
+	case res == signInHeld:
 		fail(http.StatusTooManyRequests, "Too many wrong passwords. Wait 15 minutes, then try again.")
 		return
-	}
-	ok, err := checkPassword(r.Context(), n, account, password)
-	if err != nil {
-		monitor.Problem(p.opts.Logger, "checking a password on %s: %v", n.Name, err)
-		fail(http.StatusBadGateway, "The IRC server didn't answer. Try again in a moment.")
+	case res == signInNotAPerson:
+		// An IRC account that isn't a person's in the org: with its right
+		// password, they're told why they can't come in.
+		if right, err := checkPassword(r.Context(), n, account, password); err == nil && right {
+			fail(http.StatusForbidden, fmt.Sprintf("%s isn't in %s's org. Ask the owner to add you.", account, n.Name))
+			return
+		}
+		p.passwords().SignInFailed(r.Context(), n.Name, strings.ToLower(account), signInSource(p.visitor(r)), p.opts.Now())
+		fail(http.StatusUnauthorized, "That account and password didn't match.")
 		return
-	}
-	if !ok {
+	case res != signInRight:
 		fail(http.StatusUnauthorized, "That account and password didn't match.")
 		return
 	}
@@ -182,7 +190,6 @@ func (p *Platform) signin(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusBadGateway, messageOf(err))
 		return
 	}
-	p.attempts.Reset(key)
 	if err := p.signInAs(w, r, n, account); err != nil {
 		monitor.Problem(p.opts.Logger, "signing %s in: %v", account, err)
 		fail(http.StatusInternalServerError, "Couldn't sign you in. Try again in a moment.")

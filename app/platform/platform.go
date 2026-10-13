@@ -287,6 +287,8 @@ func Run(cfg Config) {
 			opts.KeysByBroker = os.Getenv("GUILDNET_GITHUB_BROKER_LISTEN") != ""
 		}
 	}
+	// Networks' IRC servers ask the broker about people's logins.
+	opts.ErgoAsks = os.Getenv("GUILDNET_GITHUB_BROKER_LISTEN") != ""
 	// IRC apps connect at the edge with TLS, on this port.
 	if port := os.Getenv("GUILDNET_IRC_PORT"); port != "" {
 		n, err := strconv.Atoi(port)

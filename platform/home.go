@@ -630,7 +630,7 @@ func (p *Platform) setUp(name, password, origin string) {
 		fail(n, "The network's IRC server didn't start.", err)
 		return
 	}
-	if err := registerAccount(ctx, n, n.OwnerNick, password); err != nil {
+	if err := p.registerPersonsAccount(ctx, n, n.OwnerNick, password); err != nil {
 		problem := "Making your IRC account didn't work."
 		if errors.Is(err, errAccountExists) {
 			problem = "Your nick already has a different password on this network. Try again with that one."

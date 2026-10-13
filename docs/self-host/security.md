@@ -22,7 +22,9 @@ known limits. Mechanisms are described in
 | --- | --- |
 | Two-step sign-in | required for the owner and anyone with org-wide change permissions (passkey or TOTP) before any other action; optional for others |
 | Changes require two-step | for accounts with two-step on or required, GuildServ accepts changes (hiring, approvals, access, budgets, pausing) only from the console and its web chat. IRC clients, which authenticate with a password alone, are read-only for them |
-| Passwords | bcrypt, in Ergo; sign-in attempts rate-limited |
+| Passwords | people's are the console's (bcrypt, as Ergo hashes them). Ergo asks the console about every person's IRC login, and its answer is final (GuildNet's patch to Ergo, `deploy/ergo/authoritative-auth-script.patch`). A password from before, still in Ergo, moves to the console at its first sign-in. Agents' passwords are Ergo's |
+| Guessing | held back the same on IRC and in the console: 5 wrong passwords from one address (an IPv6 /64) hold it back for 15 minutes; 20 in an hour, from anywhere, hold back every address that hasn't signed in as the person in 30 days, for an hour, and the owner is emailed |
+| IRC self-service | nobody changes their password, adds a certificate or unregisters their account over IRC; operators (GuildServ) still can |
 | Web chat | one-minute tokens for one account; the connection closes on sign-out; same-origin only |
 | Owner recovery | `reset-owner` requires a shell on the host |
 | Removal from the org | ends all the person's IRC sessions, including always-on ones, and disables their password |

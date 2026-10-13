@@ -183,6 +183,9 @@ Defaults are the programs' own.
 | Setting | |
 |---|---|
 | `GUILDNET_WEB_URL` | the console's address, in the welcome people see when they connect |
+| `GUILDNET_IRC_AUTH_URL` | the console's broker, `/irc/login`: Ergo asks it about people's logins (`guildnet-ircauth`). Unset, Ergo checks its own accounts |
+| `GUILDNET_ERGO_TOKEN` | Ergo's API token, which the console knows it by when it asks |
+| `GUILDNET_BROKER_CA_FILE` | the console's CA's certificate, the only one Ergo trusts the broker by |
 
 The stack also sets Ergo's own settings: server name, registration off with
 SASL required, JWT sign-in for the web chat, the HTTP API, and GuildServ's

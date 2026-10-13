@@ -117,7 +117,7 @@ func TestTheFargateTaskHasTheStacksSettings(t *testing.T) {
 	addresses := map[string]bool{"GUILDNET_TRUSTED_PROXIES": true, "ERGO__SERVER__PROXY_ALLOWED_FROM": true,
 		"GUILDNET_PLATFORM_DATABASE_URL": true, "GUILDNET_DATABASE_URL": true, "GUILDNET_RUNNER_URL": true, "GUILDNET_ERGO_URL": true,
 		"GUILDNET_CHAT_URL": true, "GUILDNET_BROKER_NAMES": true, "GUILDNET_KEYS_BROKER": true, "GUILDNET_GITHUB_BROKER": true,
-		"GUILDNET_SERVER": true, "GUILDNET_ERGO_API_URL": true}
+		"GUILDNET_SERVER": true, "GUILDNET_ERGO_API_URL": true, "GUILDNET_IRC_AUTH_URL": true}
 	// No brand files on Fargate, and desks are on a host of their own.
 	notHere := map[string]bool{"GUILDNET_SANDBOX_TLS_DIR": true, "GUILDNET_BRAND_DIR": true}
 	for _, name := range []string{"caddy", "platform", "ergo", "runner"} {

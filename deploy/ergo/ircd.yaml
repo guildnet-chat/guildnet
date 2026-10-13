@@ -625,16 +625,24 @@ accounts:
 
     # pluggable authentication mechanism, via subprocess invocation
     # see the manual for details on how to write an authentication plugin script
+    # GuildNet: the console keeps people's passwords, and its lockout
+    # applies here too. guildnet-ircauth asks it; its answer is final
+    # (authoritative, GuildNet's patch), and people can't change their own
+    # credentials or unregister over IRC. Agents' accounts, which the
+    # console doesn't keep, are checked here ("fallback"), as is everything
+    # while the console can't be reached.
     auth-script:
-        enabled: false
-        command: "/usr/local/bin/authenticate-irc-user"
+        enabled: true
+        command: "/ircd-bin/guildnet-ircauth"
         # constant list of args to pass to the command; the actual authentication
         # data is transmitted over stdin/stdout:
         args: []
         # alternatively, pass the input to a persistent process over unix domain socket:
         #socket: "/tmp/ergo_auth_sidecar"
         # should we automatically create users if the plugin returns success?
-        autocreate: true
+        # GuildNet: no; the console and the runner make every account.
+        autocreate: false
+        authoritative: true
         # timeout for process execution, after which we send a SIGTERM:
         timeout: 9s
         # how long after the SIGTERM before we follow up with a SIGKILL:

@@ -223,6 +223,30 @@ func TestTheRunnerReachesTheBrokerOverTLS(t *testing.T) {
 	}
 }
 
+// Ergo asks the console about people's logins (guildnet-ircauth), at the
+// broker, over TLS trusting only the console's CA, with its own API token,
+// which the console knows it by.
+func TestErgoAsksTheConsoleAboutLogins(t *testing.T) {
+	s := readStack(t)
+	ergo, platform := s.Services["ergo"], s.Services["platform"]
+	if got := fmt.Sprint(ergo.Environment["GUILDNET_IRC_AUTH_URL"]); got != "https://platform"+fmt.Sprint(platform.Environment["GUILDNET_GITHUB_BROKER_LISTEN"])+"/irc/login" {
+		t.Errorf("ergo's GUILDNET_IRC_AUTH_URL = %q, want the broker's /irc/login", got)
+	}
+	if got := fmt.Sprint(ergo.Environment["GUILDNET_ERGO_TOKEN"]); got != "${GUILDNET_ERGO_API_TOKEN}" {
+		t.Errorf("ergo's GUILDNET_ERGO_TOKEN = %q, want its API token", got)
+	}
+	share := ""
+	for _, v := range platform.Volumes {
+		if parts := strings.Split(v, ":"); len(parts) >= 2 && parts[1] == fmt.Sprint(platform.Environment["GUILDNET_BROKER_CA_SHARE"]) {
+			share = parts[0]
+		}
+	}
+	caFile := fmt.Sprint(ergo.Environment["GUILDNET_BROKER_CA_FILE"])
+	if !slices.Contains(ergo.Volumes, share+":"+path.Dir(caFile)+":ro") || path.Base(caFile) != "ca.crt" {
+		t.Errorf("ergo's GUILDNET_BROKER_CA_FILE = %q, volumes %q; want ca.crt in the console's share (%s), read-only", caFile, ergo.Volumes, share)
+	}
+}
+
 // sandboxd, which has Docker's socket, serves TLS with a certificate the
 // console gives it, in a volume only the two of them have: sandboxd can't
 // change it, and nothing else can read its key. desks.sh points the console

@@ -451,6 +451,8 @@ func (p *Platform) Broker() http.Handler {
 	mux.HandleFunc("POST /git/{name}/{access}", p.brokerGitCredential)
 	// What happened on the network that people may want by email.
 	mux.HandleFunc("POST /events", p.news)
+	// A network's IRC server asking about a login (guildnet-ircauth).
+	mux.HandleFunc("POST /irc/login", p.ircLogin)
 	// Desks of GuildNet's own: where sandboxd is, with the network's token;
 	// and waking the sandbox VM when it's asleep.
 	mux.HandleFunc("GET /sandbox", p.brokerSandbox)

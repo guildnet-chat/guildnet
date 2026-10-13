@@ -175,9 +175,16 @@ services:
       ERGO__OPERS__GUILDSERV__CLASS: server-admin
       ERGO__OPERS__GUILDSERV__HIDDEN: "true"
       GUILDNET_OPER_PASSWORD: ${GUILDNET_OPER_PASSWORD:?run init.sh first}
+      # People's logins: Ergo asks the console (guildnet-ircauth), which
+      # keeps their passwords, at its broker, over TLS from its CA.
+      GUILDNET_IRC_AUTH_URL: https://platform:8082/irc/login
+      GUILDNET_ERGO_TOKEN: ${GUILDNET_ERGO_API_TOKEN}
+      GUILDNET_BROKER_CA_FILE: /var/lib/guildnet-broker/ca.crt
     volumes:
       # Accounts, channels and chat history.
       - ergo-data:/ircd
+      # The console's CA's certificate, the only one it trusts the broker by.
+      - broker-ca-shared:/var/lib/guildnet-broker:ro
       # The welcome, shared with the runner: GuildServ adds what the company
       # is for.
       - welcome:/welcome

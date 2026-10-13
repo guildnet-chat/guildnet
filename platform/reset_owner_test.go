@@ -53,8 +53,8 @@ func TestALockedOutOwnerIsResetFromTheServer(t *testing.T) {
 	if page := b.Get("/"); page.Status != http.StatusOK || !strings.Contains(page.Text(), "ada") {
 		t.Errorf("ada's console after the reset: %d %s", page.Status, page.Text())
 	}
-	if pw, _ := w.Ergo.Password(SelfHosted, "ada"); pw != "a-brand-new-password" {
-		t.Errorf("ada's IRC password is %q", pw)
+	if !SignsInOverIRC(t, w, SelfHosted, "ada", "a-brand-new-password") {
+		t.Error("ada's new IRC password doesn't sign in")
 	}
 	if ts, err := w.Store.TwoStepOf(context.Background(), SelfHosted, "ada"); err != nil || ts.On() {
 		t.Errorf("ada's two-step sign-in is still on (%v)", err)

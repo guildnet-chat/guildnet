@@ -319,7 +319,10 @@ func newWorld(t *testing.T, open func() Store, networks []string, pre func(*Worl
 		o := Setup{
 			Options: platform.Options{BaseDomain: BaseDomain, Networks: s, Sessions: s, People: s, Links: s, Onboarding: s, Alerts: s, Connections: s, GitRepos: s, TwoSteps: s, HomeTwoSteps: s,
 				Google: w.Google.Options(), Host: w.Host, Region: "us-west1", ModelProviders: w.Providers,
-				Logger: log.New(w.logs, "", 0), Now: w.Clock.Now},
+				Logger: log.New(w.logs, "", 0), Now: w.Clock.Now,
+				// As a console with its broker: networks' IRC servers ask it
+				// about people's logins.
+				ErgoAsks: true},
 		}
 		if pre != nil {
 			pre(w, &o)
@@ -507,9 +510,10 @@ func newFakeErgo(t *testing.T) *FakeErgo {
 			AccountName, Passphrase string
 		}
 		json.NewDecoder(r.Body).Decode(&body)
-		// As Ergo does: no spaces, and no colon first (see ergotest).
+		// As Ergo does: no spaces, and no colon first (see ergotest). None
+		// at all is an account without one (its password is the console's).
 		if (path == "v1/ns/saregister" || path == "v1/ns/passwd") &&
-			(strings.ContainsFunc(body.Passphrase, unicode.IsSpace) || strings.HasPrefix(body.Passphrase, ":") || body.Passphrase == "") {
+			(strings.ContainsFunc(body.Passphrase, unicode.IsSpace) || strings.HasPrefix(body.Passphrase, ":")) {
 			json.NewEncoder(w).Encode(map[string]any{"success": false, "errorCode": "INVALID_PASSPHRASE"})
 			return
 		}
@@ -520,7 +524,7 @@ func newFakeErgo(t *testing.T) *FakeErgo {
 			json.NewEncoder(w).Encode(map[string]any{"success": true, "users": map[string]int{"total": len(f.accounts[network])}, "channels": 5})
 		case "v1/check_auth":
 			pw, ok := f.accounts[network][body.AccountName]
-			json.NewEncoder(w).Encode(map[string]bool{"success": ok && pw == body.Passphrase})
+			json.NewEncoder(w).Encode(map[string]bool{"success": ok && pw != "" && pw == body.Passphrase})
 		case "v1/ns/saregister":
 			if _, taken := f.accounts[network][body.AccountName]; taken {
 				json.NewEncoder(w).Encode(map[string]any{"success": false, "errorCode": "ACCOUNT_EXISTS"})

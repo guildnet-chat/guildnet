@@ -63,7 +63,10 @@ type Server struct {
 	noMultiline bool
 	// network and webURL fill in the welcome (MOTD).
 	network, webURL string
-	id              string
+	// console is the environment that has Ergo ask a console about logins
+	// (guildnet-ircauth), and reach it on the Docker host.
+	console []string
+	id      string
 }
 
 // Welcome is the directory Ergo's welcome lives in (/welcome), which a
@@ -100,6 +103,18 @@ func WithWelcome(network, webURL string) Option {
 	return func(s *Server) { s.network, s.webURL = network, webURL }
 }
 
+// WithConsole has Ergo ask the console at url (on the Docker host, as
+// host.docker.internal) about logins, as network, with token, trusting the
+// CA certificate caPEM.
+func WithConsole(url string, caPEM []byte, network, token string) Option {
+	return func(s *Server) {
+		s.console = []string{"--add-host", "host.docker.internal:host-gateway",
+			"-e", "GUILDNET_IRC_AUTH_URL=" + url, "-e", "GUILDNET_BROKER_CA=" + base64.StdEncoding.EncodeToString(caPEM),
+			"-e", "GUILDNET_ERGO_TOKEN=" + token}
+		s.network = network
+	}
+}
+
 // WithJWTAudience makes Ergo accept only tokens for this audience.
 func WithJWTAudience(aud string) Option { return func(s *Server) { s.JWTAudience = aud } }
 
@@ -134,8 +149,9 @@ func Start(opts ...Option) (*Server, error) {
 	}
 	// Started the way deploy/ergo starts it, with this test's config in
 	// place of the committed one.
-	out, err := docker("create", "-p", "127.0.0.1::6667", "-p", "127.0.0.1::8089", "-p", "127.0.0.1::8097",
-		"-e", "GUILDNET_NETWORK="+s.network, "-e", "GUILDNET_WEB_URL="+s.webURL, image)
+	create := append([]string{"create", "-p", "127.0.0.1::6667", "-p", "127.0.0.1::8089", "-p", "127.0.0.1::8097",
+		"-e", "GUILDNET_NETWORK=" + s.network, "-e", "GUILDNET_WEB_URL=" + s.webURL}, s.console...)
+	out, err := docker(append(create, image)...)
 	if err != nil {
 		return nil, err
 	}

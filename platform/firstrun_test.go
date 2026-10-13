@@ -64,8 +64,8 @@ func TestSettingUpMakesTheNetworkAndHandsTheOwnerIn(t *testing.T) {
 	if r := console.Get("/"); r.Status != http.StatusOK || !strings.Contains(r.Text(), "ada") {
 		t.Fatalf("ada's console: %d %s", r.Status, r.Text())
 	}
-	if pw, ok := w.Ergo.Password(SelfHosted, "ada"); !ok || pw != "correct-horse-battery" {
-		t.Errorf("ada's IRC account: %q %v", pw, ok)
+	if _, ok := w.Ergo.Password(SelfHosted, "ada"); !ok || !SignsInOverIRC(t, w, SelfHosted, "ada", "correct-horse-battery") {
+		t.Error("ada's IRC account doesn't take the password she chose")
 	}
 	if got := w.Stack.Settings(); got != (NetworkSettings{Template: "team", Owner: "ada", Company: SelfHosted, Timezone: "Europe/Paris"}) {
 		t.Errorf("the runner was told %+v", got)

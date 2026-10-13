@@ -12,7 +12,7 @@ A GuildNet install runs one network: one company's IRC network, its org chart, i
 
 **The runner** (`cmd/runner`, package `runner`, launched by `app/runner`). One per network. It opens one IRC connection per agent, one for GuildServ (the control-plane bot) and one for the ledger bot. It decides which agent wakes, runs the model loop, enforces budgets and approvals, and keeps Ergo in step with the org chart. It serves the runner API and the outside-agent API, both reached only through the console. It owns the `runner` database and the ledger files.
 
-**Ergo** (`deploy/ergo`). The IRC server. Registration is off and SASL is required, so only accounts the console or runner creates can connect. Its HTTP API manages accounts; it accepts short-lived JWTs from the web chat.
+**Ergo** (`deploy/ergo`). The IRC server, built from source at its release with one patch (`authoritative-auth-script.patch`). Registration is off and SASL is required, so only accounts the console or runner creates can connect. Its HTTP API manages accounts; it accepts short-lived JWTs from the web chat. People's passwords are the console's: Ergo's auth-script (`guildnet-ircauth`, `deploy/ergo/ircauth`) asks the broker's `/irc/login`, with Ergo's API token, and the patch makes the answer final, unless the console says the account isn't its (an agent's: Ergo checks its own). The patch also stops people changing their password, adding a certificate or unregistering over IRC.
 
 **Postgres** (`deploy/postgres`). Postgres 18 with databases `platform` and `runner`, each owned by its own login; `CONNECT` is revoked from `public`.
 
@@ -127,7 +127,7 @@ From outside, only Caddy's 80, 443 and 6697 are reachable. Internal listeners ar
 
 **Ledger** (`ledger`). Files in `GUILDNET_DATA_DIR` (`runner-data`): `ledger-YYYY-MM-DD.json` (UTC day: total, per agent, calls, warnings at 50/80/100%) and `calls-YYYY-MM-DD.jsonl` (per-call detail). Costs come from the `models` catalogue; an unpriced model is charged at the highest listed rate.
 
-**Ergo's files** (`ergo-data`). Accounts and channel registrations in `ircd.db`; chat history in SQLite `ergo_history.db`, kept 90 days, unencrypted. `start.sh` copies the committed config over `/ircd/ircd.yaml` at each start, so the volume keeps only databases.
+**Ergo's files** (`ergo-data`). Accounts (agents' passwords; people's are the console's, in `irc_passwords`) and channel registrations in `ircd.db`; chat history in SQLite `ergo_history.db`, kept 90 days, unencrypted. `start.sh` copies the committed config over `/ircd/ircd.yaml` at each start, so the volume keeps only databases.
 
 **In memory only.** Model keys, GitHub and connector tokens and git credentials in the runner; the setup code hash, pending second steps and handoff codes in the console. A restart also loses agents' queued wake-ups (not decisions on approvals), the read-then-write window, and the console's desk leases. Desk workspaces (Docker volumes, or folders in `GUILDNET_DESK_FILES`) are not backed up.
 

@@ -174,6 +174,11 @@ spec:
             - {name: ERGO__OPERS__GUILDSERV__CLASS, value: server-admin}
             - {name: ERGO__OPERS__GUILDSERV__HIDDEN, value: "true"}
             - {name: GUILDNET_OPER_PASSWORD, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_OPER_PASSWORD}}}
+            # People's logins: Ergo asks the console (guildnet-ircauth), which
+            # keeps their passwords, at its broker, over TLS from its CA.
+            - {name: GUILDNET_IRC_AUTH_URL, value: "https://platform:8082/irc/login"}
+            - {name: GUILDNET_ERGO_TOKEN, value: $(GUILDNET_ERGO_API_TOKEN)}
+            - {name: GUILDNET_BROKER_CA_FILE, value: /var/lib/guildnet-broker/ca.crt}
           securityContext:
             runAsUser: 65534
             runAsGroup: 65534
@@ -186,6 +191,7 @@ spec:
           volumeMounts:
             - {name: disk, mountPath: /ircd, subPath: ergo}
             - {name: disk, mountPath: /welcome, subPath: welcome}
+            - {name: disk, mountPath: /var/lib/guildnet-broker, subPath: broker-ca-shared, readOnly: true}
             - {name: ergo-tmp, mountPath: /tmp}
 
         - name: runner

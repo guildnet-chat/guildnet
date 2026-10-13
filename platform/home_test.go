@@ -153,8 +153,8 @@ func TestCreatingANetworkSetsItUpAndTakesTheOwnerToItsConsole(t *testing.T) {
 		t.Errorf("the host was asked for %+v", s)
 	}
 	// ada's IRC account has the password she chose.
-	if pw, ok := w.Ergo.Password("initech", "ada"); !ok || pw != "correct-horse-battery" {
-		t.Errorf("ada's IRC account: %q %v", pw, ok)
+	if _, ok := w.Ergo.Password("initech", "ada"); !ok || !SignsInOverIRC(t, w, "initech", "ada", "correct-horse-battery") {
+		t.Error("ada's IRC account doesn't take the password she chose")
 	}
 
 	// Opening the console signs her in there, as the owner.

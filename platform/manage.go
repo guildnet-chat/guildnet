@@ -187,8 +187,12 @@ func (p *Platform) removePerson(w http.ResponseWriter, r *http.Request) {
 			monitor.Problem(p.opts.Logger, "removing %s's two-step sign-in: %v", account, err)
 		}
 	}
-	// Out of the org is out of the network: their IRC password goes (nobody
-	// knows the new one), and so do their sign-ins and open chats.
+	// Out of the org is out of the network: their IRC password goes (the
+	// console's, and any left in Ergo, which nobody knows the new one of),
+	// and so do their sign-ins and open chats.
+	if err := p.passwords().RemoveIRCPassword(r.Context(), n.Name, account); err != nil {
+		monitor.Problem(p.opts.Logger, "removing %s's password on %s: %v", account, n.Name, err)
+	}
 	if err := setPassword(r.Context(), n, account, newToken()); err != nil {
 		monitor.Problem(p.opts.Logger, "locking %s out of %s's IRC: %v", account, n.Name, err)
 	}

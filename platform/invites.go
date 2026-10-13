@@ -404,7 +404,7 @@ func (p *Platform) join(w http.ResponseWriter, r *http.Request) {
 		again(http.StatusBadGateway, messageOf(err))
 		return
 	}
-	if err := createAccount(r.Context(), n, nick, r.PostFormValue("password")); err != nil {
+	if err := p.createPersonsAccount(r.Context(), n, nick, r.PostFormValue("password")); err != nil {
 		if err := inviter.call(context.Background(), "DELETE", "/v1/members/"+url.PathEscape(nick), nil, nil); err != nil {
 			monitor.Problem(p.opts.Logger, "taking %s back out of %s's org: %v", nick, n.Name, err)
 		}
@@ -464,7 +464,7 @@ func (p *Platform) reset(w http.ResponseWriter, r *http.Request) {
 // changePassword sets account's IRC password on n, and signs them out of
 // n's console everywhere but the session keep.
 func (p *Platform) changePassword(ctx context.Context, n Network, account, password, keep string) error {
-	if err := setPassword(ctx, n, account, password); err != nil {
+	if err := p.keepIRCPassword(ctx, n, account, password); err != nil {
 		monitor.Problem(p.opts.Logger, "setting %s's password on %s: %v", account, n.Name, err)
 		return err
 	}
@@ -493,22 +493,18 @@ func (p *Platform) changeOwnPassword(w http.ResponseWriter, r *http.Request) {
 	s, _ := sessionOf(r)
 	n := networkOf(r)
 	again := func(status int, msg string) { p.renderAccount(w, r, status, msg, false) }
-	key := strings.ToLower(n.Name + "|" + s.Account)
-	now := p.opts.Now()
-	if !p.attempts.Try(key, now) {
+	res, err := p.checkSignIn(r.Context(), n, s.Account, r.PostFormValue("current"), p.visitor(r))
+	switch {
+	case err != nil:
+		again(http.StatusBadGateway, "Couldn't check that just now. Try again in a moment.")
+		return
+	case res == signInHeld:
 		again(http.StatusTooManyRequests, "Too many wrong passwords. Wait 15 minutes, then try again.")
 		return
-	}
-	ok, err := checkPassword(r.Context(), n, s.Account, r.PostFormValue("current"))
-	if err != nil {
-		again(http.StatusBadGateway, "The IRC server didn't answer. Try again in a moment.")
-		return
-	}
-	if !ok {
+	case res != signInRight:
 		again(http.StatusUnauthorized, "Your current password isn't right.")
 		return
 	}
-	p.attempts.Reset(key)
 	if msg := checkNewPassword(r); msg != "" {
 		again(http.StatusBadRequest, msg)
 		return
