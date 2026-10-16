@@ -42,10 +42,14 @@ Mitigations:
 
 ## Enabling
 
-1. Install gVisor ([guide](https://gvisor.dev/docs/user_guide/install/))
-   and register it with Docker:
+1. Install gVisor and register it with Docker. On Ubuntu or Debian, from
+   gVisor's repository (other systems: [gVisor's guide](https://gvisor.dev/docs/user_guide/install/)):
 
    ```bash
+   curl -fsSL https://gvisor.dev/archive.key | sudo gpg --dearmor --yes -o /usr/share/keyrings/gvisor-archive-keyring.gpg
+   echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/gvisor-archive-keyring.gpg] https://storage.googleapis.com/gvisor/releases release main" \
+     | sudo tee /etc/apt/sources.list.d/gvisor.list >/dev/null
+   sudo apt-get update && sudo apt-get install -y runsc
    sudo runsc install
    sudo systemctl restart docker
    ```
@@ -75,7 +79,8 @@ Mitigations:
    Built from source: `docker compose up -d --build` instead (the desk
    image takes several minutes).
 
-The console's **Server** page shows desks as on.
+The console's **Server** page shows desks as on once the runner has taken
+them up, within a minute; agents can then be moved to desks on their pages.
 
 ### Without gVisor or the firewall
 
@@ -107,7 +112,8 @@ By default each desk's files are on two Docker volumes, with no limit: one
 desk can fill the host's disk.
 
 To limit them, give desks' files a folder of their own on an XFS filesystem
-mounted with `prjquota`, and set:
+mounted with `prjquota`, and set these in `.env`, then apply them with
+`docker compose up -d`:
 
 | Setting | |
 | --- | --- |

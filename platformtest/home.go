@@ -225,7 +225,7 @@ func (h *FakeHost) Put(_ context.Context, name string, s netspec.Spec) (netspec.
 	if a, ok := h.Running[name]; ok {
 		return a, nil
 	}
-	r, err := startRunner(h.w.T, s, func() {
+	r, err := startRunner(h.w.T, s, &StubBrain{}, func() {
 		h.mu.Lock()
 		defer h.mu.Unlock()
 		if h.refreshes == nil {
@@ -246,7 +246,7 @@ func (h *FakeHost) Put(_ context.Context, name string, s netspec.Spec) (netspec.
 // startRunner starts a network's real runner from the real template that s
 // names, on a fake IRC server, as its host would; refreshed is called when
 // it's asked to fetch its model keys again.
-func startRunner(t *testing.T, s netspec.Spec, refreshed func()) (*runner.Runner, error) {
+func startRunner(t *testing.T, s netspec.Spec, brain *StubBrain, refreshed func()) (*runner.Runner, error) {
 	irc, err := ircfake.Start()
 	if err != nil {
 		return nil, err
@@ -282,7 +282,7 @@ func startRunner(t *testing.T, s netspec.Spec, refreshed func()) (*runner.Runner
 	}
 	// Before its directory goes: work still finishing writes nothing there.
 	t.Cleanup(l.Close)
-	r := runner.New(cfg, org.NewMemory(org.SeedFrom(cfg, personas)), &StubBrain{}, l, log.New(io.Discard, "", 0))
+	r := runner.New(cfg, org.NewMemory(org.SeedFrom(cfg, personas)), brain, l, log.New(io.Discard, "", 0))
 	if err := r.Start(); err != nil {
 		return nil, err
 	}

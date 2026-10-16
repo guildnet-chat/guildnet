@@ -106,6 +106,11 @@ func (p *Platform) renderServer(w http.ResponseWriter, r *http.Request, status i
 	github, githubOK := on(p.githubApp != nil, "On, as "+p.githubSlug())
 	connectors, connectorsOK := on(p.opts.Connections != nil, "On")
 	desks, desksOK := on(p.opts.Sandbox.URL != "", "On")
+	// They're on for agents once the runner has them: it asks for the
+	// sandbox every minute until it does.
+	if desksOK && !p.desksHere(r).Own {
+		desks, desksOK = "On, waiting for the runner to take them up (it checks every minute)", false
+	}
 	https, httpsOK := on(p.opts.SecureCookies, "On")
 	irc, ircOn := on(p.opts.IRCPort != 0, "On, port "+strconv.Itoa(p.opts.IRCPort))
 	v.SetUp = []serverPart{

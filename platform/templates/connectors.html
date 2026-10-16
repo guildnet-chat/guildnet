@@ -49,21 +49,27 @@
   {{end}}
   {{if $.Data.View.Owner}}
   {{with .GitForm}}
-  <form method="post" action="/git" class="fields">
+  <form method="post" action="/git" class="fields pairs">
     <input type="hidden" name="csrf" value="{{$.CSRF}}">
     <h3 class="wide">Add a repository</h3>
-    <label>Name <span class="muted small">what teams know it by</span>
-      <input name="name" value="{{.Name}}" required pattern="[a-z0-9][a-z0-9._\-]{0,39}" maxlength="40" autocomplete="off" spellcheck="false"></label>
-    <label>Address <span class="muted small">its https:// address, as you'd clone it</span>
-      <input name="url" value="{{.URL}}" type="url" required placeholder="https://gitlab.com/team/repo.git" autocomplete="off" spellcheck="false"></label>
-    <label>Read: user name <span class="muted small">if the host wants one</span>
-      <input name="read_user" value="{{.ReadUser}}" autocomplete="off" spellcheck="false"></label>
-    <label>Read: token <span class="muted small">none for a public repository</span>
-      <input name="read_token" type="text" class="secret" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other"></label>
+    <label>Name
+      <input name="name" value="{{.Name}}" required pattern="[a-z0-9][a-z0-9._\-]{0,39}" maxlength="40" autocomplete="off" spellcheck="false">
+      <span class="hint muted small">what teams know it by</span></label>
+    <label>Address
+      <input name="url" value="{{.URL}}" type="url" required placeholder="https://gitlab.com/team/repo.git" autocomplete="off" spellcheck="false">
+      <span class="hint muted small">its https:// address, as you'd clone it</span></label>
+    <label>Read: user name
+      <input name="read_user" value="{{.ReadUser}}" autocomplete="off" spellcheck="false">
+      <span class="hint muted small">if the host wants one</span></label>
+    <label>Read: token
+      <input name="read_token" type="text" class="secret" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other">
+      <span class="hint muted small">none for a public repository</span></label>
     <label>Push: user name
-      <input name="write_user" value="{{.WriteUser}}" autocomplete="off" spellcheck="false"></label>
-    <label>Push: token <span class="muted small">none, and agents only read it</span>
-      <input name="write_token" type="text" class="secret" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other"></label>
+      <input name="write_user" value="{{.WriteUser}}" autocomplete="off" spellcheck="false">
+      <span class="hint muted small">if the host wants one</span></label>
+    <label>Push: token
+      <input name="write_token" type="text" class="secret" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other">
+      <span class="hint muted small">none, and agents only read it</span></label>
     <p class="wide muted small">Desks can reach the read token, so make it one that only reads this repository (a deploy token). Only {{brand}}'s runner ever has the push token, to push agents' branches; protect the main branch on the host so only people merge. Both are tried before the repository's added. Adding one with the same name replaces it.</p>
     <button>Add repository</button>
   </form>

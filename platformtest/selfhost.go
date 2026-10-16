@@ -43,6 +43,14 @@ type Stack struct {
 	done  bool
 	// restarts counts the runner restarting, to take up new settings.
 	restarts int
+	// brain is the runner's, kept across its restarts.
+	brain StubBrain
+}
+
+// Offer lets the network's agents work on platform too: the runner has
+// desks ("desk") from now on, say.
+func (s *Stack) Offer(platform string) {
+	s.brain.Offer(platform)
 }
 
 // NetworkSettings are what a self-hosted network's runner is told by the
@@ -115,7 +123,7 @@ func (s *Stack) wait(stop chan struct{}) {
 		}
 		if s.r == nil && !s.done {
 			r, err := startRunner(s.w.T, netspec.Spec{Template: got.Template, Owner: got.Owner, Company: got.Company,
-				Timezone: got.Timezone, RunnerToken: SelfHostedRunnerToken}, func() {})
+				Timezone: got.Timezone, RunnerToken: SelfHostedRunnerToken}, &s.brain, func() {})
 			if err == nil {
 				s.r, s.ran = r, got
 			}

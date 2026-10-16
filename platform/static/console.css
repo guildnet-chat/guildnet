@@ -80,6 +80,10 @@ main { padding: 30px 32px 48px; display: flex; flex-direction: column; gap: 20px
 .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; align-items: end; }
 .fields .wide { grid-column: 1 / -1; }
 .fields > button { justify-self: start; }
+/* Fields that go in pairs (a user name and its token): two columns, each
+   field's caption above it and its hint below, so each row lines up. */
+.fields.pairs { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+@media (max-width: 640px) { .fields.pairs { grid-template-columns: minmax(0, 1fr); } }
 .inline-form { display: flex; flex-wrap: wrap; gap: 10px 12px; align-items: end; }
 .inline-form label { flex: 1 1 240px; }
 label.check { flex-direction: row; align-items: center; gap: 8px; min-height: var(--control-sm); font-size: var(--text-md); color: var(--text); }

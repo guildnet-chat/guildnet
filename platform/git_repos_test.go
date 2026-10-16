@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -62,6 +63,39 @@ func addRepo(t *testing.T, b *Browser, form url.Values) Response {
 	t.Helper()
 	b.Get("/connectors")
 	return b.Post("/git", form)
+}
+
+// The form sets its fields out in pairs, two columns wide: the name and the
+// address, then the read credential, then the push credential. Each field's
+// caption is above it and its hint below, so every row's captions and boxes
+// line up, whatever the hints say.
+func TestTheGitRepositoryFormPairsItsFields(t *testing.T) {
+	w, _ := gitWorld(t)
+	page := w.Browser("acme").SignedIn("ada").Get("/connectors")
+	form := regexp.MustCompile(`(?s)<form method="post" action="/git" class="([^"]*)">(.*?)</form>`).FindStringSubmatch(page.Body)
+	if form == nil {
+		t.Fatalf("no form adding a repository:\n%s", page.Text())
+	}
+
+	if !strings.Contains(" "+form[1]+" ", " pairs ") {
+		t.Errorf("the form's class is %q: it should be set out in pairs", form[1])
+	}
+	labels := regexp.MustCompile(`(?s)<label>(.*?)</label>`).FindAllStringSubmatch(form[2], -1)
+	var names []string
+	for _, l := range labels {
+		field := regexp.MustCompile(`<input name="([a-z_]+)"`).FindStringSubmatchIndex(l[1])
+		hint := strings.Index(l[1], `class="hint`)
+		if field == nil {
+			continue
+		}
+		names = append(names, l[1][field[2]:field[3]])
+		if hint < field[0] {
+			t.Errorf("%s's hint should be below its box:\n%s", l[1][field[2]:field[3]], l[1])
+		}
+	}
+	if want := []string{"name", "url", "read_user", "read_token", "write_user", "write_token"}; !slices.Equal(names, want) {
+		t.Errorf("fields in order %v, want %v", names, want)
+	}
 }
 
 func TestTheOwnerAddsAGitRepository(t *testing.T) {

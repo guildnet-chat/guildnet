@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"sync"
 	"time"
 
 	"github.com/guildnet-chat/guildnet/config"
@@ -40,8 +41,18 @@ const (
 type Router struct {
 	chat    Brain
 	managed AgentPlatform // nil when Managed Agents isn't set up
-	desks   AgentPlatform // nil when GuildNet's sandbox isn't set up
-	meter   DeskMetering  // counts desks' time; its Meter is nil when nothing does
+
+	// Desks can be given while the runner runs (turned on after it started).
+	mu    sync.RWMutex
+	desks AgentPlatform // nil when GuildNet's sandbox isn't set up
+	meter DeskMetering  // counts desks' time; its Meter is nil when nothing does
+}
+
+// ownDesks are the desks of GuildNet's own, and how their time is counted.
+func (r *Router) ownDesks() (AgentPlatform, DeskMetering) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.desks, r.meter
 }
 
 // DeskMeter says whether a desk of GuildNet's own may work, and counts the
@@ -70,6 +81,8 @@ func (r *Router) MeterDesks(m DeskMetering) *Router {
 	if m.Wait <= 0 {
 		m.Wait = 10 * time.Minute
 	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.meter = m
 	return r
 }
@@ -81,6 +94,8 @@ func NewRouter(chat Brain, managed AgentPlatform) *Router {
 
 // WithDesks routes agents on the desk platform to desks.
 func (r *Router) WithDesks(desks AgentPlatform) *Router {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.desks = desks
 	return r
 }
@@ -91,7 +106,8 @@ func (r *Router) at(p config.Persona) AgentPlatform {
 	case PlatformManaged:
 		return r.managed
 	case PlatformDesk:
-		return r.desks
+		desks, _ := r.ownDesks()
+		return desks
 	}
 	return nil
 }
@@ -111,7 +127,8 @@ func (r *Router) HasPlatform(platform string) bool {
 	case PlatformManaged:
 		return r.managed != nil
 	case PlatformDesk:
-		return r.desks != nil
+		desks, _ := r.ownDesks()
+		return desks != nil
 	}
 	return false
 }
@@ -164,7 +181,8 @@ func (r *Router) Resume(ctx context.Context, p config.Persona, token string, all
 // own, where desks' time is counted. Managed Agents' desks run on the
 // company's own Anthropic account.
 func (r *Router) metered(p config.Persona) bool {
-	return p.Platform == PlatformDesk && r.desks != nil && r.meter.Meter != nil
+	desks, m := r.ownDesks()
+	return p.Platform == PlatformDesk && desks != nil && m.Meter != nil
 }
 
 // deskTurn waits for nick's desk to be given a turn: why it can't have one
@@ -172,7 +190,7 @@ func (r *Router) metered(p config.Persona) bool {
 // waiting. If the platform can't be asked, it's asked again as when every
 // desk is busy: a desk's time that can't be counted isn't given away.
 func (r *Router) deskTurn(ctx context.Context, nick string, resume bool, onStep func(agent.Step)) (desk.Turn, string, error) {
-	m := r.meter
+	_, m := r.ownDesks()
 	giveUp := time.Now().Add(m.Wait)
 	said, unasked := false, false
 	for {
@@ -220,8 +238,9 @@ func (r *Router) deskDone(ctx context.Context, nick string, turn desk.Turn, star
 	seconds := int64(math.Ceil(max(time.Since(start)-waited(), 0).Seconds()))
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
 	defer cancel()
-	if err := r.meter.Meter.DeskDone(ctx, turn.ID, seconds); err != nil {
-		monitor.Problem(r.meter.Logger, "desks: reporting %s's %ds at its desk: %v", nick, seconds, err)
+	_, m := r.ownDesks()
+	if err := m.Meter.DeskDone(ctx, turn.ID, seconds); err != nil {
+		monitor.Problem(m.Logger, "desks: reporting %s's %ds at its desk: %v", nick, seconds, err)
 	}
 }
 

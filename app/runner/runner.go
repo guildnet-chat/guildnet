@@ -371,20 +371,7 @@ func Run(build Config) {
 			return sandbox.PassFor(key, network, hosts, time.Now(), 15*time.Minute), nil
 		}
 	}
-	var wakeSandbox func(context.Context) error
-	var deskBroker *desk.Broker
-	if sandboxURL == "" && keyBroker != nil {
-		b := &desk.Broker{URL: keyBroker.URL, Network: keyBroker.Network, Secret: keyBroker.Secret, HTTP: keyBroker.HTTP}
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		url, _, err := b.Sandbox(ctx)
-		cancel()
-		if err != nil {
-			monitor.Problem(logger, "desks: %v", err)
-		} else if url != "" {
-			sandboxURL, tokens, wakeSandbox, deskBroker, pass = url, b.Tokens(), b.Wake, b, b.Pass
-		}
-	}
-	if sandboxURL != "" {
+	useSandbox := func(sandboxURL string, tokens desk.TokenSource, wakeSandbox func(context.Context) error, deskBroker *desk.Broker, pass func(context.Context) (string, error)) {
 		sd := desk.NewRemoteFrom(sandboxURL, tokens)
 		// Over TLS, sandboxd's certificate is from the CA the broker's is:
 		// trusted the same way, and nothing else.
@@ -417,6 +404,24 @@ func Run(build Config) {
 			router.MeterDesks(runner.DeskMetering{Meter: deskBroker, Logger: logger})
 		}
 		logger.Printf("desks: in the sandbox at %s", sandboxURL)
+	}
+	// From the platform's broker: asked now, so a sandbox there at the start
+	// is set up before agents wake, and every minute until there is one, so
+	// desks turned on later are taken up without a restart.
+	asking, stopAsking := context.WithCancel(context.Background())
+	defer stopAsking()
+	switch {
+	case sandboxURL != "":
+		useSandbox(sandboxURL, tokens, nil, nil, pass)
+	case keyBroker != nil:
+		b := &desk.Broker{URL: keyBroker.URL, Network: keyBroker.Network, Secret: keyBroker.Secret, HTTP: keyBroker.HTTP}
+		check := &monitor.Check{Logger: logger}
+		untilSandbox(asking, func(ctx context.Context) (string, error) {
+			url, _, err := b.Sandbox(ctx)
+			return url, err
+		}, time.Minute, func(url string) {
+			useSandbox(url, b.Tokens(), b.Wake, b, b.Pass)
+		}, func(err error) { check.Failed("desks: %v", err) })
 	}
 	r := runner.New(cfg, store, router, l, logger)
 	if outside != nil {
@@ -452,6 +457,43 @@ func Run(build Config) {
 	}
 	logger.Print("shutting down")
 	r.Stop()
+}
+
+// untilSandbox asks for the sandbox's address now, then every `every` until
+// there is one or ctx ends, and sets desks up there (use) once. Each ask has
+// 30 seconds; failed hears why one failed.
+func untilSandbox(ctx context.Context, ask func(context.Context) (string, error), every time.Duration, use func(url string), failed func(error)) {
+	try := func() bool {
+		actx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		url, err := ask(actx)
+		if err != nil {
+			failed(err)
+			return false
+		}
+		if url == "" {
+			return false
+		}
+		use(url)
+		return true
+	}
+	if try() {
+		return
+	}
+	go func() {
+		t := time.NewTicker(every)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				if try() {
+					return
+				}
+			}
+		}
+	}()
 }
 
 // brokerClient is how the runner reaches the platform's broker: over TLS,

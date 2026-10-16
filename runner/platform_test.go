@@ -229,3 +229,19 @@ func TestTheAPISaysWhetherDesksOfGuildNetsOwnCanBeHad(t *testing.T) {
 		t.Errorf("without a sandbox: %v", out)
 	}
 }
+
+// Desks a running network is given (turned on after its runner started)
+// are offered from then on, without a restart.
+func TestDesksGivenWhileTheRunnerRunsAreOffered(t *testing.T) {
+	router := runner.NewRouter(&fakeBrain{}, nil)
+	n := startNetworkWith(t, router, withAPI())
+	if _, out := n.api("method").call("GET", "/v1/github", nil); out["own_desks"] != false {
+		t.Fatalf("before desks: %v", out)
+	}
+
+	router.WithDesks(&fakeBrain{})
+
+	if _, out := n.api("method").call("GET", "/v1/github", nil); out["own_desks"] != true {
+		t.Errorf("after desks: %v, want own desks", out)
+	}
+}

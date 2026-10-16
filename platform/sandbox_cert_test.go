@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -67,6 +68,27 @@ func TestTheServerPageSaysWhenSandboxdsCertificateRunsOut(t *testing.T) {
 		if warns := strings.Contains(page.Text(), "issue it a new one"); warns != c.warns {
 			t.Errorf("%v left: the page warns: %v, want %v:\n%s", c.left, warns, c.warns, page.Text())
 		}
+	}
+}
+
+// Desks are on once the runner has them, not when the console has a
+// sandbox: until the runner picks it up (it asks every minute), agents
+// can't be moved to desks, and the Server page says so.
+func TestTheServerPageSaysDesksAreOnOnlyOnceTheRunnerHasThem(t *testing.T) {
+	sb := remoteSandboxd(t, 200*24*time.Hour)
+	w := NewSelfHostedWorld(t, func(o *Setup) { o.Sandbox = sb })
+	_, ada := w.SetUp()
+	desks := regexp.MustCompile(`Desks \(agents(?:'|&#39;) workspaces\)</td><td><span[^>]*>([^<]*)<`)
+
+	waiting := desks.FindStringSubmatch(ada.Get("/server").Body)
+	w.Stack.Offer("desk")
+	on := desks.FindStringSubmatch(ada.Get("/server").Body)
+
+	if waiting == nil || !strings.Contains(waiting[1], "waiting for the runner") {
+		t.Errorf("before the runner has desks, the page should say desks wait for it: %q", waiting)
+	}
+	if on == nil || on[1] != "On" {
+		t.Errorf("once the runner has desks, the page should say they're on: %q", on)
 	}
 }
 
