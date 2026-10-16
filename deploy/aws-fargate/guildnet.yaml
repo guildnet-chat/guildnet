@@ -15,7 +15,7 @@ Description: GuildNet on Fargate, one task, with RDS and EFS (untested)
 Parameters:
   Release:
     Type: String
-    Default: "26.10.1"
+    Default: "26.10.2"
     AllowedPattern: '^\d\d\.(0[1-9]|1[0-2])\.(0|[1-9]\d*)$'
     Description: the GuildNet release whose images run (YY.0M.N)
   Registry:

@@ -34,7 +34,7 @@ Make the install's settings with the Compose stack's `init.sh`, then write
 them, with two values Ergo reads in its own form, to a secret:
 
 ```bash
-cd guildnet-26.10.1/deploy/selfhost
+cd guildnet-26.10.2/deploy/selfhost
 sh init.sh chat.example.com hq
 cd ../aws-fargate
 ( set -a; . ../selfhost/.env; set +a
@@ -72,7 +72,7 @@ console can't start until its database exists):
 ```bash
 aws cloudformation deploy --stack-name guildnet --template-file guildnet.yaml \
   --capabilities CAPABILITY_IAM \
-  --parameter-overrides Domain=chat.example.com Network=hq Release=26.10.1 \
+  --parameter-overrides Domain=chat.example.com Network=hq Release=26.10.2 \
     SettingsSecret=<secret ARN> Running=0
 aws cloudformation describe-stacks --stack-name guildnet --query 'Stacks[0].Outputs' --output table
 ```
@@ -90,7 +90,7 @@ wait for the task to stop with exit code 0
 ```bash
 aws cloudformation deploy --stack-name guildnet --template-file guildnet.yaml \
   --capabilities CAPABILITY_IAM --parameter-overrides Running=1 \
-  Domain=chat.example.com Network=hq Release=26.10.1 SettingsSecret=<secret ARN>
+  Domain=chat.example.com Network=hq Release=26.10.2 SettingsSecret=<secret ARN>
 aws logs tail /guildnet --since 10m --filter-pattern '"setup code"'
 ```
 

@@ -35,8 +35,8 @@ configMapGenerator:
 
 # The release: change with `kustomize edit set image`, all at once.
 images:
-  - {name: ghcr.io/guildnet-chat/caddy, newTag: "26.10.1"}
-  - {name: ghcr.io/guildnet-chat/platform, newTag: "26.10.1"}
-  - {name: ghcr.io/guildnet-chat/ergo, newTag: "26.10.1"}
-  - {name: ghcr.io/guildnet-chat/runner, newTag: "26.10.1"}
-  - {name: ghcr.io/guildnet-chat/postgres, newTag: "26.10.1"}
+  - {name: ghcr.io/guildnet-chat/caddy, newTag: "26.10.2"}
+  - {name: ghcr.io/guildnet-chat/platform, newTag: "26.10.2"}
+  - {name: ghcr.io/guildnet-chat/ergo, newTag: "26.10.2"}
+  - {name: ghcr.io/guildnet-chat/runner, newTag: "26.10.2"}
+  - {name: ghcr.io/guildnet-chat/postgres, newTag: "26.10.2"}
