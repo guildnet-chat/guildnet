@@ -215,7 +215,6 @@ networks) or in development.
 | `GUILDNET_OWNER`, `GUILDNET_COMPANY`, `GUILDNET_TIMEZONE` | a network's owner, company and timezone; first-run setup gives the runner these |
 | `GUILDNET_GITHUB_APP_ID`, `GUILDNET_GITHUB_INSTALLATION_ID`, `GUILDNET_GITHUB_APP_KEY`, `GUILDNET_GITHUB_APP_KEY_FILE` | development: a runner with a GitHub App installation of its own, without the console |
 | `GUILDNET_SANDBOX_URL` and `GUILDNET_SANDBOX_KEY` on the runner | development: a runner that signs its own desk tokens, without the console |
-| `GUILDNET_SANDBOX_ACCEPT_V1` | sandboxd takes old desk tokens too (`on`), for one release while runners are updated. Off unless set |
 | `GUILDNET_BROKER_CA` | guildnet.chat: the host's CA, given to each runner |
 | `GUILDNET_PKI_SHARED` | guildnet.chat: where the host shares the broker's certificate |
 | `GUILDNET_CERT_CHECK_LISTEN` | guildnet.chat: where the edge asks whether a name is a network's before getting it a certificate |

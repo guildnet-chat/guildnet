@@ -81,9 +81,6 @@ type Sized interface {
 	SetStorage(ctx context.Context, network string, gb int) error
 }
 
-// tokenPurpose keeps these signatures from meaning anything elsewhere.
-const tokenPurpose = "guildnet sandbox|"
-
 // NewKeys is a key pair for networks' tokens: the platform keeps the
 // private key and signs with it; sandboxd has only the public one, so the
 // sandbox VM holds nothing that could make a token.
@@ -205,7 +202,7 @@ func sign(key ed25519.PrivateKey, c Claims) string {
 // PassOpens says whether pass, an egress pass one of keys signed that's
 // good now, opens host on port.
 func PassOpens(keys []ed25519.PublicKey, pass string, now time.Time, host string, port int) bool {
-	c, ok := claimsOf(keys, pass, now, false)
+	c, ok := claimsOf(keys, pass, now)
 	if !ok || c.Scope != Egress {
 		return false
 	}
@@ -222,16 +219,9 @@ func PassOpens(keys []ed25519.PublicKey, pass string, now time.Time, host string
 	return false
 }
 
-// TokenV1 is an old token: the network's name and the platform's signature
-// of it, for ever. sandboxd takes them only while told to (AcceptV1).
-func TokenV1(key ed25519.PrivateKey, network string) string {
-	sig := ed25519.Sign(key, []byte(tokenPurpose+network))
-	return network + "." + base64.RawURLEncoding.EncodeToString(sig)
-}
-
 // claimsOf is what token says, if one of keys signed it and it's good now.
-// An old token (acceptV1) is for its network's desks and their removal.
-func claimsOf(keys []ed25519.PublicKey, token string, now time.Time, acceptV1 bool) (Claims, bool) {
+// Old tokens (a network's name, signed, for ever) aren't taken.
+func claimsOf(keys []ed25519.PublicKey, token string, now time.Time) (Claims, bool) {
 	parts := strings.Split(token, ".")
 	switch {
 	case len(parts) == 3 && parts[0] == "v2":
@@ -246,12 +236,6 @@ func claimsOf(keys []ed25519.PublicKey, token string, now time.Time, acceptV1 bo
 		}
 		good := !c.Issued.After(now.Add(tokenSkew)) && !now.After(c.Expires.Add(tokenSkew)) && c.Expires.Sub(c.Issued) <= tokenLongest
 		return c, good
-	case len(parts) == 2 && acceptV1:
-		sig, err := base64.RawURLEncoding.DecodeString(parts[1])
-		if err != nil || !validName.MatchString(parts[0]) || !verified(keys, []byte(tokenPurpose+parts[0]), sig) {
-			return Claims{}, false
-		}
-		return Claims{Network: parts[0], Scope: "v1"}, true
 	}
 	return Claims{}, false
 }
@@ -266,4 +250,4 @@ func verified(keys []ed25519.PublicKey, msg, sig []byte) bool {
 }
 
 // may says whether c lets its holder do scope.
-func (c Claims) may(scope string) bool { return c.Scope == scope || c.Scope == "v1" }
+func (c Claims) may(scope string) bool { return c.Scope == scope }

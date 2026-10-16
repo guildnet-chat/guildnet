@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -245,20 +246,15 @@ func TestATokenFromBeforeANetworkWasDeletedIsRefused(t *testing.T) {
 	}
 }
 
-// Old tokens (the network's name, signed, for ever) only where sandboxd's
-// told to take them, while runners move to new ones.
-func TestOldTokensOnlyWhileAllowed(t *testing.T) {
+// Old tokens (the network's name, signed, for ever) open nothing: every
+// runner has the new ones, which run out.
+func TestOldTokensOpenNothing(t *testing.T) {
 	r := start(t)
-	v1 := desk.NewRemote(r.url, sandbox.TokenV1(privateKey, "acme"))
-	if err := v1.Open(context.Background(), "kai"); err == nil {
-		t.Error("an old token worked")
-	}
+	sig := ed25519.Sign(privateKey, []byte("guildnet sandbox|acme"))
+	old := "acme." + base64.RawURLEncoding.EncodeToString(sig)
 
-	b := newBackend()
-	srv := httptest.NewServer(sandbox.NewServer(sandbox.Options{Backend: b, PublicKeys: []ed25519.PublicKey{publicKey}, AcceptV1: true}))
-	defer srv.Close()
-	if err := desk.NewRemote(srv.URL, sandbox.TokenV1(privateKey, "acme")).Open(context.Background(), "kai"); err != nil {
-		t.Errorf("an old token where they're taken: %v", err)
+	if err := desk.NewRemote(r.url, old).Open(context.Background(), "kai"); err == nil {
+		t.Error("an old token opened a desk")
 	}
 }
 

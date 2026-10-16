@@ -43,11 +43,8 @@ type Options struct {
 	// PublicKeys check networks' tokens, which the platform signs: one, or
 	// the old and the new while the key's changed.
 	PublicKeys []ed25519.PublicKey
-	// AcceptV1 takes old tokens too (a network's name, signed, for ever),
-	// for one release while runners move to new ones.
-	AcceptV1 bool
-	Now      func() time.Time // nil for the clock
-	Logger   *log.Logger      // the audit log; nil for none
+	Now        func() time.Time // nil for the clock
+	Logger     *log.Logger      // the audit log; nil for none
 	// MaxRunning is how many desks may run at once, for the VM's memory:
 	// past it, the desk left idle longest is stopped to make room, or, if
 	// every one is at work, ErrFull. 0 for no limit.
@@ -78,7 +75,7 @@ type Server struct {
 // claims are what the request's token says, if it's good for scope.
 func (s *Server) claims(r *http.Request, scope string) (Claims, bool) {
 	now := s.opts.Now()
-	c, ok := claimsOf(s.opts.PublicKeys, strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "), now, s.opts.AcceptV1)
+	c, ok := claimsOf(s.opts.PublicKeys, strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "), now)
 	if !ok || !c.may(scope) {
 		return Claims{}, false
 	}
@@ -89,7 +86,7 @@ func (s *Server) claims(r *http.Request, scope string) (Claims, bool) {
 			delete(s.removed, network) // every token from before has run out
 		}
 	}
-	if at, gone := s.removed[c.Network]; gone && (c.Scope == "v1" || !c.Issued.After(at)) {
+	if at, gone := s.removed[c.Network]; gone && !c.Issued.After(at) {
 		return Claims{}, false
 	}
 	return c, true

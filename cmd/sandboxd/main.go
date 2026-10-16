@@ -103,12 +103,6 @@ func serve(logger *log.Logger) error {
 		}
 		keys = append(keys, key)
 	}
-	// Old tokens (a network's name, signed, for ever), only while runners
-	// move to new ones.
-	acceptV1 := os.Getenv("GUILDNET_SANDBOX_ACCEPT_V1") == "on"
-	if acceptV1 {
-		logger.Print("taking old sandbox tokens too (GUILDNET_SANDBOX_ACCEPT_V1): turn it off once every runner's been updated")
-	}
 	pids, _ := strconv.Atoi(env("GUILDNET_DESK_PIDS", "512"))
 	backend := &sandbox.Docker{
 		Image:   env("GUILDNET_DESK_IMAGE", "guildnet-desk:latest"),
@@ -153,7 +147,7 @@ func serve(logger *log.Logger) error {
 	// Shared by several networks (guildnet.chat's sandbox VM), each has only
 	// so many of them, unless unset.
 	perNetwork, _ := strconv.Atoi(os.Getenv("GUILDNET_DESKS_PER_NETWORK"))
-	s := sandbox.NewServer(sandbox.Options{Backend: backend, PublicKeys: keys, AcceptV1: acceptV1, Logger: logger, MaxRunning: atOnce, MaxPerNetwork: perNetwork, DefaultStorageGB: defaultGB})
+	s := sandbox.NewServer(sandbox.Options{Backend: backend, PublicKeys: keys, Logger: logger, MaxRunning: atOnce, MaxPerNetwork: perNetwork, DefaultStorageGB: defaultGB})
 	logger.Printf("room for %d desks at once, %s each", atOnce, backend.Memory)
 	go func() {
 		for range time.Tick(time.Minute) {

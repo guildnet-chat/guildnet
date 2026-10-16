@@ -312,17 +312,20 @@ func Run(cfg Config) {
 				return os.WriteFile(file, []byte(time.Now().UTC().Format(time.RFC3339)+"\n"), 0o644)
 			}
 		}
-		// A self-hosted install's sandboxd, over TLS, with a certificate from
-		// the console's own CA (GUILDNET_BROKER_TLS_DIR's), reached trusting
-		// that CA alone, as the runner does. Beside the console, it's given
-		// one in GUILDNET_SANDBOX_TLS_DIR, a folder only sandboxd shares; on a
-		// desks host of its own, it asks for one (sandbox-cert).
+		// sandboxd over TLS, with a certificate from the console's own CA
+		// (GUILDNET_BROKER_TLS_DIR's) or, hosted, from GuildNet's CA, which
+		// the host holds and shares the certificate of: reached trusting that
+		// CA alone, as the runner does. Beside a self-hosted console, sandboxd
+		// is given one in GUILDNET_SANDBOX_TLS_DIR, a folder only it shares;
+		// on a desks host of its own, it asks for one (sandbox-cert; hosted,
+		// the host's).
 		own := os.Getenv("GUILDNET_BROKER_TLS_DIR")
 		if strings.HasPrefix(url, "https://") {
-			if own == "" {
-				logger.Fatal("an https GUILDNET_SANDBOX_URL needs GUILDNET_BROKER_TLS_DIR: the console's CA, which sandboxd's certificate is from")
+			ca, err := sandboxCA(os.Getenv)
+			if err != nil {
+				logger.Fatal(err)
 			}
-			opts.Sandbox.Through = pki.ClientTransport(filepath.Join(own, "ca.crt"))
+			opts.Sandbox.Through = pki.ClientTransport(ca)
 		}
 		if dir := os.Getenv("GUILDNET_SANDBOX_TLS_DIR"); dir != "" {
 			if own == "" {

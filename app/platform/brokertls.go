@@ -3,6 +3,7 @@
 package app
 
 import (
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -42,6 +43,19 @@ func sandboxCerts(dir, to string, names []string, now time.Time) error {
 		return err
 	}
 	return ca.Issue(to, "sandboxd", names, now)
+}
+
+// sandboxCA is the certificate of the CA sandboxd's certificate is from,
+// which the console trusts it by: a self-hosted console's own (in
+// GUILDNET_BROKER_TLS_DIR), or the one a host shares with it (in
+// GUILDNET_PKI_SHARED: hosted, where the host holds GuildNet's CA).
+func sandboxCA(getenv func(string) string) (string, error) {
+	for _, k := range []string{"GUILDNET_BROKER_TLS_DIR", "GUILDNET_PKI_SHARED"} {
+		if dir := getenv(k); dir != "" {
+			return filepath.Join(dir, "ca.crt"), nil
+		}
+	}
+	return "", errors.New("an https GUILDNET_SANDBOX_URL needs the CA sandboxd's certificate is from: GUILDNET_BROKER_TLS_DIR (the console's own) or GUILDNET_PKI_SHARED (a host's)")
 }
 
 // signSandboxCert signs sandboxd's request for a certificate (from in: a

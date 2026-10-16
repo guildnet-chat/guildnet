@@ -149,3 +149,24 @@ func TestTheBrokersCAIsKept(t *testing.T) {
 		t.Error("the CA changed")
 	}
 }
+
+// sandboxd over TLS is trusted by the CA its certificate is from: a
+// self-hosted console's own (GUILDNET_BROKER_TLS_DIR), or, where a host
+// holds GuildNet's CA (hosted), the one it shares with the console
+// (GUILDNET_PKI_SHARED). With neither, the console can't check sandboxd.
+func TestTheConsoleTrustsSandboxdByTheCAItsCertificateIsFrom(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		env  map[string]string
+		want string
+	}{
+		{"self-hosted", map[string]string{"GUILDNET_BROKER_TLS_DIR": "/broker"}, filepath.Join("/broker", "ca.crt")},
+		{"hosted", map[string]string{"GUILDNET_PKI_SHARED": "/pki"}, filepath.Join("/pki", "ca.crt")},
+		{"neither", map[string]string{}, ""},
+	} {
+		got, err := sandboxCA(func(k string) string { return c.env[k] })
+		if got != c.want || (err == nil) != (c.want != "") {
+			t.Errorf("%s: %q, %v; want %q", c.name, got, err, c.want)
+		}
+	}
+}
