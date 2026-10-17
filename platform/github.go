@@ -423,7 +423,7 @@ func (p *Platform) Broker() http.Handler {
 			brokerError(w, http.StatusBadGateway, "couldn't list the installation's repos")
 			return
 		}
-		writeJSONResponse(w, http.StatusOK, map[string]any{"account": link.Account, "repos": repos})
+		writeJSONResponse(w, http.StatusOK, map[string]any{"account": link.Account, "repos": repos, "public": p.publicRepos(link.Installation)})
 	}))
 	mux.HandleFunc("POST /github/token", p.brokered(func(w http.ResponseWriter, r *http.Request, n Network, link GitHubLink) {
 		var in struct {
@@ -551,11 +551,20 @@ func (p *Platform) installationRepos(ctx context.Context, installation int64) ([
 	return repos, err
 }
 
+// publicRepos are which of an installation's repos are public, as GitHub
+// last said (installationRepos asks): what's in them may have been written
+// by anyone, so the runner counts them as a source of their own.
+func (p *Platform) publicRepos(installation int64) []string {
+	p.repos.mu.Lock()
+	defer p.repos.mu.Unlock()
+	return slices.Clone(p.repos.m[installation].public)
+}
+
 // freshInstallationRepos asks GitHub for an installation's repos now, and
 // keeps them for next time.
 func (p *Platform) freshInstallationRepos(ctx context.Context, installation int64) ([]string, error) {
 	now := p.opts.Now()
-	repos, err := p.fetchInstallationRepos(ctx, installation)
+	repos, public, err := p.fetchInstallationRepos(ctx, installation)
 	if err != nil {
 		return nil, err
 	}
@@ -568,15 +577,16 @@ func (p *Platform) freshInstallationRepos(ctx context.Context, installation int6
 		check = &monitor.Check{Logger: p.opts.Logger}
 	}
 	check.OK()
-	p.repos.m[installation] = keptRepos{repos: slices.Clone(repos), at: now, check: check}
+	p.repos.m[installation] = keptRepos{repos: slices.Clone(repos), public: public, at: now, check: check}
 	p.repos.mu.Unlock()
 	return repos, nil
 }
 
 type keptRepos struct {
-	repos []string
-	at    time.Time
-	check *monitor.Check // GitHub failing to list them since
+	repos  []string
+	public []string // which of them are public
+	at     time.Time
+	check  *monitor.Check // GitHub failing to list them since
 }
 
 // reposByInstallation are installations' repos, as GitHub last said.
@@ -585,42 +595,46 @@ type reposByInstallation struct {
 	m  map[int64]keptRepos
 }
 
-func (p *Platform) fetchInstallationRepos(ctx context.Context, installation int64) ([]string, error) {
+func (p *Platform) fetchInstallationRepos(ctx context.Context, installation int64) (repos, public []string, err error) {
 	token, _, err := p.githubApp.Token(ctx, installation, nil, false)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	var repos []string
 	for page := 1; page <= 10; page++ {
 		req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("%s/installation/repositories?per_page=100&page=%d", p.opts.GitHub.api(), page), nil)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		req.Header.Set("Authorization", "token "+token)
 		req.Header.Set("Accept", "application/vnd.github+json")
 		resp, err := httpClient.Do(req)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		var out struct {
 			Repositories []struct {
-				Name string `json:"name"`
+				Name    string `json:"name"`
+				Private bool   `json:"private"`
 			} `json:"repositories"`
 		}
 		err = json.NewDecoder(resp.Body).Decode(&out)
 		resp.Body.Close()
 		if err != nil || resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("listing repos: %d %v", resp.StatusCode, err)
+			return nil, nil, fmt.Errorf("listing repos: %d %v", resp.StatusCode, err)
 		}
 		for _, r := range out.Repositories {
 			repos = append(repos, r.Name)
+			if !r.Private {
+				public = append(public, r.Name)
+			}
 		}
 		if len(out.Repositories) < 100 {
 			break
 		}
 	}
 	slices.Sort(repos)
-	return repos, nil
+	slices.Sort(public)
+	return repos, public, nil
 }
 
 func brokerError(w http.ResponseWriter, status int, msg string) {

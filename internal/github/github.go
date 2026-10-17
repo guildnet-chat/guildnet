@@ -42,6 +42,10 @@ type Options struct {
 	Key            []byte   // the app's private key, PEM
 	Owner          string   // the account that owns the repos, e.g. "acme-inc"
 	Repos          []string // the only repos agents can use, e.g. "guildnet"
+	// Public are which of Repos are public (Live has its own): a source of
+	// their own (agent.PublicRepos). Any not known to be public count as
+	// private.
+	Public []string
 	// Teams limits each team to some of Repos, by team name. Agents in a
 	// team that isn't listed get no GitHub. Without Teams, every agent gets
 	// every repo.
@@ -426,6 +430,20 @@ func (c *Client) Prepare(ctx context.Context, p config.Persona, name string, in 
 // (agent.Sourced), so a write elsewhere soon after reading here asks first,
 // and a write here after reading elsewhere.
 func (c *Client) SourceOf(string) string { return agent.YourRepos }
+
+// SourceOfCall is a call's source (agent.CallSourced): the team's public
+// repos for a call on one of them, its code otherwise (a private repo, or
+// none named).
+func (c *Client) SourceOfCall(name string, in map[string]any) string {
+	r := str(in, "repo")
+	if o, n, ok := strings.Cut(r, "/"); ok && strings.EqualFold(o, c.owner()) {
+		r = n
+	}
+	if r != "" && slices.ContainsFunc(c.publicRepos(), func(x string) bool { return strings.EqualFold(x, r) }) {
+		return agent.PublicRepos
+	}
+	return c.SourceOf(name)
+}
 
 // Run carries out a GitHub tool call.
 func (c *Client) Run(ctx context.Context, p config.Persona, name string, in map[string]any) (string, error) {
@@ -1009,4 +1027,12 @@ func (c *Client) allRepos() []string {
 		return repos
 	}
 	return c.opts.Repos
+}
+
+// publicRepos are which of them are public.
+func (c *Client) publicRepos() []string {
+	if c.opts.Live != nil {
+		return c.opts.Live.Public()
+	}
+	return c.opts.Public
 }

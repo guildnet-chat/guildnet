@@ -49,7 +49,7 @@ type Options struct {
 
 // New is a brain for the providers it has keys for.
 func New(o Options) *Brain {
-	return &Brain{callers: callersFor(o.Keys, o.BaseURLs), baseURLs: o.BaseURLs, company: strings.TrimSpace(o.Company), owner: o.Owner, toolbox: o.Toolbox}
+	return &Brain{callers: callersFor(o.Keys, o.BaseURLs), baseURLs: o.BaseURLs, company: strings.TrimSpace(o.Company), owner: o.Owner, toolbox: agent.Tracked(o.Toolbox)}
 }
 
 // SetKeys replaces the providers' keys, from the next call on.

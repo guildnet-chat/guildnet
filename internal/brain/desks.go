@@ -37,6 +37,7 @@ type Desks struct {
 // Desks is the agent platform for desks of GuildNet's own, on this brain's
 // models and keys.
 func (b *Brain) Desks(o DeskOptions) *Desks {
+	o.Toolbox = agent.Tracked(o.Toolbox) // what agents read is kept track of
 	return &Desks{b: b, opts: o}
 }
 

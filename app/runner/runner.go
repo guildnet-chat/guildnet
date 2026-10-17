@@ -243,6 +243,9 @@ func Run(build Config) {
 		}()
 		toolbox, chatTools = agent.Join(toolbox, conn), agent.Join(chatTools, conn)
 	}
+	// What agents read is kept track of even with GitHub's tools alone: its
+	// private and public repos are sources of their own.
+	chatTools = agent.Tracked(chatTools)
 
 	// Agents run on their own platform: plain chat, or a desk with tools on
 	// Managed Agents when GUILDNET_MANAGED=on (the beta's agent platform).

@@ -10,6 +10,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -164,7 +165,7 @@ func newFakeGitHubApp(t *testing.T) *fakeGitHubApp {
 			w.WriteHeader(failing)
 			return
 		}
-		writeGH(w, 200, map[string]any{"total_count": 2, "repositories": []map[string]any{{"name": "web"}, {"name": "docs"}}})
+		writeGH(w, 200, map[string]any{"total_count": 2, "repositories": []map[string]any{{"name": "web", "private": false}, {"name": "docs", "private": true}}})
 	})
 	f.srv = httptest.NewServer(mux)
 	t.Cleanup(f.srv.Close)
@@ -494,5 +495,20 @@ func TestTheNetworksPageLetsConnectingGoOnToGitHub(t *testing.T) {
 
 	if !strings.Contains(policy, "form-action 'self' ") || !strings.Contains(policy, gh.srv.URL) {
 		t.Errorf("the network page's policy %q should let its forms go on to GitHub (%s)", policy, gh.srv.URL)
+	}
+}
+
+// The runner's told which of its repos are public: what's in them may have
+// been written by anyone, so they're a source of their own for its agents.
+func TestTheBrokerSaysWhichReposArePublic(t *testing.T) {
+	w, gh := newGitHubWorld(t)
+	bob := w.CreateNetwork("bob@example.com", "bobco")
+	gh.canReach("bobs-code", 7)
+	callback(bob, "bobs-code", 7, connect(t, bob, "bobco"))
+
+	status, out := BrokerCall(t, w, "bobco", RunnerSecret(w, "bobco"), "GET", "/github")
+
+	if status != http.StatusOK || fmt.Sprint(out["repos"]) != "[docs web]" || fmt.Sprint(out["public"]) != "[web]" {
+		t.Errorf("the broker says %d %v: want repos web and docs, web public", status, out)
 	}
 }

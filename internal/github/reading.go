@@ -126,6 +126,11 @@ func (r remote) Run(ctx context.Context, p config.Persona, name string, in map[s
 // SourceOf says GitHub's tools read and write GitHub (agent.Sourced).
 func (r remote) SourceOf(name string) string { return r.c.SourceOf(name) }
 
+// SourceOfCall is a call's source, as the client says (agent.CallSourced).
+func (r remote) SourceOfCall(name string, in map[string]any) string {
+	return r.c.SourceOfCall(name, in)
+}
+
 // Step describes a call for IRC.
 func (r remote) Step(name string, in map[string]any) string {
 	repo := str(in, "repo")

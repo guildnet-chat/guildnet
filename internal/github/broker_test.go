@@ -110,7 +110,7 @@ func TestAClientFollowsTheLiveInstallation(t *testing.T) {
 		t.Error("tools before the network is connected")
 	}
 
-	live.Set(owner, []string{"guildnet"})
+	live.Set(owner, []string{"guildnet"}, nil)
 
 	if len(c.Tools(kai)) == 0 {
 		t.Error("no tools once the installation has the team's repo")

@@ -70,21 +70,23 @@ func (b Broker) Token(ctx context.Context, repos []string, write bool) (string, 
 	return out.Token, out.ExpiresAt, nil
 }
 
-// Installation is the account and repos the network's installation has;
-// connected false when the network isn't connected to GitHub.
-func (b Broker) Installation(ctx context.Context) (account string, repos []string, connected bool, err error) {
+// Installation is the account and repos the network's installation has,
+// and which of them are public; connected false when the network isn't
+// connected to GitHub.
+func (b Broker) Installation(ctx context.Context) (account string, repos, public []string, connected bool, err error) {
 	var out struct {
 		Account string   `json:"account"`
 		Repos   []string `json:"repos"`
+		Public  []string `json:"public"`
 	}
 	status, err := b.do(ctx, "GET", "/github", nil, &out)
 	if status == http.StatusNotFound {
-		return "", nil, false, nil
+		return "", nil, nil, false, nil
 	}
 	if err != nil {
-		return "", nil, false, err
+		return "", nil, nil, false, err
 	}
-	return out.Account, out.Repos, true, nil
+	return out.Account, out.Repos, out.Public, true, nil
 }
 
 // Live is an installation's account and repos, kept up to date while the
@@ -94,6 +96,7 @@ type Live struct {
 	mu      sync.Mutex
 	account string
 	repos   []string
+	public  []string
 }
 
 // Get is the account and repos, as last heard.
@@ -103,20 +106,27 @@ func (l *Live) Get() (account string, repos []string) {
 	return l.account, slices.Clone(l.repos)
 }
 
-// Set replaces them.
-func (l *Live) Set(account string, repos []string) {
+// Public is which of the repos are public, as last heard.
+func (l *Live) Public() []string {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	l.account, l.repos = account, slices.Clone(repos)
+	return slices.Clone(l.public)
+}
+
+// Set replaces them.
+func (l *Live) Set(account string, repos, public []string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.account, l.repos, l.public = account, slices.Clone(repos), slices.Clone(public)
 }
 
 // Refresh asks the broker again. Not being connected (yet) isn't an error:
 // it's no account and no repos.
 func (l *Live) Refresh(ctx context.Context, b Broker) error {
-	account, repos, _, err := b.Installation(ctx)
+	account, repos, public, _, err := b.Installation(ctx)
 	if err != nil {
 		return err
 	}
-	l.Set(account, repos)
+	l.Set(account, repos, public)
 	return nil
 }

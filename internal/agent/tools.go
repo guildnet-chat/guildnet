@@ -93,14 +93,26 @@ const ReadWindow = 30 * time.Minute
 // YourRepos is where the team's code comes from, wherever it's hosted: a
 // desk's reads, GitHub's tools and pushes to other git hosts. Work read in
 // one of the team's repositories may go to another of them without asking;
-// that it can is in security.md.
+// that it can is in security.md. Its public GitHub repos are PublicRepos.
 const YourRepos = "your repos"
+
+// PublicRepos are the team's public GitHub repos: what's in them may have
+// been written by anyone (a pull request from a fork, an issue), so they're
+// a source of their own. Work read in a private repo goes to a public one
+// only with a person's approval, and the other way round.
+const PublicRepos = "public repos"
 
 // Sourced is a toolbox that says where its tools' content comes from
 // ("GitHub", "Linear"), so that a joined toolbox can tell a write soon
 // after reading somewhere else.
 type Sourced interface {
 	SourceOf(name string) string
+}
+
+// CallSourced is a toolbox whose tools' source depends on the call: GitHub's,
+// on whether the repo it names is public.
+type CallSourced interface {
+	SourceOfCall(name string, input map[string]any) string
 }
 
 // Join is toolboxes as one (GitHub's and the connectors', say): each call
@@ -193,7 +205,10 @@ func (j *joined) owner(p config.Persona, name string) (Toolbox, Tool, error) {
 	return nil, Tool{}, fmt.Errorf("there's no tool called %s", name)
 }
 
-func sourceOf(b Toolbox, name string) string {
+func sourceOf(b Toolbox, name string, input map[string]any) string {
+	if s, ok := b.(CallSourced); ok {
+		return s.SourceOfCall(name, input)
+	}
 	if s, ok := b.(Sourced); ok {
 		return s.SourceOf(name)
 	}
@@ -215,7 +230,7 @@ func (j *joined) Run(ctx context.Context, p config.Persona, name string, input m
 	if err != nil {
 		return "", err
 	}
-	if src := sourceOf(b, name); src != "" {
+	if src := sourceOf(b, name, input); src != "" {
 		j.ReadFrom(p, src)
 	}
 	return b.Run(ctx, p, name, input)
@@ -233,7 +248,7 @@ func (j *joined) MustAsk(p config.Persona, name string, input map[string]any) (b
 			return ask, why
 		}
 	}
-	src := sourceOf(b, name)
+	src := sourceOf(b, name, input)
 	if tool.ReadOnly || tool.Ask || src == "" {
 		return false, ""
 	}
