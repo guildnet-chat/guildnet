@@ -53,6 +53,9 @@ type peopleView struct {
 	// emailed to; Unsent who it couldn't be.
 	CanEmail        bool
 	Emailed, Unsent string
+	// Owner: may decide whether guests have agents work for them
+	// (GuestsAsk).
+	Owner, GuestsAsk bool
 }
 
 // CanInvite reports whether they may invite anyone at all.
@@ -87,6 +90,13 @@ func (p *Platform) loadPeople(r *http.Request) (peopleView, error) {
 		}
 	}
 	v.InviteTeams, v.InviteNoTeam = m.teams("invite", chart.Teams), m.inTeam("invite", "")
+	if m.Owner {
+		var c company
+		if err := p.runner(r).call(r.Context(), "GET", "/v1/company", nil, &c); err != nil {
+			return v, err
+		}
+		v.Owner, v.GuestsAsk = true, c.GuestsAsk
+	}
 	if v.CanInvite() && p.opts.Links != nil {
 		pending, err := p.opts.Links.PendingLinks(r.Context(), networkOf(r).Name, Invite, p.opts.Now())
 		if err != nil {
@@ -99,6 +109,17 @@ func (p *Platform) loadPeople(r *http.Request) (peopleView, error) {
 		}
 	}
 	return v, nil
+}
+
+// setGuestsAsk lets guests have agents work for them, or not. The runner
+// refuses anyone but the owner.
+func (p *Platform) setGuestsAsk(w http.ResponseWriter, r *http.Request) {
+	body := map[string]any{"guests_ask": r.PostFormValue("ask") == "on"}
+	if err := p.runner(r).call(r.Context(), "PATCH", "/v1/company", body, nil); err != nil {
+		p.renderOrgPeople(w, r, statusOf(err), messageOf(err), func(*peopleView) {})
+		return
+	}
+	http.Redirect(w, r, "/people", http.StatusSeeOther)
 }
 
 // mayCancel reports whether m may cancel invite l: they made it, or they may

@@ -957,22 +957,33 @@ func (r *Runner) apiCompany(w http.ResponseWriter, req *http.Request) {
 			out = append(out, showGoal(g))
 		}
 	}
-	apiJSON(w, http.StatusOK, map[string]any{"description": d, "goals": out})
+	apiJSON(w, http.StatusOK, map[string]any{"description": d, "goals": out, "guests_ask": r.guestsAsk(req.Context())})
 }
 
+// apiSetCompany changes what's given: the description, and whether guests
+// may have agents work for them (guests_ask, the owner's call).
 func (r *Runner) apiSetCompany(w http.ResponseWriter, req *http.Request) {
 	var body struct {
-		Description string `json:"description"`
+		Description *string `json:"description"`
+		GuestsAsk   *bool   `json:"guests_ask"`
 	}
 	if !decode(w, req, &body) {
 		return
 	}
-	if err := r.setCompany(actorOf(req), body.Description); err != nil {
-		apiRefusal(w, err)
-		return
+	if body.GuestsAsk != nil {
+		if err := r.setGuestsAsk(actorOf(req), *body.GuestsAsk); err != nil {
+			apiRefusal(w, err)
+			return
+		}
+	}
+	if body.Description != nil {
+		if err := r.setCompany(actorOf(req), *body.Description); err != nil {
+			apiRefusal(w, err)
+			return
+		}
 	}
 	d, _ := r.store.Company(req.Context())
-	apiJSON(w, http.StatusOK, map[string]any{"description": d})
+	apiJSON(w, http.StatusOK, map[string]any{"description": d, "guests_ask": r.guestsAsk(req.Context())})
 }
 
 func (r *Runner) apiAddGoal(w http.ResponseWriter, req *http.Request) {

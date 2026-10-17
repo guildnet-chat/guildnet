@@ -452,6 +452,7 @@ type goal struct {
 type company struct {
 	Description string `json:"description"`
 	Goals       []goal `json:"goals"`
+	GuestsAsk   bool   `json:"guests_ask"` // guests may have agents work for them
 }
 
 type member struct {

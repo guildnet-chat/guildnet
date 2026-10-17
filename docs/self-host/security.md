@@ -46,7 +46,7 @@ known limits. Mechanisms are described in
 
 | Control | |
 | --- | --- |
-| Who agents work for | an agent works with its team's repositories and the company's connected services for whoever asks it, so only people in the org wake agents. A private team's agents (and those of teams inside it) take asks only from people in the team's channel: its members, the leads above it, and the owner. Guests wake no agents until the owner allows it (`COMPANY GUESTS on`) |
+| Who agents work for | an agent works with its team's repositories and the company's connected services for whoever asks it, so only people in the org wake agents. A private team's agents (and those of teams inside it) take asks only from people in the team's channel: its members, the leads above it, and the owner. Guests wake no agents until the owner allows it (on the People page, or `COMPANY GUESTS on`) |
 | Private teams' tools | a repository or connected service a private team uses can be given to another team only by someone in the private team, or the owner |
 | Approvals | merging a pull request requires a person's approval; connector writes too, unless their policy allows them |
 | Untrusted input | a write to one service shortly after reading another (Linear after a desk or GitHub, Notion after Linear, …) requires approval, whatever its policy. A Managed Agents desk's own tools (web fetch and search, its shell) count as reading from outside. The team's code counts as one source, and its public GitHub repositories as another, since anyone may have written what's in them (a pull request from a fork, an issue): work read in a private repository goes to a public one only with approval, and the other way round; within either, without asking |

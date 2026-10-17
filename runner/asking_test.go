@@ -3,6 +3,7 @@
 package runner_test
 
 import (
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -79,6 +80,36 @@ func TestGuestsAskAgentsOnlyOnceTheOwnerLetsThem(t *testing.T) {
 
 	n.human.say("GuildServ", "COMPANY GUESTS on")
 	n.human.expect("guests let in", guildServSaying("method", "guests"))
+	gus.say("kai", "what's in the repo?")
+	waitWokenBy(t, brain, "gus")
+}
+
+// The console lets guests in through the API, and only the owner may.
+func TestTheOwnerLetsGuestsAskAgentsThroughTheAPI(t *testing.T) {
+	brain := &fakeBrain{reply: replyWith("on it")}
+	n := startNetwork(t, brain, withAPI())
+	owner := n.api("method")
+	owner.call("PATCH", "/v1/company", map[string]any{"description": "We make ovens."})
+	n.human.say("GuildServ", `MEMBER ADD gus ROLE "Contractor" TEAM Engineering GUEST`)
+	n.human.expect("gus added", guildServSaying("method", "added gus"))
+	inOrg(t, n.human, "dana")
+	n.srv.AddAccount("gus", testPassword)
+
+	if status, _ := n.api("dana").call("PATCH", "/v1/company", map[string]any{"guests_ask": true}); status != http.StatusForbidden {
+		t.Errorf("dana letting guests in: %d, want 403", status)
+	}
+	if _, company := owner.call("GET", "/v1/company", nil); company["guests_ask"] != false {
+		t.Errorf("before the owner lets them: guests_ask = %v", company["guests_ask"])
+	}
+	if status, _ := owner.call("PATCH", "/v1/company", map[string]any{"guests_ask": true}); status != http.StatusOK {
+		t.Fatalf("the owner letting guests in: %d", status)
+	}
+
+	_, company := owner.call("GET", "/v1/company", nil)
+	if company["guests_ask"] != true || company["description"] != "We make ovens." {
+		t.Errorf("after: %v, want guests_ask and the description as it was", company)
+	}
+	gus := n.joinAs("gus", "#engineering")
 	gus.say("kai", "what's in the repo?")
 	waitWokenBy(t, brain, "gus")
 }

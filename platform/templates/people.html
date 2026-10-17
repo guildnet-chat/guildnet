@@ -57,6 +57,18 @@
   <p class="muted small">Forgot your password? The owner or an admin can make you a reset link. To change it, go to <a href="/account">your account</a>.</p>
 </section>
 
+{{if .Owner}}
+<section class="card">
+  <h2>Guests</h2>
+  <form method="post" action="/people/guests">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <label class="check"><input type="checkbox" name="ask"{{if .GuestsAsk}} checked{{end}}> Guests may have agents work for them</label>
+    <p class="muted small">Agents work with the company's repositories and connected services for whoever asks. A private team's agents still work only for people in that team.</p>
+    <button>Save</button>
+  </form>
+</section>
+{{end}}
+
 {{if and .CanInvite .Invites}}
 <section class="card">
   <h2>Waiting to join</h2>

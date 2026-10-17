@@ -97,10 +97,8 @@ func (r *Runner) mayAsk(account string, p config.Persona) bool {
 		return true
 	}
 	ctx := context.Background()
-	if m, err := r.store.Member(ctx, account); err == nil && m.Guest {
-		if v, _ := r.store.Setting(ctx, guestsAskSetting); v == "" {
-			return false
-		}
+	if m, err := r.store.Member(ctx, account); err == nil && m.Guest && !r.guestsAsk(ctx) {
+		return false
 	}
 	return r.seesTeam(account, p.Team)
 }
@@ -144,6 +142,12 @@ func (r *Runner) seesTeam(account, team string) bool {
 // guestsAskSetting is set ("on") when the owner lets guests have agents
 // work for them.
 const guestsAskSetting = "guests-ask-agents"
+
+// guestsAsk reports whether the owner lets guests have agents work for them.
+func (r *Runner) guestsAsk(ctx context.Context) bool {
+	v, _ := r.store.Setting(ctx, guestsAskSetting)
+	return v != ""
+}
 
 // setGuestsAsk lets guests have agents work for them, or not: the owner's
 // call, since agents work with the company's accounts.

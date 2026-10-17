@@ -474,6 +474,7 @@ func (p *Platform) Handler() http.Handler {
 	console.HandleFunc("GET /people/", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/people", http.StatusSeeOther) })
 	console.HandleFunc("POST /people/invite", p.signedIn(p.invitePerson))
 	console.HandleFunc("POST /people/invites/{id}/cancel", p.signedIn(p.cancelInvite))
+	console.HandleFunc("POST /people/guests", p.signedIn(p.setGuestsAsk))
 	console.HandleFunc("POST /people/{account}/reset", p.signedIn(p.makeResetLink))
 	console.HandleFunc("GET /people/{account}", p.signedIn(p.personPageHandler))
 	console.HandleFunc("POST /people/{account}", p.signedIn(p.savePerson))
