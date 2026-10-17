@@ -21,7 +21,7 @@ func TestHiringFromAPreset(t *testing.T) {
 	n.human.expect("rey hired", guildServSaying("method", "hired rey (Senior reviewer)"))
 
 	pip, _ := n.store.Agent(t.Context(), "pip")
-	if pip.Model != "claude-haiku-4-5" || !strings.Contains(pip.Prompt, "support agent") || pip.DailyBudgetUSD != 1 {
+	if pip.Model != "claude-haiku-5-5" || !strings.Contains(pip.Prompt, "support agent") || pip.DailyBudgetUSD != 1 {
 		t.Errorf("pip = %+v, want the support agent preset", pip)
 	}
 	rey, _ := n.store.Agent(t.Context(), "rey")

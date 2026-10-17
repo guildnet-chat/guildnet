@@ -28,17 +28,18 @@ loop_limit: 4
 history_lines: 40
 
 # Cheap model that decides whether a human message nobody @mentioned
-# concerns any agent in the channel.
+# concerns any agent in the channel. A tier (fast: Claude Haiku 5.5 with an
+# Anthropic key) or a model's name.
 relevance:
   enabled: true
-  model: claude-haiku-4-5
+  model: fast
 
 # Catch-up summaries: GuildServ DMs people what they missed when they come
 # back after being away this long. Anyone can also ask: /msg GuildServ CATCHUP
 catchup:
   enabled: true
   after: 2h
-  model: claude-haiku-4-5
+  model: fast
 
 # The starting org chart (agents come from personas/). Change it live with
 # GuildServ (TEAM, MEMBER, PROMOTE) or in the console.

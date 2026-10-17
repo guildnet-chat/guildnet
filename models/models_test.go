@@ -61,7 +61,8 @@ func TestEachTierComesFromTheProvidersACompanyHas(t *testing.T) {
 		tier models.Tier
 		want string
 	}{
-		{[]models.Provider{models.Anthropic}, models.Fast, "claude-haiku-4-5"},
+		{[]models.Provider{models.Anthropic}, models.Fast, "claude-haiku-5-5"},
+		{[]models.Provider{models.OpenRouter}, models.Fast, "openrouter:anthropic/claude-haiku-5.5"},
 		{[]models.Provider{models.Anthropic}, models.Balanced, "claude-sonnet-5-5"},
 		{[]models.Provider{models.Anthropic}, models.Best, "claude-opus-5-5"},
 		{[]models.Provider{models.OpenAI}, models.Balanced, "openai:gpt-6-sol"},
@@ -93,10 +94,38 @@ func TestOnlyCurrentModelsFromYourProvidersAreOffered(t *testing.T) {
 	if !offered["openai:gpt-6-sol"] || !offered["openai:gpt-6-luna"] || offered["openai:gpt-5.6-sol"] {
 		t.Errorf("offered: %v", offered)
 	}
+	anthropic := map[string]bool{}
 	for _, m := range models.Offered([]models.Provider{models.Anthropic}) {
-		if m.ID == "claude-sonnet-5" || m.ID == "claude-opus-5" {
+		anthropic[m.ID] = true
+		if m.ID == "claude-sonnet-5" || m.ID == "claude-opus-5" || m.ID == "claude-haiku-4-5" {
 			t.Errorf("%s is older; kept for agents on it, not offered", m.ID)
 		}
+	}
+	if !anthropic["claude-haiku-5-5"] {
+		t.Errorf("Haiku 5.5 isn't offered: %v", anthropic)
+	}
+	// An agent already on an older model keeps working on it.
+	if m, err := models.Resolve("claude-haiku-4-5", []models.Provider{models.Anthropic}); err != nil || !m.Older {
+		t.Errorf("Haiku 4.5 for an agent already on it: %+v, %v", m, err)
+	}
+}
+
+// Some models are priced by a call's prompt length: Haiku 5.5's prompts
+// over 100,000 tokens (input, cache reads and cache writes together) pay
+// five times its prices. Others cost the same at any length.
+func TestALongPromptCostsMoreOnModelsPricedByLength(t *testing.T) {
+	now := time.Date(2026, 10, 17, 0, 0, 0, 0, time.UTC)
+	for _, id := range []string{"claude-haiku-5-5", "openrouter:anthropic/claude-haiku-5.5"} {
+		m, _ := models.Find(id)
+		if p := m.PriceFor(now, 100_000); p != (models.Price{Input: 0.10, Output: 0.50, CacheRead: 0.01, CacheWrite: 0.125}) {
+			t.Errorf("%s, a 100,000-token prompt: %+v", id, p)
+		}
+		if p := m.PriceFor(now, 100_001); p != (models.Price{Input: 0.50, Output: 2.50, CacheRead: 0.05, CacheWrite: 0.625}) {
+			t.Errorf("%s, a longer prompt: %+v", id, p)
+		}
+	}
+	if sonnet, _ := models.Find("claude-sonnet-5-5"); sonnet.PriceFor(now, 900_000) != sonnet.Price(now) {
+		t.Errorf("Sonnet 5.5 costs more for a long prompt: %+v", sonnet.PriceFor(now, 900_000))
 	}
 }
 
@@ -121,6 +150,7 @@ func TestAModelsPriceIsSaidPlainly(t *testing.T) {
 	for id, want := range map[string]string{
 		"claude-sonnet-5-5":                    "$2 in, $10 out per million tokens",
 		"openai:gpt-6-luna":                    "$0.10 in, $0.50 out per million tokens",
+		"claude-haiku-5-5":                     "$0.10 in, $0.50 out per million tokens ($0.50 in, $2.50 out for prompts over 100,000 tokens)",
 		"google:gemini-3.8-flash":              "$0.75 in, $3.75 out per million tokens",
 		"openrouter:mistralai/mistral-large-2": "priced by OpenRouter as it's used",
 	} {

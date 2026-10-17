@@ -78,6 +78,11 @@ func TestCallsAreChargedAtTheCataloguesPrices(t *testing.T) {
 		{"claude-opus-5-5", ledger.Usage{CacheRead: 1_000_000, CacheWrite: 1_000_000}, 0.2 + 5},
 		{"openai:gpt-6-luna", ledger.Usage{Input: 1_000_000, Output: 1_000_000}, 0.1 + 0.5},
 		{"google:gemini-3.8-flash", ledger.Usage{Input: 1_000_000}, 0.75},
+		// Haiku 5.5 by its prompt's length: input, cache reads and cache
+		// writes together, up to 100,000 tokens at its prices, past that at
+		// five times them.
+		{"claude-haiku-5-5", ledger.Usage{Input: 100_000, Output: 1_000_000}, 0.01 + 0.5},
+		{"claude-haiku-5-5", ledger.Usage{Input: 50_000, CacheRead: 60_000, Output: 1_000_000}, 0.025 + 0.003 + 2.5},
 		// Not in the catalogue: charged at its dearest, so budgets stop early.
 		{"claude-mystery-9", ledger.Usage{Input: 1_000_000, Output: 1_000_000}, 10 + 50},
 	} {

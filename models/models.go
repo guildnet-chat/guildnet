@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -83,6 +84,13 @@ type Change struct {
 	Price Price
 }
 
+// Long is a model's price for a call whose prompt (input, cache reads and
+// cache writes together) is over Over tokens.
+type Long struct {
+	Over  int64
+	Price Price
+}
+
 // Model is one model an agent can run on.
 type Model struct {
 	ID       string   // how GuildNet names it: "claude-sonnet-5-5", "openai:gpt-6-sol"
@@ -100,6 +108,7 @@ type Model struct {
 	Priced bool
 	price  Price
 	later  []Change
+	long   *Long // its price for a long prompt, if it has one
 	// Effort says it takes an effort (reasoning) setting.
 	Effort bool
 	// openRouter is its name on OpenRouter, where it's served too.
@@ -117,6 +126,16 @@ func (m Model) Price(t time.Time) Price {
 	return p
 }
 
+// PriceFor is what a call with a prompt of prompt tokens (input, cache
+// reads and cache writes together) costs at t: its long-prompt price past
+// the length the provider prices by, its price otherwise.
+func (m Model) PriceFor(t time.Time, prompt int64) Price {
+	if m.long != nil && prompt > m.long.Over {
+		return m.long.Price
+	}
+	return m.Price(t)
+}
+
 // Pricing is what it costs at t, for people: "$2 in, $10 out per million
 // tokens".
 func (m Model) Pricing(t time.Time) string {
@@ -124,7 +143,20 @@ func (m Model) Pricing(t time.Time) string {
 		return "priced by " + m.Provider.Title() + " as it's used"
 	}
 	p := m.Price(t)
-	return dollars(p.Input) + " in, " + dollars(p.Output) + " out per million tokens"
+	s := dollars(p.Input) + " in, " + dollars(p.Output) + " out per million tokens"
+	if m.long != nil {
+		s += fmt.Sprintf(" (%s in, %s out for prompts over %s tokens)", dollars(m.long.Price.Input), dollars(m.long.Price.Output), thousands(m.long.Over))
+	}
+	return s
+}
+
+// thousands is n with commas: "100,000".
+func thousands(n int64) string {
+	s := strconv.FormatInt(n, 10)
+	for i := len(s) - 3; i > 0; i -= 3 {
+		s = s[:i] + "," + s[i:]
+	}
+	return s
 }
 
 // dollars is "$2" for a whole number, "$0.10" otherwise.
@@ -138,8 +170,11 @@ var newYear2027 = time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC)
 // added from it.
 var listed = []Model{
 	// Anthropic. Cache reads are 10% of input, except Opus 5.5 (5%) and
-	// Fable 5.1 (2.5%); writes are 125%.
-	{ID: "claude-haiku-4-5", Name: "claude-haiku-4-5", Title: "Claude Haiku 4.5", Tier: Fast, Top: true,
+	// Fable 5.1 (2.5%); writes are 125%. Haiku 5.5's prompts over 100,000
+	// tokens cost five times its prices (checked 2026-10-17).
+	{ID: "claude-haiku-5-5", Name: "claude-haiku-5-5", Title: "Claude Haiku 5.5", Tier: Fast, Top: true, Effort: true,
+		price: Price{0.10, 0.50, 0.01, 0.125}, long: &Long{100_000, Price{0.50, 2.50, 0.05, 0.625}}, openRouter: "anthropic/claude-haiku-5.5"},
+	{ID: "claude-haiku-4-5", Name: "claude-haiku-4-5", Title: "Claude Haiku 4.5", Tier: Fast, Older: true,
 		price: Price{1, 5, 0.1, 1.25}, openRouter: "anthropic/claude-haiku-4.5"},
 	{ID: "claude-sonnet-5-5", Name: "claude-sonnet-5-5", Title: "Claude Sonnet 5.5", Tier: Balanced, Top: true, Effort: true,
 		price: Price{2, 10, 0.2, 2.5}, openRouter: "anthropic/claude-sonnet-5.5"},

@@ -322,7 +322,7 @@ func TestHiringFromTheRoleCatalogue(t *testing.T) {
 	if r.Status != http.StatusSeeOther {
 		t.Fatalf("hiring pip: %d %s", r.Status, r.Text())
 	}
-	if p, _ := w.Networks["acme"].Store.Agent(context.Background(), "pip"); p.Role != "Support agent" || p.Model != "claude-haiku-4-5" {
+	if p, _ := w.Networks["acme"].Store.Agent(context.Background(), "pip"); p.Role != "Support agent" || p.Model != "claude-haiku-5-5" {
 		t.Errorf("pip = %+v, want a support agent", p)
 	}
 }

@@ -89,8 +89,8 @@ func TestEveryTemplatesOrgChartHangsTogether(t *testing.T) {
 				if !slices.Contains(p.Channels, "#general") {
 					t.Errorf("agent %s isn't in #general", p.Nick)
 				}
-				if p.Model != "claude-haiku-4-5" {
-					t.Errorf("agent %s starts on %s; templates start everyone on Haiku to keep it cheap", p.Nick, p.Model)
+				if p.Model != "claude-haiku-5-5" {
+					t.Errorf("agent %s starts on %s; templates start everyone on the fast tier to keep it cheap", p.Nick, p.Model)
 				}
 				if strings.TrimSpace(p.Prompt) == "" || p.Role == "" {
 					t.Errorf("agent %s needs a role and a prompt", p.Nick)

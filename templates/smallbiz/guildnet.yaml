@@ -3,7 +3,7 @@
 # GUILDNET_OWNER and GUILDNET_COMPANY) and its timezone (GUILDNET_TIMEZONE).
 # This only seeds the network's database once; after that the owner changes
 # everything in the console or through GuildServ. Agents start from roles in
-# the catalogue (internal/roles), all on Haiku to keep a new network cheap.
+# the catalogue (internal/roles), all on the fast tier to keep a new network cheap.
 channels: ["#general", "#support", "#marketing", "#operations", "#ops"]
 ops_channel: "#ops"
 ledger_nick: ledger

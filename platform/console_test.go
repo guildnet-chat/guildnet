@@ -317,7 +317,7 @@ func TestTheConsoleOffersTheNetworksModelsWithTheirPrices(t *testing.T) {
 
 	org := ada.Get("/?add=1").Body
 	for _, want := range []string{`<optgroup label="Fast">`, `<optgroup label="Best">`,
-		`<option value="claude-haiku-4-5">Claude Haiku 4.5 · $1 in, $5 out per million tokens</option>`,
+		`<option value="claude-haiku-5-5">Claude Haiku 5.5 · $0.10 in, $0.50 out per million tokens ($0.50 in, $2.50 out for prompts over 100,000 tokens)</option>`,
 		`<option value="claude-opus-5-5">Claude Opus 5.5 · $4 in, $20 out per million tokens</option>`,
 		`The role's (or Claude Sonnet 5.5)`} {
 		if !strings.Contains(org, want) {

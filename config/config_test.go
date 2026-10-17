@@ -348,7 +348,7 @@ func TestATemplateCanUseTheRoleCatalogueAndSetGoals(t *testing.T) {
 		t.Fatal(err)
 	}
 	kai := personas[0]
-	if kai.Role != "Help desk" || kai.Model != "claude-haiku-4-5" || !strings.Contains(kai.Prompt, "support agent") || kai.DailyBudgetUSD != 1 {
+	if kai.Role != "Help desk" || kai.Model != "claude-haiku-5-5" || !strings.Contains(kai.Prompt, "support agent") || kai.DailyBudgetUSD != 1 {
 		t.Errorf("kai = %+v, want the support agent preset with the title given", kai)
 	}
 	if cfg.Description != "We make ovens." || len(cfg.Goals) != 2 || cfg.Goals[1].Team != "Support" || cfg.Goals[0].Target != "100" {

@@ -86,7 +86,7 @@ func TestTiersFollowTheProvidersANetworkHasNow(t *testing.T) {
 		cfg.ProvidersLive = func() []models.Provider { mu.Lock(); defer mu.Unlock(); return have }
 	})
 	n.human.say("GuildServ", "SET kai MODEL fast")
-	n.human.expect("kai on Haiku", guildServSaying("method", "claude-haiku-4-5"))
+	n.human.expect("kai on Haiku", guildServSaying("method", "claude-haiku-5-5"))
 
 	mu.Lock()
 	have = []models.Provider{models.OpenAI}

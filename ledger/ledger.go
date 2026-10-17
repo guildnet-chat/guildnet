@@ -6,6 +6,7 @@ package ledger
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -26,12 +27,14 @@ type Usage struct {
 func Cost(model string, u Usage) float64 { return CostAt(model, u, time.Now()) }
 
 // CostAt returns the USD cost of u on model at t's prices, from the model
-// catalogue. A model it can't price is charged at the dearest listed rate,
-// so the budget errs on the side of stopping early.
+// catalogue: a model priced by prompt length by u's prompt (u is one call's,
+// or a total across calls, which errs on the dear side). A model it can't
+// price is charged at the dearest listed rate, so the budget errs on the
+// side of stopping early.
 func CostAt(model string, u Usage, t time.Time) float64 {
 	var p models.Price
 	if m, ok := models.Find(model); ok && m.Priced {
-		p = m.Price(t)
+		p = m.PriceFor(t, u.Input+u.CacheRead+u.CacheWrite)
 	} else {
 		p = dearest(t)
 	}
@@ -43,9 +46,10 @@ func CostAt(model string, u Usage, t time.Time) float64 {
 func dearest(t time.Time) models.Price {
 	var d models.Price
 	for _, m := range models.All {
-		p := m.Price(t)
-		d.Input, d.Output = max(d.Input, p.Input), max(d.Output, p.Output)
-		d.CacheRead, d.CacheWrite = max(d.CacheRead, p.CacheRead), max(d.CacheWrite, p.CacheWrite)
+		for _, p := range []models.Price{m.Price(t), m.PriceFor(t, math.MaxInt64)} {
+			d.Input, d.Output = max(d.Input, p.Input), max(d.Output, p.Output)
+			d.CacheRead, d.CacheWrite = max(d.CacheRead, p.CacheRead), max(d.CacheWrite, p.CacheWrite)
+		}
 	}
 	return d
 }
