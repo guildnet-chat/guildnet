@@ -460,6 +460,7 @@ func (p *Platform) Broker() http.Handler {
 	// Desk time: whether a desk may work, and how long it did.
 	if p.hooks.Desks != nil {
 		mux.HandleFunc("POST /desks/start", p.brokerDeskStart)
+		mux.HandleFunc("POST /desks/beat", p.brokerDeskBeat)
 		mux.HandleFunc("POST /desks/done", p.brokerDeskDone)
 	}
 	return mux

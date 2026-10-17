@@ -27,6 +27,20 @@ type fakeMeter struct {
 	fail    error
 	asked   []bool // resume, for each ask
 	done    map[string]int64
+	beats   map[string]int
+	beatAt  map[string]time.Time // the last
+	doneAt  map[string]time.Time
+}
+
+func (m *fakeMeter) BeatDesk(_ context.Context, id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.beats == nil {
+		m.beats, m.beatAt = map[string]int{}, map[string]time.Time{}
+	}
+	m.beats[id]++
+	m.beatAt[id] = time.Now()
+	return nil
 }
 
 func (m *fakeMeter) StartDesk(_ context.Context, agent string, resume bool) (desk.Turn, error) {
@@ -47,9 +61,10 @@ func (m *fakeMeter) DeskDone(_ context.Context, id string, seconds int64) error 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.done == nil {
-		m.done = map[string]int64{}
+		m.done, m.doneAt = map[string]int64{}, map[string]time.Time{}
 	}
 	m.done[id] += seconds
+	m.doneAt[id] = time.Now()
 	return nil
 }
 
@@ -160,6 +175,37 @@ func TestADesksTimeIsCounted(t *testing.T) {
 	}
 	if asks := meter.asks(); len(asks) != 1 || asks[0] {
 		t.Errorf("asks %v, want one, not resuming", asks)
+	}
+}
+
+// While a desk works, the runner says so every beat, so the platform can
+// tell a desk that's working from one whose runner went away (and charge
+// that one up to its last beat). Once it's done, it stops.
+func TestAWorkingDeskSaysItsStillWorking(t *testing.T) {
+	meter := &fakeMeter{answers: []desk.Turn{{ID: "turn-1"}}}
+	router := runner.NewRouter(&fakeBrain{reply: replyWith("from chat")}, &fakeBrain{reply: replyWith("from Managed Agents")}).
+		WithDesks(deskBrain{&fakeBrain{reply: replyWith("done, tests pass")}, 1200 * time.Millisecond}).
+		MeterDesks(runner.DeskMetering{Meter: meter, Retry: 50 * time.Millisecond, Wait: 400 * time.Millisecond, Beat: 100 * time.Millisecond})
+	n := startNetworkWith(t, router, onPlatform("kai", "desk"))
+
+	n.human.say("#engineering", "kai: run the tests")
+
+	n.human.expect("kai answering from its desk", fromContaining("kai", "#engineering", "done, tests pass"))
+	deadline := time.Now().Add(2 * time.Second)
+	for _, ok := meter.reported("turn-1"); !ok; _, ok = meter.reported("turn-1") {
+		if time.Now().After(deadline) {
+			t.Fatal("the desk's time was never reported")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	time.Sleep(300 * time.Millisecond)
+	meter.mu.Lock()
+	defer meter.mu.Unlock()
+	if meter.beats["turn-1"] < 5 {
+		t.Errorf("%d beats in 1.2s of work, every 0.1s; want about 11", meter.beats["turn-1"])
+	}
+	if meter.beatAt["turn-1"].After(meter.doneAt["turn-1"]) {
+		t.Error("it went on beating after the desk was done")
 	}
 }
 

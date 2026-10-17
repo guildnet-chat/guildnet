@@ -59,6 +59,9 @@ func (r *Router) ownDesks() (AgentPlatform, DeskMetering) {
 // time it does: GuildNet's platform, through its broker (desk.Broker).
 type DeskMeter interface {
 	StartDesk(ctx context.Context, agent string, resume bool) (desk.Turn, error)
+	// BeatDesk says a desk given a turn is still working; DeskDone how
+	// long it worked, once it's done.
+	BeatDesk(ctx context.Context, id string) error
 	DeskDone(ctx context.Context, id string, seconds int64) error
 }
 
@@ -69,8 +72,10 @@ type DeskMetering struct {
 	// Retry is how often to ask again while every desk is busy (15s), and
 	// Wait how long a wake-up waits for one before the agent works in chat
 	// (10 minutes). An agent carrying on after an approval waits as long as
-	// its wake-up may take.
-	Retry, Wait time.Duration
+	// its wake-up may take. Beat is how often a working desk says it's
+	// still working (a minute): the platform takes one it hasn't heard from
+	// in a few for lost, and charges it up to the last.
+	Retry, Wait, Beat time.Duration
 }
 
 // MeterDesks counts desks' time with m.
@@ -80,6 +85,9 @@ func (r *Router) MeterDesks(m DeskMetering) *Router {
 	}
 	if m.Wait <= 0 {
 		m.Wait = 10 * time.Minute
+	}
+	if m.Beat <= 0 {
+		m.Beat = time.Minute
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -148,7 +156,7 @@ func (r *Router) Respond(ctx context.Context, req agent.Request, onStep func(age
 		return r.chat.Respond(ctx, req, onStep)
 	}
 	ctx, waited := r.waitingForRoom(ctx, onStep)
-	defer r.deskDone(ctx, req.Persona.Nick, turn, time.Now(), waited)
+	defer r.deskDone(ctx, req.Persona.Nick, turn, time.Now(), waited, r.beating(req.Persona.Nick, turn))
 	return a.Respond(ctx, req, onStep)
 }
 
@@ -173,7 +181,7 @@ func (r *Router) Resume(ctx context.Context, p config.Persona, token string, all
 		return agent.Result{}, fmt.Errorf("%s's desk can't carry on: %s", p.Nick, why)
 	}
 	ctx, waited := r.waitingForRoom(ctx, onStep)
-	defer r.deskDone(ctx, p.Nick, turn, time.Now(), waited)
+	defer r.deskDone(ctx, p.Nick, turn, time.Now(), waited, r.beating(p.Nick, turn))
 	return a.Resume(ctx, p, token, allow, reason, onStep)
 }
 
@@ -228,13 +236,50 @@ func (r *Router) deskTurn(ctx context.Context, nick string, resume bool, onStep 
 	}
 }
 
+// beating says, every beat, that nick's desk, given turn, is still working,
+// until the func it gives back is called (which waits for a beat under way).
+func (r *Router) beating(nick string, turn desk.Turn) func() {
+	if turn.ID == "" {
+		return func() {}
+	}
+	_, m := r.ownDesks()
+	stop, stopped := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(stopped)
+		tick := time.NewTicker(m.Beat)
+		defer tick.Stop()
+		failed := false
+		for {
+			select {
+			case <-stop:
+				return
+			case <-tick.C:
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			err := m.Meter.BeatDesk(ctx, turn.ID)
+			cancel()
+			// Once, not each beat: a missed one only means its time is
+			// counted to the last that got through.
+			if err != nil && !failed && m.Logger != nil {
+				m.Logger.Printf("desks: saying %s's desk is still working: %v", nick, err)
+			}
+			failed = err != nil
+		}
+	}()
+	return func() {
+		close(stop)
+		<-stopped
+	}
+}
+
 // deskDone says how long a desk worked since start, less what it waited
 // for room at the sandbox, by the second (part seconds rounded up), even if
 // the wake-up itself ran out of time.
-func (r *Router) deskDone(ctx context.Context, nick string, turn desk.Turn, start time.Time, waited func() time.Duration) {
+func (r *Router) deskDone(ctx context.Context, nick string, turn desk.Turn, start time.Time, waited func() time.Duration, stopBeating func()) {
 	if turn.ID == "" {
 		return
 	}
+	stopBeating()
 	seconds := int64(math.Ceil(max(time.Since(start)-waited(), 0).Seconds()))
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
 	defer cancel()

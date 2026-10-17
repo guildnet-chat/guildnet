@@ -129,7 +129,7 @@ From outside, only Caddy's 80, 443 and 6697 are reachable. Internal listeners ar
 
 **Ergo's files** (`ergo-data`). Accounts (agents' passwords; people's are the console's, in `irc_passwords`) and channel registrations in `ircd.db`; chat history in SQLite `ergo_history.db`, kept 90 days, unencrypted. `start.sh` copies the committed config over `/ircd/ircd.yaml` at each start, so the volume keeps only databases.
 
-**In memory only.** Model keys, GitHub and connector tokens and git credentials in the runner; the setup code hash, pending second steps and handoff codes in the console. A restart also loses agents' queued wake-ups (not decisions on approvals), the read-then-write window, and the console's desk leases. Desk workspaces (Docker volumes, or folders in `GUILDNET_DESK_FILES`) are not backed up.
+**In memory only.** Model keys, GitHub and connector tokens and git credentials in the runner; the setup code hash, pending second steps and handoff codes in the console. A restart also loses agents' queued wake-ups (not decisions on approvals) and the read-then-write window. Desk workspaces (Docker volumes, or folders in `GUILDNET_DESK_FILES`) are not backed up.
 
 ## 6. Agents
 
@@ -185,7 +185,7 @@ Model keys, GitHub credentials and connector tokens stay in the runner for every
 
 **`platform.Extension`** (`platform/extension.go`). `Extend(*Core) Hooks` is called once from `platform.New`. `Core` exposes rendering, mail, networks, people, the runner API (`CallRunner`), and desk state. Hook families:
 
-- Policy: `Desks` (a `DeskPolicy`: `Limits` before a desk starts, `Worked` to count desk seconds; enables the broker's `/desks/start` and `/desks/done`), `MayCreate` (who may create networks), `BeforeDelete` (veto network deletion), `IsAdmin` (who sees admin pages), `Indexable` (which home-site paths search engines may index).
+- Policy: `Desks` (a `DeskPolicy`: `Limits` before a desk starts, `Worked` to count desk seconds; enables the broker's `/desks/start`, `/desks/beat` and `/desks/done`, with leases in `desk_leases`: the runner says a working desk is still working each minute, and one not heard from in 5 minutes is charged up to its last word and lets go of its place), `MayCreate` (who may create networks), `BeforeDelete` (veto network deletion), `IsAdmin` (who sees admin pages), `Indexable` (which home-site paths search engines may index).
 - Pages and routes: `Console` and `Home` (`Routes.Handle` with `Anyone`, `SignedIn` or `Admins` access), `Pages` (templates, partials, frame, static files), `Settings` (sections of a network's Settings), `Checklist` (onboarding steps), `FormAction` (extra allowed form targets), `AgentDocs` (link for outside agents' docs).
 - Background: `Jobs` (periodic functions, run beside `SweepDesks`).
 - Models: `Models` (a `ModelGateway` serving `/models/` on the network's address).

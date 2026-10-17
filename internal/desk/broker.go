@@ -191,6 +191,19 @@ func (b *Broker) DeskDone(ctx context.Context, id string, seconds int64) error {
 	return nil
 }
 
+// BeatDesk says a desk is still working, so its turn isn't taken for lost.
+func (b *Broker) BeatDesk(ctx context.Context, id string) error {
+	resp, err := b.send(ctx, "POST", "/desks/beat", map[string]any{"id": id})
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("the broker didn't take the desk's word that it's still working: %s", resp.Status)
+	}
+	return nil
+}
+
 // Wake asks for the sandbox VM to be started.
 func (b *Broker) Wake(ctx context.Context) error {
 	resp, err := b.do(ctx, "POST", "/sandbox/wake")
