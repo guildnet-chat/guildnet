@@ -42,11 +42,24 @@ func filesRig(t *testing.T, files string) (*sandbox.Docker, sandbox.Desk) {
 	return dk, d
 }
 
-// onHost is what script prints, run with the files folder at /files.
+// onHost is what script prints, run with the files folder at /files. If
+// Docker can't run it, the test fails saying why (not with an empty answer).
 func onHost(t *testing.T, files, script string) string {
 	t.Helper()
-	out, _ := exec.Command("docker", "run", "--rm", "--volume", files+":/files", "--entrypoint", "/bin/sh", filesImage, "-c", script).Output()
+	cmd := exec.Command("docker", "run", "--rm", "--volume", files+":/files", "--entrypoint", "/bin/sh", filesImage, "-c", script)
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil && len(out) == 0 && !strings.Contains(stderr.String(), "No such file") {
+		t.Fatalf("running %q with the files folder: %v: %s", script, err, stderr.String())
+	}
 	return strings.TrimSpace(string(out))
+}
+
+// listed is what's in the files folder, for a failure's message.
+func listed(t *testing.T, files string) string {
+	t.Helper()
+	return onHost(t, files, "ls -laR /files 2>&1 | head -40")
 }
 
 const testFiles = "/var/tmp/guildnet-desk-files-test"
@@ -63,7 +76,7 @@ func TestADesksFilesAreInItsNetworksFolder(t *testing.T) {
 	}
 
 	if got := onHost(t, testFiles, "cat /files/files/"+d.Nick+"/work/notes.md"); got != "kept" {
-		t.Errorf("in the network's folder: %q", got)
+		t.Errorf("in the network's folder: %q; the folder has:\n%s", got, listed(t, testFiles))
 	}
 	// Its home starts as the image's, and is the desk's own.
 	if got, err := dk.ReadFile(ctx, d, "/home/desk/.gitconfig", 100); err != nil || strings.TrimSpace(string(got)) != "[user]" {
