@@ -102,9 +102,23 @@ func (r *Runner) mayAsk(account string, p config.Persona) bool {
 			return false
 		}
 	}
+	return r.seesTeam(account, p.Team)
+}
+
+// seesTeam reports whether account may see team's details (its leads,
+// budget, repositories, connectors, objectives) and have its agents work
+// for them: for a private team, or a team inside one, only someone in that
+// private team's channel (its people, and the leads above it) or the
+// owner. Anyone may see that a private team is there, and that it's
+// private. "" (the company itself) is everyone's.
+func (r *Runner) seesTeam(account, team string) bool {
+	if r.isOwner(account) {
+		return true
+	}
+	ctx := context.Background()
 	var plans map[string]*channelPlan
 	seen := map[string]bool{}
-	for team := p.Team; team != "" && !seen[strings.ToLower(team)]; {
+	for team != "" && !seen[strings.ToLower(team)] {
 		seen[strings.ToLower(team)] = true
 		t, err := r.store.Team(ctx, team)
 		if err != nil {
@@ -814,6 +828,9 @@ func (r *Runner) budgetFor(actor, team string) (teamBudget, error) {
 	l, err := r.store.Team(context.Background(), team)
 	if err != nil {
 		return teamBudget{}, r.storeRefusal(team, err)
+	}
+	if !r.seesTeam(actor, l.Name) {
+		return teamBudget{}, refuse(forbidden, "%s is private: only the people in it see its budget.", l.Name)
 	}
 	cs := r.teamCommitments(l.Name, "")
 	return teamBudget{team: l, commitments: cs, committed: total(cs), showCosts: r.can(actor, canSpend, inTeam(l.Name))}, nil

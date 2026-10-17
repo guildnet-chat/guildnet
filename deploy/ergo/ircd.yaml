@@ -964,18 +964,21 @@ limits:
 # fakelag: prevents clients from spamming commands too rapidly
 fakelag:
     # whether to enforce fakelag
-    # GuildNet: off for local dev; the runner paces agent output and enforces budgets
-    enabled: false
+    # GuildNet: on, so someone flooding the network is slowed (not
+    # disconnected). The limits are well above what a person types or an
+    # agent says: a multiline reply is billed by its size, about one command
+    # per 512 bytes. GuildServ, an operator (nofakelag), isn't slowed.
+    enabled: true
 
     # time unit for counting command rates
     window: 1s
 
     # clients can send this many commands without fakelag being imposed
-    burst-limit: 5
+    burst-limit: 30
 
     # once clients have exceeded their burst allowance, they can send only
     # this many commands per `window`:
-    messages-per-window: 2
+    messages-per-window: 5
 
     # client status resets to the default state if they go this long without
     # sending any commands:

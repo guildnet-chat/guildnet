@@ -136,7 +136,7 @@ func (r *Runner) guildCommand(from, actor, text string, console bool) {
 	case "ORG":
 		r.guildOrg(from)
 	case "TEAMS":
-		r.guildTeams(from)
+		r.guildTeams(from, actor)
 	case "BUDGET":
 		r.guildBudget(from, actor, args)
 	case "CATCHUP":
@@ -156,7 +156,7 @@ func (r *Runner) guildCommand(from, actor, text string, console bool) {
 	case "ROLES":
 		r.guildRoles(from, args)
 	case "GOALS":
-		r.guildGoals(from, args)
+		r.guildGoals(from, actor, args)
 	case "COMPANY":
 		r.guildCompany(from, actor, args)
 	case "HIRE", "FIRE", "SET", "TEAM", "MEMBER", "PROMOTE", "DEMOTE", "ACCESS", "LOG", "GOAL":

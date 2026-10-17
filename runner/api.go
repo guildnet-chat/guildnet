@@ -383,6 +383,11 @@ func (r *Runner) apiOrg(w http.ResponseWriter, req *http.Request) {
 	var teams []teamJSON
 	all, _ := r.store.Teams(req.Context())
 	for _, l := range all {
+		if !r.seesTeam(actorOf(req), l.Name) {
+			// A private team (or one inside it): that it's there, no more.
+			teams = append(teams, teamJSON{Name: l.Name, Channel: l.Channel, Leads: []string{}, Parent: l.Parent, Private: true})
+			continue
+		}
 		teams = append(teams, showTeam(l))
 	}
 	apiJSON(w, http.StatusOK, map[string]any{"owner": r.cfg.Owner, "people": people, "teams": teams})
@@ -948,7 +953,9 @@ func (r *Runner) apiCompany(w http.ResponseWriter, req *http.Request) {
 	goals, _ := r.store.Goals(req.Context())
 	out := []goalJSON{}
 	for _, g := range goals {
-		out = append(out, showGoal(g))
+		if r.seesTeam(actorOf(req), g.Team) {
+			out = append(out, showGoal(g))
+		}
 	}
 	apiJSON(w, http.StatusOK, map[string]any{"description": d, "goals": out})
 }

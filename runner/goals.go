@@ -319,15 +319,22 @@ func (r *Runner) guildCompany(from, actor string, args []string) {
 		d = `no description yet. COMPANY DESCRIBE "..." sets one.`
 	}
 	r.guildReply(from, truncate("The company: "+d, maxLineBytes))
-	r.guildGoals(from, nil)
+	r.guildGoals(from, actor, nil)
 }
 
-func (r *Runner) guildGoals(from string, args []string) {
+func (r *Runner) guildGoals(from, actor string, args []string) {
 	team := strings.Join(args, " ")
+	if team != "" && !r.seesTeam(actor, team) {
+		r.guildReply(from, team+" is private: only the people in it see its goals.")
+		return
+	}
 	goals, _ := r.store.Goals(context.Background())
 	shown := 0
 	for _, g := range goals {
 		if team != "" && !strings.EqualFold(g.Team, team) {
+			continue
+		}
+		if !r.seesTeam(actor, g.Team) {
 			continue
 		}
 		line := describeGoal(g)

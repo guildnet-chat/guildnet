@@ -65,6 +65,56 @@ func TestErgosOwnConfigIsClosed(t *testing.T) {
 	}
 }
 
+// Someone flooding the network is slowed (Ergo's fakelag): after a burst,
+// a few commands a second. The limits are well above what a person types
+// or an agent says (Ergo bills a multiline reply by its size, about one
+// command for every 512 bytes), and GuildServ, an operator, isn't slowed
+// at all.
+func TestFloodingIsSlowed(t *testing.T) {
+	b, err := os.ReadFile("../ergo/ircd.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var c struct {
+		Fakelag struct {
+			Enabled  bool   `yaml:"enabled"`
+			Window   string `yaml:"window"`
+			Burst    int    `yaml:"burst-limit"`
+			PerWin   int    `yaml:"messages-per-window"`
+			Cooldown string `yaml:"cooldown"`
+		} `yaml:"fakelag"`
+		OperClasses map[string]struct {
+			Extends      string   `yaml:"extends"`
+			Capabilities []string `yaml:"capabilities"`
+		} `yaml:"oper-classes"`
+	}
+	if err := yaml.Unmarshal(b, &c); err != nil {
+		t.Fatal(err)
+	}
+	f := c.Fakelag
+	if !f.Enabled {
+		t.Fatal("fakelag is off: anyone can flood the network")
+	}
+	if f.Window != "1s" || f.Burst < 20 || f.PerWin < 4 || f.PerWin > 10 {
+		t.Errorf("fakelag allows a burst of %d, then %d per %s: want a burst of 20 or more, then 4 to 10 a second", f.Burst, f.PerWin, f.Window)
+	}
+	// GuildServ opers as server-admin, which has chat-moderator's
+	// capabilities too.
+	exempt := func(class string) bool {
+		for class != "" {
+			oc := c.OperClasses[class]
+			if slices.Contains(oc.Capabilities, "nofakelag") {
+				return true
+			}
+			class = oc.Extends
+		}
+		return false
+	}
+	if !exempt("server-admin") {
+		t.Error("GuildServ's operator class is slowed too")
+	}
+}
+
 func keys(m map[string]any) []string {
 	var out []string
 	for k := range m {

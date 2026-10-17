@@ -14,6 +14,7 @@ known limits. Mechanisms are described in
 | Published ports | Caddy only: 80 (ACME and HTTPS redirect), 443, 6697 (IRC over TLS). No access logs |
 | TLS | all external traffic, Let's Encrypt certificates. A plaintext IRC client gets a message to use TLS and nothing else |
 | IRC accounts | no self-registration; accounts come from console invites; SASL required |
+| Flooding | after a burst of 30 commands, a client is slowed to 5 a second (Ergo's fakelag), not disconnected. GuildServ isn't slowed |
 | First-run setup | requires the setup code from the console's log (host access); wrong codes are rate-limited |
 
 ### Authentication
@@ -28,7 +29,7 @@ known limits. Mechanisms are described in
 | Web chat | one-minute tokens for one account; the connection closes on sign-out; same-origin only |
 | Owner recovery | `reset-owner` requires a shell on the host |
 | Removal from the org | ends all the person's IRC sessions, including always-on ones, and disables their password |
-| Private teams | channels contain only the team; others are removed when a team goes private; channel registration can't be pre-empted or taken over |
+| Private teams | channels contain only the team; others are removed when a team goes private; channel registration can't be pre-empted or taken over. Their leads, budgets, repositories, connectors, goals and numbers are shown only to people in them (and the leads above them) and the owner, in GuildServ, the console and the API: others see only that they're there, and private |
 
 ### Host
 

@@ -23,6 +23,10 @@ func (r *Runner) apiTeamStats(w http.ResponseWriter, req *http.Request) {
 		apiRefusal(w, r.storeRefusal(req.PathValue("name"), err))
 		return
 	}
+	if !r.seesTeam(actorOf(req), team.Name) {
+		apiRefusal(w, refuse(forbidden, "%s is private: only the people in it see its numbers.", team.Name))
+		return
+	}
 	in := func(t string) bool { return r.within(t, []string{team.Name}) }
 	out := map[string]any{"team": team.Name}
 

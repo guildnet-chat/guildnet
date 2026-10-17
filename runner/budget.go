@@ -141,7 +141,9 @@ func (r *Runner) guildBudget(from, actor string, args []string) {
 	} else {
 		teams, _ := r.store.Teams(context.Background())
 		for _, l := range teams {
-			names = append(names, l.Name)
+			if r.seesTeam(actor, l.Name) {
+				names = append(names, l.Name)
+			}
 		}
 	}
 	for _, name := range names {

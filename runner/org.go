@@ -84,13 +84,18 @@ func (r *Runner) teamLabel(name, team string) string {
 	return label
 }
 
-func (r *Runner) guildTeams(from string) {
+func (r *Runner) guildTeams(from, actor string) {
 	teams, _ := r.store.Teams(context.Background())
 	if len(teams) == 0 {
 		r.guildReply(from, "no teams yet. TEAM CREATE <name> makes one.")
 		return
 	}
 	for _, l := range teams {
+		if !r.seesTeam(actor, l.Name) {
+			// A private team (or one inside it): that it's there, no more.
+			r.guildReply(from, l.Name+" ("+l.Channel+", private)")
+			continue
+		}
 		r.guildReply(from, describeTeam(l))
 	}
 }
