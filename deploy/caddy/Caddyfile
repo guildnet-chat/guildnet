@@ -2,10 +2,12 @@
 
 # A self-hosted install's edge: HTTPS for its domain (the home page, where
 # first-run setup happens) and its network's console and web chat, with
-# certificates from Let's Encrypt; and IRC over TLS on 6697. No access logs,
-# so no visitors' addresses on disk. Where it sends each is the stack's
-# addresses unless GUILDNET_CONSOLE_UPSTREAM, GUILDNET_IRC_UPSTREAM and
-# GUILDNET_IRC_HINT_UPSTREAM say otherwise (localhost, in one pod or task).
+# certificates from Let's Encrypt; and IRC over TLS on 6697. No access logs:
+# requests aren't logged, nor their visitors' addresses (an error Caddy logs,
+# a failed TLS handshake say, can still name one). Where it sends each is
+# the stack's addresses unless GUILDNET_CONSOLE_UPSTREAM,
+# GUILDNET_IRC_UPSTREAM and GUILDNET_IRC_HINT_UPSTREAM say otherwise
+# (localhost, in one pod or task).
 {
 	# No admin API: in one pod or task every container shares localhost,
 	# and could otherwise change where visitors are sent. Config changes

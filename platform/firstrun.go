@@ -296,7 +296,7 @@ func (p *Platform) firstRunSetUp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !p.rightCode(r.PostFormValue("code")) {
-		p.opts.Logger.Printf("first-run setup: a wrong setup code was tried from %s", visitor)
+		p.opts.Logger.Print("first-run setup: a wrong setup code was tried") // not from where: no visitors' addresses in logs
 		again(http.StatusForbidden, n, "That isn't the setup code. It's in the console's log: docker compose logs platform.")
 		return
 	}

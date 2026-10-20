@@ -25,7 +25,17 @@ services:
     <<: *locked
     image: ${GUILDNET_REGISTRY:-ghcr.io/guildnet-chat}/caddy:${GUILDNET_VERSION:?run init.sh first}
     build: ../caddy
-    cap_add: [NET_BIND_SERVICE] # ports 80 and 443
+    # Its own user, not root, and nothing it can change but its certificates.
+    user: "65532:65532"
+    read_only: true
+    tmpfs: [/tmp]
+    # Ports 80 and 443 are any user's in its own network namespace: it binds
+    # them with no capabilities at all.
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: 0
+    depends_on:
+      caddy-files:
+        condition: service_completed_successfully
     environment:
       GUILDNET_DOMAIN: ${GUILDNET_DOMAIN:?run init.sh first}
       GUILDNET_NETWORK: ${GUILDNET_NETWORK:?run init.sh first}
@@ -40,6 +50,22 @@ services:
     networks:
       edge:
         ipv4_address: 172.30.0.2
+      irc:
+        ipv4_address: 172.30.1.2
+
+  caddy-files:
+    # Hands Caddy's certificates to its user (an install from before Caddy
+    # ran as one has them as root's), then exits.
+    image: ${GUILDNET_REGISTRY:-ghcr.io/guildnet-chat}/caddy:${GUILDNET_VERSION:?run init.sh first}
+    entrypoint: ["chown", "-R", "65532:65532", "/data", "/config"]
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_READ_SEARCH]
+    security_opt: ["no-new-privileges:true"]
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
 
   platform:
     # The console: the home page (first-run setup), the network's console
@@ -139,9 +165,11 @@ services:
       - broker-ca-shared:/var/lib/guildnet-broker/shared
       - sandbox-tls:/var/lib/guildnet-broker/sandbox
     networks:
-      - edge
-      - private
-      - data
+      edge: {}
+      private: {}
+      data: {}
+      irc:
+        ipv4_address: 172.30.1.3
 
   ergo:
     # The network's IRC server. Members only: an account is needed to
@@ -158,8 +186,8 @@ services:
       ERGO__NETWORK__NAME: ${GUILDNET_NETWORK}
       ERGO__SERVER__NAME: ${GUILDNET_NETWORK}.${GUILDNET_DOMAIN}
       # The edge (IRC over TLS) and the console (web chat) say who the
-      # visitor is.
-      ERGO__SERVER__PROXY_ALLOWED_FROM: '["10.0.0.0/8","172.16.0.0/12","192.168.0.0/16"]'
+      # visitor is: only they, at their addresses on Ergo's network.
+      ERGO__SERVER__PROXY_ALLOWED_FROM: '["172.30.1.2/32","172.30.1.3/32"]'
       ERGO__SERVER__WEBSOCKETS__ALLOWED_ORIGINS: '["https://${GUILDNET_NETWORK}.${GUILDNET_DOMAIN}"]'
       ERGO__API__ENABLED: "true"
       ERGO__API__LISTENER: ":8089"
@@ -188,9 +216,9 @@ services:
       # The welcome, shared with the runner: GuildServ adds what the company
       # is for.
       - welcome:/welcome
+    # Its own network, with no way out: Ergo needs nothing from the internet.
     networks:
-      - edge
-      - private
+      - irc
 
   runner:
     # The network's agents, GuildServ and the ledger. It waits for first-run
@@ -248,9 +276,11 @@ services:
       # The console's CA's certificate, the only one it trusts the broker by.
       - broker-ca-shared:/var/lib/guildnet-broker:ro
     networks:
-      # Its way out (to the model providers), and to Ergo and the console.
+      # Its way out (to the model providers) and to the console, its
+      # database, and Ergo.
       - private
       - data
+      - irc
 
   postgres:
     # The console's and the runner's databases, each with its own login.
@@ -373,7 +403,7 @@ services:
       - runner-data:/files/runner
 
 networks:
-  # Caddy, and what it hands connections to: the console and Ergo.
+  # Caddy, and the console it hands HTTPS to.
   edge:
     ipam:
       config:
@@ -381,7 +411,17 @@ networks:
           # The others' addresses come from the top half, so none can take
           # Caddy's while it starts.
           ip_range: 172.30.0.128/25
-  # The console, Ergo and the runner.
+  # Ergo, and what talks to it: Caddy and the console (each at a fixed
+  # address, the only ones Ergo believes about visitors) and the runner. No
+  # way out.
+  irc:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.30.1.0/24
+          # The others' addresses come from the top half.
+          ip_range: 172.30.1.128/25
+  # The console and the runner, and their way out.
   private:
   # The database, the console and the runner; no way out.
   data:

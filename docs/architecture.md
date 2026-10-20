@@ -61,26 +61,28 @@ All services listen on every interface of their container (`:port`), so a listen
 
 | Service | Binary / image | Listens on | Talks to | Persistent state |
 |---|---|---|---|---|
-| `caddy` | `caddy:2` + caddy-l4 v0.1.2 | 80, 443/tcp, 443/udp, 6697 (published); `edge`, fixed 172.30.0.2 | console :8080, :6699; Ergo :6668 | `caddy-data`, `caddy-config` (certificates, ACME state) |
-| `platform` (console) | `/platform` on distroless static, uid 65532 | 8080 HTTP; 8082 broker (TLS 1.3); 6699 plain-IRC hint; `edge`, `private`, `data` | Postgres, Ergo API and WebSocket, runner API, sandboxd, SMTP, GitHub, model providers (key checks), connectors' OAuth servers, git hosts (credential checks) | Postgres `platform`; `broker-ca` (CA key and broker certificate); `broker-ca-shared` (CA certificate); `sandbox-tls` (sandboxd's certificate) |
-| `ergo` | `ghcr.io/ergochat/ergo:stable` + GuildNet config, uid 65534 | 6667 plain IRC; 6668 PROXY-protocol IRC; 8097 WebSocket; 8089 HTTP API (bearer); `edge`, `private` | none | `ergo-data` (accounts, channels, history); `welcome` (MOTD, shared with the runner) |
-| `runner` | `/app/runner` on distroless static, uid 65532 | 8090 runner API; `private`, `data` | Ergo :6667 and :8089, console broker :8082, Postgres, model providers, GitHub, git hosts (pushes), connectors' MCP servers, outside agents' webhooks, sandboxd | Postgres `runner`; `runner-data` (ledger files); `welcome` |
+| `caddy` | `caddy:2` + caddy-l4 v0.1.2, uid 65532 | 80, 443/tcp, 443/udp, 6697 (published); `edge`, fixed 172.30.0.2; `irc`, fixed 172.30.1.2 | console :8080, :6699; Ergo :6668 | `caddy-data`, `caddy-config` (certificates, ACME state) |
+| `platform` (console) | `/platform` on distroless static, uid 65532 | 8080 HTTP; 8082 broker (TLS 1.3); 6699 plain-IRC hint; `edge`, `private`, `data`; `irc`, fixed 172.30.1.3 | Postgres, Ergo API and WebSocket, runner API, sandboxd, SMTP, GitHub, model providers (key checks), connectors' OAuth servers, git hosts (credential checks) | Postgres `platform`; `broker-ca` (CA key and broker certificate); `broker-ca-shared` (CA certificate); `sandbox-tls` (sandboxd's certificate) |
+| `ergo` | `ghcr.io/ergochat/ergo:stable` + GuildNet config, uid 65534 | 6667 plain IRC; 6668 PROXY-protocol IRC; 8097 WebSocket; 8089 HTTP API (bearer); `irc` | the console's broker :8082 (logins) | `ergo-data` (accounts, channels, history); `welcome` (MOTD, shared with the runner) |
+| `runner` | `/app/runner` on distroless static, uid 65532 | 8090 runner API; `private`, `data`, `irc` | Ergo :6667 and :8089, console broker :8082, Postgres, model providers, GitHub, git hosts (pushes), connectors' MCP servers, outside agents' webhooks, sandboxd | Postgres `runner`; `runner-data` (ledger files); `welcome` |
 | `postgres` | `postgres:18-alpine` | 5432; `data` | none | `postgres-data` |
 | `sandboxd` | `sandboxd serve` on `docker:28-cli` | 8443 HTTPS; `private` | Docker socket | per-desk Docker volumes `gn.<network>.<nick>.work` and `.home`, or with `GUILDNET_DESK_FILES`, `<files>/<network>/<nick>/work` and `home` (limited per network on XFS); reads `sandbox-tls` |
 | `egress` | `sandboxd proxy`, uid 65534 | 3128; `desks` (fixed 172.31.255.2), `outbound` | allowed public hosts on 443; networks' git hosts on their ports | none |
 | `desk` | `golang:1.27-bookworm` + Node, Python, git, ripgrep | image only, `scale: 0` | n/a | n/a |
+| `caddy-files` | `chown` in Caddy's image, `network_mode: none`, `CHOWN` and `DAC_READ_SEARCH` | none | none | hands `caddy-data` and `caddy-config` to uid 65532 before Caddy starts, then exits |
 | `files` | `tar` in the Postgres image, profile `tools`, `network_mode: none` | none | none | mounts `ergo-data`, `runner-data` for `backup.sh` and `restore.sh` |
 
 Every image is `${GUILDNET_REGISTRY:-ghcr.io/guildnet-chat}/<name>:${GUILDNET_VERSION}`, where `<name>` is the `deploy/` folder it builds from (`egress` runs `sandboxd`'s image, `files` Postgres's). `docker compose pull` fetches a release's published images; `--build` builds the same names from source.
 
-Every service drops all capabilities and sets `no-new-privileges` (`x-locked`). The console, Ergo, the runner and egress have read-only root filesystems. Caddy adds `NET_BIND_SERVICE`; Postgres adds the five its entrypoint needs. `sandboxd` sets no `user:` and mounts the Docker socket, so it is root-equivalent on the host.
+Every service drops all capabilities and sets `no-new-privileges` (`x-locked`). Caddy, the console, Ergo, the runner and egress have read-only root filesystems. Caddy adds no capabilities: it binds 80 and 443 as uid 65532 through `net.ipv4.ip_unprivileged_port_start=0` in its network namespace, and its image strips the base image's file capability (Linux won't run a binary with one when every capability is dropped). Postgres adds the five its entrypoint needs. `sandboxd` sets no `user:` and mounts the Docker socket, so it is root-equivalent on the host.
 
 ## 3. Docker networks
 
 | Network | Members | Properties | Purpose |
 |---|---|---|---|
-| `edge` | caddy, platform, ergo | 172.30.0.0/24; Caddy fixed at .2, others from .128/25 | Caddy reaches the console and Ergo. The console trusts `X-Forwarded-For` only from 172.30.0.2 (`GUILDNET_TRUSTED_PROXIES`). |
-| `private` | platform, ergo, runner, sandboxd | default bridge, has a route out | Service-to-service traffic, and the runner's and console's route to the internet. |
+| `edge` | caddy, platform | 172.30.0.0/24; Caddy fixed at .2, others from .128/25 | Caddy reaches the console. The console trusts `X-Forwarded-For` only from 172.30.0.2 (`GUILDNET_TRUSTED_PROXIES`). |
+| `irc` | ergo, caddy, platform, runner | `internal: true`, 172.30.1.0/24; Caddy fixed at .2, the console at .3, others from .128/25 | Everything that talks to Ergo, and Ergo's only network: it has no route out. |
+| `private` | platform, runner, sandboxd | default bridge, has a route out | Service-to-service traffic, and the runner's and console's route to the internet. |
 | `data` | postgres, platform, runner | `internal: true` | Database access. No route out; Caddy is not on it. |
 | `desks` (`guildnet-desks`) | egress, every desk container | `internal: true`, 172.31.255.0/24; egress fixed at .2, desks from .128/25 | Desks reach only egress. sandboxd is not on it; it drives desks through `docker exec`. |
 | `outbound` | egress | default bridge | egress's route to the internet, shared with nothing else. |
@@ -88,7 +90,7 @@ Every service drops all capabilities and sets `no-new-privileges` (`x-locked`). 
 From outside, only Caddy's 80, 443 and 6697 are reachable. Internal listeners are reachable from any container sharing a network: the broker (:8082) is on `edge`, but Caddy does not route to it and every call needs the network secret. Caddy routes:
 
 - `{$GUILDNET_DOMAIN}` and `{$GUILDNET_NETWORK}.{$GUILDNET_DOMAIN}` to `platform:8080`.
-- :6697 with TLS SNI `<network>.<domain>`: TLS ends at Caddy, then `proxy_protocol v1` to `ergo:6668`. Ergo accepts PROXY headers only from RFC 1918 ranges (`ERGO__SERVER__PROXY_ALLOWED_FROM`).
+- :6697 with TLS SNI `<network>.<domain>`: TLS ends at Caddy, then `proxy_protocol v1` to `ergo:6668`. Ergo believes PROXY headers (and the web chat's `X-Forwarded-For`) only from Caddy's and the console's `irc` addresses, 172.30.1.2 and 172.30.1.3 (`ERGO__SERVER__PROXY_ALLOWED_FROM`). No address is exempt from SASL, localhost included.
 - :6697 without TLS: to `platform:6699`, which tells the client to use TLS (`platform/irchint.go`).
 
 `desks-firewall.sh` adds iptables rules in `DOCKER-USER` and `INPUT` (with `br_netfilter`): traffic between addresses in 172.31.255.0/24 is dropped except TCP to 172.31.255.2:3128 and established replies, and desks get `REJECT` for new connections to the host. `install` adds a systemd unit that reapplies the rules whenever Docker starts.

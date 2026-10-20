@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -98,6 +99,12 @@ func TestAWrongSetupCodeSetsUpNothing(t *testing.T) {
 	}
 	if !strings.Contains(w.Logged(), "wrong setup code") {
 		t.Errorf("the log should say a wrong code was tried:\n%s", w.Logged())
+	}
+	// That it was, not who by: visitors' addresses aren't kept in logs.
+	for _, line := range strings.Split(w.Logged(), "\n") {
+		if strings.Contains(line, "wrong setup code") && regexp.MustCompile(`\d+\.\d+\.\d+\.\d+|[0-9a-f]*:[0-9a-f]*:`).MatchString(line) {
+			t.Errorf("the log names where the code came from: %s", line)
+		}
 	}
 }
 

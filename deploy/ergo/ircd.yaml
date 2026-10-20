@@ -227,11 +227,11 @@ server:
     # This should be restricted to localhost (127.0.0.1/8, ::1/128, and unix sockets).
     # Unless you have a good reason. you should also add these addresses to the
     # connection limits and throttling exemption lists.
+    # GuildNet: each deployment names its edge and console, which pass on
+    # visitors' addresses (ERGO__SERVER__PROXY_ALLOWED_FROM); nothing else
+    # is believed about them.
     proxy-allowed-from:
         - localhost
-        # GuildNet: the platform, on Docker's private networks, passes on the
-        # web chat visitor's address (X-Forwarded-For on WebSockets only).
-        - "172.16.0.0/12"
         # - "192.168.1.1"
         # - "192.168.10.1/24"
 
@@ -522,8 +522,9 @@ accounts:
         enabled: true
 
         # IPs/CIDRs which are exempted from the account requirement
-        exempted:
-            - "localhost"
+        # GuildNet: none, localhost included (in a pod or task, every
+        # container shares it).
+        exempted: []
             # - '10.10.0.0/16'
 
     # nick-reservation controls how, and whether, nicknames are linked to accounts

@@ -27,7 +27,8 @@ func TestErgosOwnConfigIsClosed(t *testing.T) {
 				Enabled bool `yaml:"enabled"`
 			} `yaml:"registration"`
 			RequireSASL struct {
-				Enabled bool `yaml:"enabled"`
+				Enabled  bool     `yaml:"enabled"`
+				Exempted []string `yaml:"exempted"`
 			} `yaml:"require-sasl"`
 			JWT struct {
 				Enabled bool `yaml:"enabled"`
@@ -36,6 +37,9 @@ func TestErgosOwnConfigIsClosed(t *testing.T) {
 				} `yaml:"tokens"`
 			} `yaml:"jwt-auth"`
 		} `yaml:"accounts"`
+		Server struct {
+			ProxyAllowedFrom []string `yaml:"proxy-allowed-from"`
+		} `yaml:"server"`
 		Opers map[string]any `yaml:"opers"`
 		API   struct {
 			Enabled bool     `yaml:"enabled"`
@@ -48,8 +52,13 @@ func TestErgosOwnConfigIsClosed(t *testing.T) {
 	if c.Accounts.Registration.Enabled {
 		t.Error("anyone can register an account")
 	}
-	if !c.Accounts.RequireSASL.Enabled {
-		t.Error("anyone can connect without an account")
+	if !c.Accounts.RequireSASL.Enabled || len(c.Accounts.RequireSASL.Exempted) > 0 {
+		t.Errorf("connecting without an account: required %v, except from %v", c.Accounts.RequireSASL.Enabled, c.Accounts.RequireSASL.Exempted)
+	}
+	// Who may say a visitor is someone else (PROXY, X-Forwarded-For): Ergo's
+	// own container only, unless a deployment names its edge and console.
+	if !slices.Equal(c.Server.ProxyAllowedFrom, []string{"localhost"}) {
+		t.Errorf("PROXY is believed from %v, want just localhost", c.Server.ProxyAllowedFrom)
 	}
 	if len(c.Opers) > 0 {
 		t.Errorf("operators %v are built in", keys(c.Opers))

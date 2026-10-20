@@ -40,6 +40,10 @@ type service struct {
 	Build       any            `yaml:"build"` // a folder, or a map
 	Scale       *int           `yaml:"scale"`
 	NetworkMode string         `yaml:"network_mode"`
+	Tmpfs       []string       `yaml:"tmpfs"`
+	Sysctls     map[string]any `yaml:"sysctls"`
+	DependsOn   map[string]any `yaml:"depends_on"`
+	Entrypoint  []string       `yaml:"entrypoint"`
 }
 
 type stack struct {
@@ -47,6 +51,11 @@ type stack struct {
 	Networks map[string]struct {
 		Name     string `yaml:"name"`
 		Internal bool   `yaml:"internal"`
+		IPAM     struct {
+			Config []struct {
+				Subnet string `yaml:"subnet"`
+			} `yaml:"config"`
+		} `yaml:"ipam"`
 	} `yaml:"networks"`
 }
 
@@ -99,7 +108,10 @@ func TestOnlyTheEdgeCanBeReachedFromOutside(t *testing.T) {
 // gain any, and (where it can) can't change its own files.
 func TestEveryServiceHasOnlyTheCapabilitiesItNeeds(t *testing.T) {
 	needs := map[string][]string{
-		"caddy": {"NET_BIND_SERVICE"}, // ports 80 and 443
+		"caddy": nil, // binds 80 and 443 as itself (TestTheEdgeRunsAsItsOwnUserReadOnly)
+		// Hands Caddy's certificates to its user: chown, through folders it
+		// may already own.
+		"caddy-files": {"CHOWN", "DAC_READ_SEARCH"},
 		// The entrypoint hands the data to the postgres user, then drops to it.
 		"postgres": {"CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"},
 		"platform": nil,
@@ -112,7 +124,7 @@ func TestEveryServiceHasOnlyTheCapabilitiesItNeeds(t *testing.T) {
 		// Backups: tar, as root, keeping who owns Ergo's and the runner's files.
 		"files": {"CHOWN", "DAC_OVERRIDE", "FOWNER"},
 	}
-	readOnly := []string{"platform", "runner", "ergo", "egress"}
+	readOnly := []string{"caddy", "platform", "runner", "ergo", "egress"}
 	for name, s := range readStack(t).Services {
 		if s.Scale != nil && *s.Scale == 0 {
 			continue // an image built, never run
@@ -158,6 +170,84 @@ func TestTheDatabaseIsReachedOnlyByTheConsoleAndTheRunner(t *testing.T) {
 		if want := name == "postgres" || name == "platform" || name == "runner"; on != want {
 			t.Errorf("%s on %s (the database's network): %v, want %v", name, data, on, want)
 		}
+	}
+}
+
+// addressOn is the fixed address a service has on a network, if any.
+func addressOn(s service, network string) string {
+	n, _ := s.Networks.(map[string]any)
+	on, _ := n[network].(map[string]any)
+	a, _ := on["ipv4_address"].(string)
+	return a
+}
+
+// Ergo is on a network of its own with no way out, shared only with what
+// talks to it: the edge (IRC over TLS), the console (web chat, its API) and
+// the runner. Only the edge and the console, at their fixed addresses
+// there, may say who a visitor is (PROXY, X-Forwarded-For): not the runner,
+// not sandboxd, not anything else on the machine's private networks.
+func TestErgoIsReachedOnlyOnANetworkOfItsOwn(t *testing.T) {
+	s := readStack(t)
+	on := networksOf(s.Services["ergo"])
+	if len(on) != 1 {
+		t.Fatalf("ergo is on %v, want one network", on)
+	}
+	irc := on[0]
+	if !s.Networks[irc].Internal {
+		t.Errorf("ergo's network %s has a way out; want internal", irc)
+	}
+	for name, svc := range s.Services {
+		on := slices.Contains(networksOf(svc), irc)
+		if want := name == "ergo" || name == "caddy" || name == "platform" || name == "runner"; on != want {
+			t.Errorf("%s on %s (Ergo's network): %v, want %v", name, irc, on, want)
+		}
+	}
+	var trusted []string
+	for _, name := range []string{"caddy", "platform"} {
+		a := addressOn(s.Services[name], irc)
+		if a == "" {
+			t.Fatalf("%s has no fixed address on %s", name, irc)
+		}
+		trusted = append(trusted, a+"/32")
+	}
+	var got []string
+	if err := json.Unmarshal([]byte(fmt.Sprint(s.Services["ergo"].Environment["ERGO__SERVER__PROXY_ALLOWED_FROM"])), &got); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(got, trusted) {
+		t.Errorf("ergo believes PROXY from %v, want just %v", got, trusted)
+	}
+	if subnets := s.Networks[irc].IPAM.Config; len(subnets) != 1 {
+		t.Errorf("%s's addresses: %v, want one subnet the fixed ones are in", irc, subnets)
+	}
+}
+
+// Caddy faces the internet: it runs as a user of its own, can't change its
+// files, and holds no capabilities (binding 80 and 443 is allowed in its
+// network namespace instead). Its certificates, root's before it ran as that
+// user, are handed to it first.
+func TestTheEdgeRunsAsItsOwnUserReadOnly(t *testing.T) {
+	s := readStack(t)
+	c := s.Services["caddy"]
+	if c.User == "" || strings.HasPrefix(c.User, "0") {
+		t.Errorf("caddy runs as %q; want a user that isn't root", c.User)
+	}
+	if !c.ReadOnly || !slices.Contains(c.Tmpfs, "/tmp") {
+		t.Errorf("caddy: read_only %v, tmpfs %v; want read-only with /tmp", c.ReadOnly, c.Tmpfs)
+	}
+	if len(c.CapAdd) > 0 {
+		t.Errorf("caddy adds %v; want none", c.CapAdd)
+	}
+	if got := fmt.Sprint(c.Sysctls["net.ipv4.ip_unprivileged_port_start"]); got != "0" {
+		t.Errorf("caddy's net.ipv4.ip_unprivileged_port_start = %s, want 0 (so it binds 80 and 443 as itself)", got)
+	}
+	owner, ok := c.DependsOn["caddy-files"].(map[string]any)
+	if !ok || owner["condition"] != "service_completed_successfully" {
+		t.Fatalf("caddy depends on %v; want caddy-files, completed", c.DependsOn)
+	}
+	f := s.Services["caddy-files"]
+	if want := []string{"chown", "-R", c.User, "/data", "/config"}; !slices.Equal(f.Entrypoint, want) || f.NetworkMode != "none" {
+		t.Errorf("caddy-files runs %v (network %q), want %v with no network", f.Entrypoint, f.NetworkMode, want)
 	}
 }
 
