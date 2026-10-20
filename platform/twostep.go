@@ -502,6 +502,7 @@ func (p *Platform) setUpTwoStep(w http.ResponseWriter, r *http.Request) {
 			p.render(w, r, http.StatusInternalServerError, "two-step", withError{Err: "Couldn't save it. Try again in a moment.", View: p.twoStepSetupView(r, secret)})
 			return
 		}
+		p.tellOwner(r.Context(), n, twoStepOnEmail(n, p.networkOrigin(r, n.Name), s.Account, "an authenticator app", false, p.opts.Now()))
 		http.Redirect(w, r, "/account", http.StatusSeeOther)
 		return
 	}
@@ -519,6 +520,7 @@ func (p *Platform) setUpTwoStep(w http.ResponseWriter, r *http.Request) {
 	p.signOutElsewhere(r.Context(), n, s.Account, keep)
 	p.stepped.mark(keep, p.opts.Now()) // they've just shown the app's code
 	p.opts.Logger.Printf("%s turned on two-step sign-in on %s", s.Account, n.Name)
+	p.tellOwner(r.Context(), n, twoStepOnEmail(n, p.networkOrigin(r, n.Name), s.Account, "an authenticator app", true, p.opts.Now()))
 	p.render(w, r, http.StatusOK, "two-step", withError{View: twoStepView{Codes: codes}})
 }
 

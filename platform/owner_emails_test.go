@@ -3,6 +3,7 @@
 package platform_test
 
 import (
+	"net/http"
 	"net/url"
 	"strings"
 	"testing"
@@ -36,6 +37,66 @@ func TestTheOwnerHearsWhenSomeoneJoins(t *testing.T) {
 	dee.Post(link, url.Values{"nick": {"dee"}, "password": {"a-long-enough-password"}, "confirm": {"a-long-enough-password"}})
 
 	out.One(t, "ada@example.com", "dee joined initech", "Designer", "http://initech."+BaseDomain+"/people")
+}
+
+// A reset link lets whoever has it sign in as that person, so the owner
+// hears when an admin makes one, and whenever one is used.
+func TestTheOwnerHearsOfResetLinks(t *testing.T) {
+	w, out := MailWorld(t)
+	_, ada := w.Created("ada@example.com", "initech")
+	for _, person := range []string{"bo", "cy"} {
+		w.Ergo.AddAccount("initech", person, person+"-password-123")
+		w.Host.AddMember(t, "initech", "ada", person)
+	}
+	ada.Get("/people/bo")
+	if r := ada.Post("/people/bo/access", url.Values{"level": {"Admin"}, "give": {"1"}}); r.Status != http.StatusSeeOther {
+		t.Fatalf("making bo an admin: %d %s", r.Status, r.Text())
+	}
+	bo := w.Browser("initech")
+	bo.SignIn("bo", "bo-password-123")
+	bo.Get("/people")
+
+	link := ResetLink.FindString(bo.Post("/people/cy/reset", nil).Body)
+
+	out.One(t, "ada@example.com", "bo made a password reset link for cy", "initech", "If that wasn't expected")
+	cy := w.Browser("initech")
+	cy.Get(link)
+	if r := cy.Post(link, url.Values{"password": {"cys-new-long-password"}, "confirm": {"cys-new-long-password"}}); r.Status != http.StatusSeeOther {
+		t.Fatalf("cy using the link: %d %s", r.Status, r.Text())
+	}
+	out.One(t, "ada@example.com", "cy's password on initech was reset", "the reset link bo made")
+	// The owner's own links: no need to tell them they made one.
+	ada.Get("/people")
+	ada.Post("/people/bo/reset", nil)
+	for _, m := range out.To("ada@example.com") {
+		if strings.Contains(m.Subject, "ada made") {
+			t.Errorf("the owner was told of their own link: %q", m.Subject)
+		}
+	}
+}
+
+// Whoever first sets up someone's second step holds their account from
+// then on, so the owner hears when it's turned on, and when another way in
+// is added to it, as when it's turned off.
+func TestTheOwnerHearsWhenTwoStepIsTurnedOnOrAddedTo(t *testing.T) {
+	w, out := MailWorld(t)
+	w.Created("ada@example.com", "initech")
+	for _, person := range []string{"bo", "cy"} {
+		w.Ergo.AddAccount("initech", person, person+"-password-123")
+		w.Host.AddMember(t, "initech", "ada", person)
+	}
+	bo := w.Browser("initech")
+	bo.SignIn("bo", "bo-password-123")
+	cy := w.Browser("initech")
+	cy.SignIn("cy", "cy-password-123")
+
+	bo.SetUpTwoStep()
+	cy.AddPasskey(NewAuthenticator(t, "initech"), "/account/two-step")
+	cy.AddPasskey(NewAuthenticator(t, "initech"), "/account")
+
+	out.One(t, "ada@example.com", "Two-step sign-in for bo on initech was turned on", "an authenticator app", "If bo didn't")
+	out.One(t, "ada@example.com", "Two-step sign-in for cy on initech was turned on", "a passkey")
+	out.One(t, "ada@example.com", "cy added a passkey on initech")
 }
 
 func TestTheOwnerIsAlertedWhenModelKeysChange(t *testing.T) {

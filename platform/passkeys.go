@@ -196,6 +196,7 @@ func (p *Platform) finishAddPasskey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p.opts.Logger.Printf("%s added a passkey on %s", s.Account, n.Name)
+	p.tellOwner(r.Context(), n, twoStepOnEmail(n, p.networkOrigin(r, n.Name), s.Account, "a passkey", first, now))
 	if !first {
 		writeJSON(w, http.StatusOK, map[string]string{"to": "/account"})
 		return

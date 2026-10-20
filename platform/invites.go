@@ -317,6 +317,11 @@ func (p *Platform) makeResetLink(w http.ResponseWriter, r *http.Request) {
 		p.renderOrgPeople(w, r, http.StatusInternalServerError, "Couldn't make the link. Try again in a moment.", func(*peopleView) {})
 		return
 	}
+	// Whoever has the link can be them: the owner hears, unless it's theirs.
+	n := networkOf(r)
+	if s, _ := sessionOf(r); !strings.EqualFold(s.Account, n.OwnerNick) {
+		p.tellOwner(r.Context(), n, resetMadeEmail(n, p.networkOrigin(r, n.Name), s.Account, account, p.opts.Now()))
+	}
 	p.renderOrgPeople(w, r, http.StatusOK, "", func(v *peopleView) { v.ResetFor, v.ResetLink = account, link })
 }
 
@@ -476,6 +481,9 @@ func (p *Platform) reset(w http.ResponseWriter, r *http.Request) {
 		if err := p.resetTwoStep(r.Context(), r, n, l.Account, ownerResetBy+", with reset-owner"); err != nil {
 			monitor.Problem(p.opts.Logger, "resetting %s's two-step sign-in on %s: %v", l.Account, n.Name, err)
 		}
+	}
+	if !strings.EqualFold(l.Account, n.OwnerNick) {
+		p.tellOwner(r.Context(), n, resetUsedEmail(n, p.networkOrigin(r, n.Name), l.Account, l.CreatedBy, p.opts.Now()))
 	}
 	if err := p.signInAs(w, r, n, l.Account); err != nil {
 		http.Redirect(w, r, "/signin", http.StatusSeeOther)

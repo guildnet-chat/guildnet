@@ -139,6 +139,48 @@ func twoStepOffEmail(n Network, origin, account, how string, at time.Time) Lette
 	}
 }
 
+// twoStepOnEmail alerts the owner that account's two-step sign-in on n was
+// turned on (first) or added to, with way ("an authenticator app", "a
+// passkey"): whoever did holds their account from then on.
+func twoStepOnEmail(n Network, origin, account, way string, first bool, at time.Time) Letter {
+	subject, heading := "Two-step sign-in for "+account+" on "+n.Name+" was turned on", "Two-step sign-in for "+account+" was turned on"
+	what := "Two-step sign-in for " + account + " on " + n.Name + " was turned on, with " + way + ", at " + stamp(at) + ". From now on, signing in as " + account + " asks for it."
+	if !first {
+		thing := strings.TrimPrefix(strings.TrimPrefix(way, "an "), "a ")
+		subject, heading = account+" added "+way+" on "+n.Name, account+" added "+way
+		what = account + " added " + way + " to their two-step sign-in on " + n.Name + ", at " + stamp(at) + ". It signs in as them too, from now on, beside the " + thing + "s and app they had."
+	}
+	return Letter{Subject: subject, Heading: heading,
+		Paras:  []string{what, "If " + account + " didn't do that, whoever did can sign in as them: reset their two-step sign-in from their page, and make them a password reset link."},
+		Button: "See your people", Link: origin + "/people/" + account,
+		Why: securityWhy,
+	}
+}
+
+// resetMadeEmail alerts the owner that maker made a password reset link
+// for account: whoever has it can sign in as them.
+func resetMadeEmail(n Network, origin, maker, account string, at time.Time) Letter {
+	return Letter{Subject: maker + " made a password reset link for " + account + " on " + n.Name,
+		Heading: maker + " made a password reset link for " + account,
+		Paras: []string{maker + " made a password reset link for " + account + " on " + n.Name + ", at " + stamp(at) + ". Whoever has it can set " + account + "'s password, once, within a day, and sign in as them.",
+			"If that wasn't expected, ask " + maker + " about it, and have " + account + " set a new password in their account."},
+		Button: "See your people", Link: origin + "/people",
+		Why: securityWhy,
+	}
+}
+
+// resetUsedEmail alerts the owner that account's password was reset with
+// the link maker made.
+func resetUsedEmail(n Network, origin, account, maker string, at time.Time) Letter {
+	return Letter{Subject: account + "'s password on " + n.Name + " was reset",
+		Heading: account + "'s password was reset",
+		Paras: []string{account + "'s password on " + n.Name + " was set with the reset link " + maker + " made, at " + stamp(at) + ". Everywhere else " + account + " was signed in to the console, they're signed out.",
+			"If " + account + " didn't do that, ask them, and make them a new reset link."},
+		Button: "See your people", Link: origin + "/people",
+		Why: securityWhy,
+	}
+}
+
 // recoveryEmail alerts the owner that account signed in to n with one of
 // their recovery codes.
 func recoveryEmail(n Network, origin, account string, left int, at time.Time) Letter {

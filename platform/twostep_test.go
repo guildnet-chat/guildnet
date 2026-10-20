@@ -384,7 +384,7 @@ func TestTheOwnerResetsTheirOwnTwoStepFromTheHomePage(t *testing.T) {
 	if r := w.Browser("initech").SignIn("ada", "correct-horse-battery"); r.Header.Get("Location") != "/" {
 		t.Errorf("the password alone after the reset: %q", r.Header.Get("Location"))
 	}
-	out.One(t, "ada@example.com", "Two-step sign-in", "ada", "initech", "If that wasn't you")
+	out.One(t, "ada@example.com", "Two-step sign-in for ada on initech was reset", "ada", "initech", "If that wasn't you")
 }
 
 func TestTheOwnerHearsWhenARecoveryCodeIsUsed(t *testing.T) {
