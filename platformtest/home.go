@@ -331,6 +331,20 @@ func (w *World) Home() *Browser {
 	return &Browser{T: w.T, W: w, Host: BaseDomain, Cookies: map[string]*http.Cookie{}}
 }
 
+// Handoff follows a console handoff link (from the home page's Open) as
+// its browser: the page that asks who it opens the console as, then its
+// button. What the button gives back, or the link's own answer if it
+// doesn't ask.
+func (b *Browser) Handoff(link string) Response {
+	b.T.Helper()
+	r := b.Get(link)
+	if r.Status != http.StatusOK || !strings.Contains(r.Body, `action="/welcome"`) {
+		return r
+	}
+	u, _ := url.Parse(link)
+	return b.Post("/welcome", url.Values{"code": {u.Query().Get("code")}})
+}
+
 // SignInWithGoogle goes through Google sign-in as email.
 func (b *Browser) SignInWithGoogle(email string) Response {
 	b.T.Helper()

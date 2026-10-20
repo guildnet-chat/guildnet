@@ -165,7 +165,7 @@ func TestCreatingANetworkSetsItUpAndTakesTheOwnerToItsConsole(t *testing.T) {
 		t.Fatalf("opening the console: %d to %q", open.Status, open.Header.Get("Location"))
 	}
 	console := w.Browser("initech")
-	if r := console.Get(to.RequestURI()); r.Status != http.StatusSeeOther || r.Header.Get("Location") != "/" {
+	if r := console.Handoff(to.RequestURI()); r.Status != http.StatusSeeOther || r.Header.Get("Location") != "/" {
 		t.Fatalf("arriving at the console: %d to %q %s", r.Status, r.Header.Get("Location"), r.Body)
 	}
 	org := console.Get("/")
@@ -291,17 +291,48 @@ func TestAConsoleHandoffWorksOnceOnItsOwnNetworkAndSoon(t *testing.T) {
 	}
 
 	link := handoff()
-	w.Browser("initech").Get(link)
-	if r := w.Browser("initech").Get(link); r.Status == http.StatusSeeOther && r.Header.Get("Location") == "/" {
+	w.Browser("initech").Handoff(link)
+	if r := w.Browser("initech").Handoff(link); r.Status == http.StatusSeeOther && r.Header.Get("Location") == "/" {
 		t.Error("the same link signed in twice")
 	}
-	if r := w.Browser("acme").Get(handoff()); r.Status == http.StatusSeeOther && r.Header.Get("Location") == "/" {
+	if r := w.Browser("acme").Handoff(handoff()); r.Status == http.StatusSeeOther && r.Header.Get("Location") == "/" {
 		t.Error("initech's link signed in to acme")
 	}
 	link = handoff()
 	w.Clock.Advance(2 * time.Minute)
-	if r := w.Browser("initech").Get(link); r.Status == http.StatusSeeOther && r.Header.Get("Location") == "/" {
+	if r := w.Browser("initech").Handoff(link); r.Status == http.StatusSeeOther && r.Header.Get("Location") == "/" {
 		t.Error("a two-minute-old link still signed in")
+	}
+}
+
+// A handoff link only says who it would open the console as: it takes the
+// press of a button on the console's own page to sign in. A link someone
+// sends, made by them, can't sign anyone in as them unawares.
+func TestAHandoffAsksBeforeSigningIn(t *testing.T) {
+	w := NewWorld(t)
+	b := w.OnHome("ada@example.com")
+	b.Get("/networks/new")
+	b.Post("/networks", CreateForm("initech"))
+	b.WaitReady("initech")
+	b.Get("/networks/initech")
+	to, _ := url.Parse(b.Post("/networks/initech/open", nil).Header.Get("Location"))
+	console := w.Browser("initech")
+
+	page := console.Get(to.RequestURI())
+
+	if page.Status != http.StatusOK || !strings.Contains(page.Text(), "initech as ada?") || !strings.Contains(page.Body, `action="/welcome"`) {
+		t.Fatalf("the link: %d\n%s", page.Status, page.Text())
+	}
+	if r := console.Get("/"); r.Status != http.StatusSeeOther || !strings.HasPrefix(r.Header.Get("Location"), "/signin") {
+		t.Errorf("signed in by the link alone: %d to %q", r.Status, r.Header.Get("Location"))
+	}
+	// Looked at twice, it still asks; pressed, it signs in, once.
+	console.Get(to.RequestURI())
+	if r := console.Post("/welcome", url.Values{"code": {to.Query().Get("code")}}); r.Status != http.StatusSeeOther || r.Header.Get("Location") != "/" {
+		t.Fatalf("pressing Open: %d to %q %s", r.Status, r.Header.Get("Location"), r.Text())
+	}
+	if r := w.Browser("initech").Get(to.RequestURI()); r.Status == http.StatusOK && strings.Contains(r.Body, `action="/welcome"`) {
+		t.Error("a link already used still asks")
 	}
 }
 

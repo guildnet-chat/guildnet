@@ -43,6 +43,9 @@ type Passwords interface {
 	SignedIn(ctx context.Context, network, account, source string, at time.Time) error
 	// FailedSignIns are account's failed sign-ins since then.
 	FailedSignIns(ctx context.Context, network, account string, since time.Time) ([]FailedSignIn, error)
+	// FailedFrom is how many sign-ins from source failed since then, as
+	// any account.
+	FailedFrom(ctx context.Context, network, source string, since time.Time) (int, error)
 	// SignedInFrom says whether account signed in from source since then.
 	SignedInFrom(ctx context.Context, network, account, source string, since time.Time) (bool, error)
 }
@@ -54,12 +57,14 @@ type FailedSignIn struct {
 }
 
 // Guessing is held back: from one address (an IPv6 address's /64), after
-// sourceGuesses wrong in sourceWindow; from every address that hasn't
-// signed in as the account within knownFor, after accountGuesses wrong in
-// accountWindow, and the owner is told.
+// sourceGuesses wrong for the account in sourceWindow, or sprayGuesses wrong
+// for any accounts, unless it has signed in as the account within knownFor;
+// from every address that hasn't, after accountGuesses wrong for the account
+// in accountWindow, and the owner is told.
 const (
 	sourceGuesses  = 5
 	sourceWindow   = 15 * time.Minute
+	sprayGuesses   = 20
 	accountGuesses = 20
 	accountWindow  = time.Hour
 	knownFor       = 30 * 24 * time.Hour
@@ -141,7 +146,11 @@ func (p *Platform) checkSignIn(ctx context.Context, n Network, account, password
 	if here >= sourceGuesses {
 		return signInHeld, nil
 	}
-	if len(failed) >= accountGuesses {
+	sprayed, err := store.FailedFrom(ctx, n.Name, source, now.Add(-sourceWindow))
+	if err != nil {
+		return signInWrong, err
+	}
+	if len(failed) >= accountGuesses || sprayed >= sprayGuesses {
 		known, err := store.SignedInFrom(ctx, n.Name, account, source, now.Add(-knownFor))
 		if err != nil {
 			return signInWrong, err
@@ -431,6 +440,24 @@ func (s *signIns) FailedSignIns(_ context.Context, network, account string, sinc
 	return out, nil
 }
 
+func (s *signIns) FailedFrom(_ context.Context, network, source string, since time.Time) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	prefix := signInKey(network, "")
+	n := 0
+	for k, fs := range s.failed {
+		if !strings.HasPrefix(k, prefix) {
+			continue
+		}
+		for _, f := range fs {
+			if f.Source == source && f.At.After(since) {
+				n++
+			}
+		}
+	}
+	return n, nil
+}
+
 func (s *signIns) SignedInFrom(_ context.Context, network, account, source string, since time.Time) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -493,8 +520,10 @@ func (s *Postgres) RemoveIRCPassword(ctx context.Context, network, account strin
 
 func (s *Postgres) SignInFailed(ctx context.Context, network, account, source string, at time.Time) error {
 	network, account = strings.ToLower(network), strings.ToLower(account)
-	if _, err := s.pool.Exec(ctx, `delete from irc_sign_in_failures where network = $1 and account = $2 and at < $3`,
-		network, account, at.Add(-accountWindow)); err != nil {
+	// Every account's, not only this one's: guesses at made-up accounts
+	// would stay otherwise.
+	if _, err := s.pool.Exec(ctx, `delete from irc_sign_in_failures where network = $1 and at < $2`,
+		network, at.Add(-accountWindow)); err != nil {
 		return err
 	}
 	_, err := s.pool.Exec(ctx, `insert into irc_sign_in_failures (network, account, source, at) values ($1, $2, $3, $4)`,
@@ -525,6 +554,17 @@ func (s *Postgres) FailedSignIns(ctx context.Context, network, account string, s
 		out = append(out, f)
 	}
 	return out, rows.Err()
+}
+
+func (s *Postgres) FailedFrom(ctx context.Context, network, source string, since time.Time) (int, error) {
+	var n int
+	err := s.pool.QueryRow(ctx, `select count(*) from irc_sign_in_failures where network = $1 and source = $2 and at > $3`,
+		strings.ToLower(network), source, since).Scan(&n)
+	return n, err
+}
+
+func (s *MemoryStore) FailedFrom(ctx context.Context, network, source string, since time.Time) (int, error) {
+	return s.ircPasswords.FailedFrom(ctx, network, source, since)
 }
 
 func (s *Postgres) SignedInFrom(ctx context.Context, network, account, source string, since time.Time) (bool, error) {

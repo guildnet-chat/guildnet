@@ -752,6 +752,14 @@ func (h *handoffs) add(code string, x handoff) {
 	h.m[hashToken(code)] = x
 }
 
+// peek is what a code is for, leaving it to be used.
+func (h *handoffs) peek(code string) (handoff, bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	x, ok := h.m[hashToken(code)]
+	return x, ok
+}
+
 // take uses a code up.
 func (h *handoffs) take(code string) (handoff, bool) {
 	h.mu.Lock()
@@ -775,15 +783,42 @@ func (p *Platform) openNetwork(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, p.networkOrigin(r, n.Name)+"/welcome?code="+code, http.StatusSeeOther)
 }
 
-// welcome is where a handoff lands, on the network's own address.
+// welcome is where a handoff lands, on the network's own address: it asks
+// before signing in, so a link someone else made, and sent, can't sign a
+// browser in as them unawares (the button posts from this page only).
 func (p *Platform) welcome(w http.ResponseWriter, r *http.Request) {
 	n := networkOf(r)
-	x, ok := p.handoffs.take(r.URL.Query().Get("code"))
-	if !ok || !strings.EqualFold(x.network, n.Name) || !p.opts.Now().Before(x.expires) {
-		p.render(w, r, http.StatusBadRequest, "signin", withError{Err: "That link has expired. Sign in with your IRC account and password."})
+	code := r.URL.Query().Get("code")
+	x, ok := p.handoffs.peek(code)
+	if !p.handoffGood(x, ok, n) {
+		p.handoffGone(w, r)
 		return
 	}
 	// Already signed in here as them: nothing more to ask.
+	if s, ok := sessionOf(r); ok && strings.EqualFold(s.Account, x.account) {
+		p.handoffs.take(code)
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+	p.render(w, r, http.StatusOK, "welcome", withError{View: struct{ Account, Code string }{x.account, code}})
+}
+
+func (p *Platform) handoffGood(x handoff, ok bool, n Network) bool {
+	return ok && strings.EqualFold(x.network, n.Name) && p.opts.Now().Before(x.expires)
+}
+
+func (p *Platform) handoffGone(w http.ResponseWriter, r *http.Request) {
+	p.render(w, r, http.StatusBadRequest, "signin", withError{Err: "That link has expired. Sign in with your IRC account and password."})
+}
+
+// openWelcome is the welcome page's button: the handoff, used up.
+func (p *Platform) openWelcome(w http.ResponseWriter, r *http.Request) {
+	n := networkOf(r)
+	x, ok := p.handoffs.take(r.PostFormValue("code"))
+	if !p.handoffGood(x, ok, n) {
+		p.handoffGone(w, r)
+		return
+	}
 	if s, ok := sessionOf(r); ok && strings.EqualFold(s.Account, x.account) {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return

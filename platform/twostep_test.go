@@ -69,7 +69,7 @@ func TestOpeningANetworkYoureSignedInToSkipsTheCode(t *testing.T) {
 	if r := console.Get(open()); r.Status != http.StatusSeeOther || r.Header.Get("Location") != "/" {
 		t.Errorf("opening it, signed in there: %d to %q, want straight in", r.Status, r.Header.Get("Location"))
 	}
-	if r := w.Browser("initech").Get(open()); r.Header.Get("Location") != "/signin/two-step" {
+	if r := w.Browser("initech").Handoff(open()); r.Header.Get("Location") != "/signin/two-step" {
 		t.Errorf("opening it in another browser: %d to %q, want the second step", r.Status, r.Header.Get("Location"))
 	}
 }
@@ -301,7 +301,7 @@ func TestOpeningTheConsoleFromTheHomePageStillAsksTheSecondStep(t *testing.T) {
 	home.Get("/networks/initech")
 	to, _ := url.Parse(home.Post("/networks/initech/open", nil).Header.Get("Location"))
 	b := w.Browser("initech")
-	r := b.Get(to.RequestURI())
+	r := b.Handoff(to.RequestURI())
 
 	if r.Status != http.StatusSeeOther || r.Header.Get("Location") != "/signin/two-step" {
 		t.Errorf("opening it: %d %q, want the second step", r.Status, r.Header.Get("Location"))

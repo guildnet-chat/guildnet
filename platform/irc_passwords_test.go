@@ -137,6 +137,37 @@ func TestGuessingFromManyAddressesHoldsBackAllButKnownOnes(t *testing.T) {
 	}
 }
 
+// One address trying many accounts is held back too, but not from an
+// account it has signed in as before: an office's people share an address.
+func TestGuessingManyAccountsFromOneAddressIsHeldBack(t *testing.T) {
+	t.Run("memory", func(t *testing.T) { sprayHeldBack(t, NewWorld(t)) })
+	t.Run("postgres", func(t *testing.T) { sprayHeldBack(t, NewWorldWithPostgres(t)) })
+}
+
+func sprayHeldBack(t *testing.T, w *World) {
+	t.Helper()
+	b := w.Browser("acme")
+	b.SignedIn("ada")
+	b.Post("/signout", nil)
+	for i := range 20 {
+		b.SignIn(fmt.Sprintf("someone%d", i), "a-guess")
+	}
+
+	if r := b.SignIn("cy", "cy-pw"); r.Status != http.StatusTooManyRequests {
+		t.Errorf("cy from the guessing address: %d, want held back", r.Status)
+	}
+	if got := IRCLogin(t, w, "acme", "cy", "cy-pw", "198.51.100.7"); got != "yes" {
+		t.Errorf("cy from another address: %q", got)
+	}
+	if r := b.SignIn("ada", "ada-pw"); r.Status != http.StatusSeeOther {
+		t.Errorf("ada, who has signed in from there before: %d", r.Status)
+	}
+	w.Clock.Advance(16 * time.Minute)
+	if r := w.Browser("acme").SignIn("cy", "cy-pw"); r.Status != http.StatusSeeOther {
+		t.Errorf("a quarter of an hour on: %d", r.Status)
+	}
+}
+
 // Guessing over IRC holds back the console too, and the other way round.
 func TestTheConsoleAndIRCShareTheLockout(t *testing.T) {
 	w := NewWorld(t)

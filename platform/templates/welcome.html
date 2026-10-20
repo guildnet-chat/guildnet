@@ -1,0 +1,15 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{define "title"}}Open {{.Network}} · {{brand}}{{end}}
+{{define "main"}}
+{{with .Data.View}}
+<div class="card signin">
+  <h1>Open <span class="hash">#</span>{{$.Network}} as {{.Account}}?</h1>
+  <p class="muted">You came from {{brand}}'s home page. Open the console only if {{.Account}} is your own account.</p>
+  <form method="post" action="/welcome">
+    <input type="hidden" name="code" value="{{.Code}}">
+    <button autofocus>Open {{$.Network}}</button>
+  </form>
+  <p class="muted small">Not you? <a href="/signin">Sign in with your own account</a>.</p>
+</div>
+{{end}}
+{{end}}

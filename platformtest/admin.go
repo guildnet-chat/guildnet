@@ -72,7 +72,7 @@ func (w *World) Created(email, network string) (home, console *Browser) {
 	home.Get("/networks/" + network)
 	to, _ := url.Parse(home.Post("/networks/"+network+"/open", nil).Header.Get("Location"))
 	console = w.Browser(network)
-	if r := console.Get(to.RequestURI()); r.Status != http.StatusSeeOther {
+	if r := console.Handoff(to.RequestURI()); r.Status != http.StatusSeeOther {
 		w.T.Fatalf("opening %s's console: %d", network, r.Status)
 	}
 	return home, console

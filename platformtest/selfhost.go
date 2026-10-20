@@ -242,7 +242,7 @@ func (w *World) SetUp() (home, console *Browser) {
 		w.T.Fatalf("opening the network: %d to %q", r.Status, r.Header.Get("Location"))
 	}
 	console = w.Browser(SelfHosted)
-	if r := console.Get(u.RequestURI()); r.Status != http.StatusSeeOther {
+	if r := console.Handoff(u.RequestURI()); r.Status != http.StatusSeeOther {
 		w.T.Fatalf("handed in: %d %s", r.Status, r.Text())
 	}
 	return home, console

@@ -268,7 +268,7 @@ func New(opts Options) *Platform {
 		}
 		return t
 	}
-	for _, page := range []string{"signin", "org", "staff", "teams", "approvals", "chat", "settings", "deleted", "connect", "not-found",
+	for _, page := range []string{"signin", "welcome", "org", "staff", "teams", "approvals", "chat", "settings", "deleted", "connect", "not-found",
 		"people", "account", "join", "reset", "link-gone", "spend", "server", "person", "team", "company", "access", "log", "roles", "agent-token", "agent-webhook", "connectors", "connect-onward", "two-step", "signin-two-step"} {
 		p.pages[page] = framed(template.Must(template.New("layout.html").Funcs(funcs).ParseFS(templateFiles, "templates/layout.html", "templates/parts.html", "templates/"+page+".html")))
 	}
@@ -404,6 +404,7 @@ func (p *Platform) Handler() http.Handler {
 	console := http.NewServeMux()
 	console.HandleFunc("GET /signin", p.signinPage)
 	console.HandleFunc("GET /welcome", p.welcome)
+	console.HandleFunc("POST /welcome", p.openWelcome)
 	console.HandleFunc("POST /signin", p.signin)
 	console.HandleFunc("GET /signin/two-step", p.secondStepPage)
 	console.HandleFunc("POST /signin/two-step", p.secondStepDone)
