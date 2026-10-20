@@ -78,6 +78,20 @@ func (w *World) Created(email, network string) (home, console *Browser) {
 	return home, console
 }
 
+// Reopen opens network's console again from home, as its owner coming back
+// after a day away does (a sign-in unused a day ends): a new console
+// browser, signed in.
+func (w *World) Reopen(home *Browser, network string) *Browser {
+	w.T.Helper()
+	home.Get("/networks/" + network)
+	to, _ := url.Parse(home.Post("/networks/"+network+"/open", nil).Header.Get("Location"))
+	console := w.Browser(network)
+	if r := console.Handoff(to.RequestURI()); r.Status != http.StatusSeeOther {
+		w.T.Fatalf("opening %s's console again: %d", network, r.Status)
+	}
+	return console
+}
+
 // AddMember has actor add account to network's org, through its runner.
 func (h *FakeHost) AddMember(t *testing.T, network, actor, account string) {
 	t.Helper()

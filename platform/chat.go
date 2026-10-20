@@ -339,6 +339,19 @@ func chatsOf(network, account string) string {
 	return "account\x00" + strings.ToLower(network) + "\x00" + strings.ToLower(account)
 }
 
+// sessions are the sign-ins (their hashes) with sockets open.
+func (c *openChats) sessions() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var out []string
+	for k := range c.bySession {
+		if !strings.HasPrefix(k, "account\x00") {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
 // closeAll closes every socket open under a sign-in.
 func (c *openChats) closeAll(session string) {
 	c.mu.Lock()

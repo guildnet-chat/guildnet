@@ -62,6 +62,7 @@ type World struct {
 	mu      sync.Mutex   // guards handler, and Broker as it changes
 	handler http.Handler // the running platform; swapped by restartPlatform
 	newPlat func() http.Handler
+	plat    *platform.Platform // the running platform
 	admit   func(email string) // Setup.Admit, as last started
 	Broker  http.Handler       // the running platform's GitHub token broker
 	// Providers is where model providers are reached, to check keys.
@@ -88,6 +89,24 @@ func (w *World) Logged() string {
 	w.logs.mu.Lock()
 	defer w.logs.mu.Unlock()
 	return w.logs.b.String()
+}
+
+// RunJobs runs the running platform's background jobs that run this often,
+// as its ticker would.
+func (w *World) RunJobs(every time.Duration) {
+	w.mu.Lock()
+	p := w.plat
+	w.mu.Unlock()
+	ran := false
+	for _, j := range p.Jobs() {
+		if j.Every == every {
+			j.Run(context.Background())
+			ran = true
+		}
+	}
+	if !ran {
+		w.T.Fatalf("no job runs every %v", every)
+	}
 }
 
 // RestartPlatform starts a new platform on the same store, as a deploy does.
@@ -335,6 +354,7 @@ func newWorld(t *testing.T, open func() Store, networks []string, pre func(*Worl
 		broker := p.Broker()
 		w.mu.Lock()
 		w.Broker = broker
+		w.plat = p
 		w.mu.Unlock()
 		return p.Handler()
 	}

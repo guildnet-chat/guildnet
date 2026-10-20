@@ -234,6 +234,15 @@ type Session struct {
 	Account string
 	CSRF    string // the token every change must carry
 	Expires time.Time
+	// IdleUntil is when it ends if it isn't used before: each use puts it
+	// off (never past Expires). Zero for one from before it was kept.
+	IdleUntil time.Time
+}
+
+// Ended says whether s has ended by now: its week is up, or it went a day
+// unused.
+func (s Session) Ended(now time.Time) bool {
+	return !now.Before(s.Expires) || (!s.IdleUntil.IsZero() && !now.Before(s.IdleUntil))
 }
 
 // Sessions keeps sessions by the hash of their token, never the token
@@ -241,6 +250,8 @@ type Session struct {
 type Sessions interface {
 	Save(ctx context.Context, hash string, s Session) error
 	Get(ctx context.Context, hash string) (Session, error)
+	// Touch puts off when the session hash ends, if unused, to idleUntil.
+	Touch(ctx context.Context, hash string, idleUntil time.Time) error
 	Delete(ctx context.Context, hash string) error
 	// DeleteAccount signs account out of network everywhere but the session
 	// keep (a hash, or "").
@@ -615,6 +626,16 @@ func (s *MemoryStore) Get(_ context.Context, hash string) (Session, error) {
 	return sess, nil
 }
 
+func (s *MemoryStore) Touch(_ context.Context, hash string, idleUntil time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if sess, ok := s.sessions[hash]; ok {
+		sess.IdleUntil = idleUntil
+		s.sessions[hash] = sess
+	}
+	return nil
+}
+
 func (s *MemoryStore) Delete(_ context.Context, hash string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -626,7 +647,7 @@ func (s *MemoryStore) DeleteExpired(_ context.Context, now time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for h, sess := range s.sessions {
-		if !now.Before(sess.Expires) {
+		if sess.Ended(now) {
 			delete(s.sessions, h)
 		}
 	}

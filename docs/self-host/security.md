@@ -27,7 +27,10 @@ known limits. Mechanisms are described in
 | Guessing | held back the same on IRC and in the console: 5 wrong passwords for one person from one address (an IPv6 /64) hold it back for 15 minutes, and so do 20 for any accounts, except for people it has signed in as in 30 days; 20 in an hour, from anywhere, hold back every address that hasn't signed in as the person in 30 days, for an hour, and the owner is emailed |
 | Opening a console from the home page | the link asks "Open acme as ada?" and signs in only when its button is pressed, on the console's own page: a link someone else made, and sent, can't sign a browser in as them unawares. Two-step sign-in still asks its second step |
 | IRC self-service | nobody changes their password, adds a certificate or unregisters their account over IRC; operators (GuildServ) still can |
-| Web chat | one-minute tokens for one account; the connection closes on sign-out; same-origin only |
+| Console sign-ins | end after a day unused, and a week on however they're used; a new password, removal from the org or turning on two-step ends the person's others |
+| Passkeys | a passkey whose count of uses goes back (a copy) is refused, and the owner is emailed |
+| Owner alerts | the owner is emailed when a password reset link is made (by someone else) or used, and when anyone turns on two-step sign-in or adds a passkey or app to it |
+| Web chat | one-minute tokens for one account; the connection closes on sign-out, or once the sign-in has ended; same-origin only |
 | Owner recovery | `reset-owner` requires a shell on the host |
 | Removal from the org | ends all the person's IRC sessions, including always-on ones, and disables their password |
 | Private teams | channels contain only the team; others are removed when a team goes private; channel registration can't be pre-empted or taken over. Their leads, budgets, repositories, connectors, goals and numbers are shown only to people in them (and the leads above them) and the owner, in GuildServ, the console and the API: others see only that they're there, and private |

@@ -71,7 +71,9 @@ func TestANetworksInviteEmailsAreCappedEachDay(t *testing.T) {
 	if r := ada.Post("/people/invite", url.Values{"role": {"Designer"}}); r.Status != http.StatusOK || JoinLink.FindString(r.Body) == "" {
 		t.Errorf("a link without an email should still be made: %d", r.Status)
 	}
-	w.Clock.Advance(24*time.Hour + time.Minute)
+	w.Clock.Advance(12 * time.Hour)
+	ada.Get("/people") // a sign-in unused a day ends
+	w.Clock.Advance(12*time.Hour + time.Minute)
 	if r := ada.Post("/people/invite", url.Values{"email": {"late@example.com"}}); r.Status != http.StatusOK {
 		t.Errorf("the next day: %d", r.Status)
 	}

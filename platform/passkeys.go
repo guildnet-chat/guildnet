@@ -328,8 +328,14 @@ func (p *Platform) finishPasskeyStep(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := base64.RawURLEncoding.EncodeToString(cred.ID)
+	// Its count of uses didn't go on from the last: a copy, or the passkey
+	// a copy was made of, used after it. Neither signs in; the one kept
+	// stays as it was.
 	if cred.Authenticator.CloneWarning {
-		p.opts.Logger.Printf("%s's passkey on %s may have been copied (its counter went back)", x.account, n.Name)
+		p.opts.Logger.Printf("%s's passkey on %s may have been copied (its counter went back): refused", x.account, n.Name)
+		p.tellOwner(r.Context(), n, passkeyCopiedEmail(n, p.networkOrigin(r, n.Name), x.account, now))
+		jsonError(w, http.StatusUnauthorized, "That passkey may have been copied: its count of uses went back, so it wasn't accepted. Use a code instead, and remove the passkey from your account.")
+		return
 	}
 	raw, _ := json.Marshal(cred)
 	if err := p.opts.TwoSteps.UpdatePasskey(r.Context(), n.Name, x.account, Passkey{ID: id, Credential: raw, Used: now}); err != nil {

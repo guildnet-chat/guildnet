@@ -74,6 +74,40 @@ func TestAPasskeyForAnotherSiteOrAnotherKeyIsRefused(t *testing.T) {
 	}
 }
 
+// A passkey counts its uses: one whose count doesn't go on from the last
+// use is a copy (or the passkey a copy was made of, used after it), so
+// it's refused, and the owner hears.
+func TestACopiedPasskeyIsRefused(t *testing.T) {
+	w, out := MailWorld(t)
+	w.Created("ada@example.com", "initech")
+	w.Ergo.AddAccount("initech", "cy", "cy-password-123")
+	w.Host.AddMember(t, "initech", "ada", "cy")
+	cy := w.Browser("initech")
+	cy.SignIn("cy", "cy-password-123")
+	phone := NewAuthenticator(t, "initech")
+	cy.AddPasskey(phone, "/account/two-step").To(t)
+	signIn := func(a *Authenticator) Response {
+		b := w.Browser("initech")
+		b.SignIn("cy", "cy-password-123")
+		return b.UsePasskey(a)
+	}
+	if r := signIn(phone); r.Status != http.StatusOK {
+		t.Fatalf("the phone: %d %s", r.Status, r.Body)
+	}
+	copied := *phone
+	signIn(phone)
+
+	r := signIn(&copied)
+
+	if r.Status == http.StatusOK || !strings.Contains(r.Body, "copied") {
+		t.Errorf("a copy of the phone's passkey, behind it: %d %s", r.Status, r.Body)
+	}
+	out.One(t, "ada@example.com", "cy's passkey on initech may have been copied", "cy")
+	if r := signIn(phone); r.Status != http.StatusOK {
+		t.Errorf("the phone itself, after: %d %s", r.Status, r.Body)
+	}
+}
+
 func TestAPasskeyCanSitBesideTheApp(t *testing.T) {
 	w := NewWorld(t)
 	cy := w.Browser("acme").SignedIn("cy")

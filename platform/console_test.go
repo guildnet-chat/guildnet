@@ -452,13 +452,17 @@ func TestTeamsAndBudgetsKeepPeoplesCostsPrivate(t *testing.T) {
 	}
 }
 
+// Used each day (sessions_test.go: it ends after a day unused).
 func TestASignInLastsAWeek(t *testing.T) {
 	w := NewWorld(t)
 	b := w.Browser("acme").SignedIn("ada")
 
-	w.Clock.Advance(6 * 24 * time.Hour)
+	for range 6 {
+		w.Clock.Advance(24*time.Hour - time.Minute)
+		b.Get("/")
+	}
 	if b.Get("/").Status != http.StatusOK {
-		t.Error("six days on, ada should still be signed in")
+		t.Error("six days on, used each day, ada should still be signed in")
 	}
 	w.Clock.Advance(2 * 24 * time.Hour)
 	if b.Get("/").Status != http.StatusSeeOther {

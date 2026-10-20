@@ -207,8 +207,14 @@ type Platform struct {
 	gitHTTP       *http.Client    // reaches git hosts: connectors', and private ones named
 }
 
-// sessionTTL is how long a sign-in lasts.
-const sessionTTL = 7 * 24 * time.Hour
+// sessionTTL is how long a sign-in lasts; sessionIdle how long it lasts
+// unused, which each use puts off (noting it at most every
+// sessionTouchEvery).
+const (
+	sessionTTL        = 7 * 24 * time.Hour
+	sessionIdle       = 24 * time.Hour
+	sessionTouchEvery = 5 * time.Minute
+)
 
 func New(opts Options) *Platform {
 	if opts.Logger == nil {
@@ -687,10 +693,37 @@ func (p *Platform) loadSession(r *http.Request, n Network) (sessionWithToken, bo
 	}
 	hash := hashToken(c.Value)
 	s, err := p.opts.Sessions.Get(r.Context(), hash)
-	if err != nil || !strings.EqualFold(s.Network, n.Name) || !p.opts.Now().Before(s.Expires) {
+	now := p.opts.Now()
+	if err != nil || !strings.EqualFold(s.Network, n.Name) || s.Ended(now) {
 		return sessionWithToken{}, false
 	}
+	// Used: it lasts another day unused, up to its week.
+	if !s.IdleUntil.IsZero() && s.IdleUntil.Sub(now) < sessionIdle-sessionTouchEvery {
+		s.IdleUntil = minTime(now.Add(sessionIdle), s.Expires)
+		if err := p.opts.Sessions.Touch(r.Context(), hash, s.IdleUntil); err != nil {
+			monitor.Problem(p.opts.Logger, "noting a sign-in on %s was used: %v", n.Name, err)
+		}
+	}
 	return sessionWithToken{Session: s, hash: hash}, true
+}
+
+func minTime(a, b time.Time) time.Time {
+	if a.Before(b) {
+		return a
+	}
+	return b
+}
+
+// closeEndedChats closes the open chats of sign-ins that have ended
+// (unused a day, or a week on) since they opened.
+func (p *Platform) closeEndedChats(ctx context.Context) {
+	now := p.opts.Now()
+	for _, hash := range p.chats.sessions() {
+		s, err := p.opts.Sessions.Get(ctx, hash)
+		if errors.Is(err, ErrNotFound) || (err == nil && s.Ended(now)) {
+			p.chats.closeAll(hash)
+		}
+	}
 }
 
 // signedIn serves h only to someone signed in to this network; changes must
@@ -749,7 +782,8 @@ func (p *Platform) startSession(w http.ResponseWriter, r *http.Request, n Networ
 // newSession signs account in to n, and is the sign-in's hash.
 func (p *Platform) newSession(w http.ResponseWriter, r *http.Request, n Network, account string) (string, error) {
 	token := newToken()
-	s := Session{Network: n.Name, Account: account, CSRF: newToken(), Expires: p.opts.Now().Add(sessionTTL)}
+	now := p.opts.Now()
+	s := Session{Network: n.Name, Account: account, CSRF: newToken(), Expires: now.Add(sessionTTL), IdleUntil: now.Add(sessionIdle)}
 	if err := p.opts.Sessions.Save(r.Context(), hashToken(token), s); err != nil {
 		return "", err
 	}

@@ -450,20 +450,33 @@ func (s *Postgres) MarkOnboarding(ctx context.Context, network, step string, at 
 }
 
 func (s *Postgres) Save(ctx context.Context, hash string, sess Session) error {
-	_, err := s.pool.Exec(ctx, `insert into sessions (hash, network, account, csrf, expires) values ($1, nullif($2, ''), $3, $4, $5)`,
-		s.sealer.Hash(hash), strings.ToLower(sess.Network), sess.Account, sess.CSRF, sess.Expires)
+	var idle *time.Time
+	if !sess.IdleUntil.IsZero() {
+		idle = &sess.IdleUntil
+	}
+	_, err := s.pool.Exec(ctx, `insert into sessions (hash, network, account, csrf, expires, idle_until) values ($1, nullif($2, ''), $3, $4, $5, $6)`,
+		s.sealer.Hash(hash), strings.ToLower(sess.Network), sess.Account, sess.CSRF, sess.Expires, idle)
 	return err
 }
 
 func (s *Postgres) Get(ctx context.Context, hash string) (Session, error) {
 	var sess Session
-	err := s.pool.QueryRow(ctx, `select coalesce(network, ''), account, csrf, expires from sessions where hash = any($1)`, s.sealer.Hashes(hash)).
-		Scan(&sess.Network, &sess.Account, &sess.CSRF, &sess.Expires)
+	var idle *time.Time
+	err := s.pool.QueryRow(ctx, `select coalesce(network, ''), account, csrf, expires, idle_until from sessions where hash = any($1)`, s.sealer.Hashes(hash)).
+		Scan(&sess.Network, &sess.Account, &sess.CSRF, &sess.Expires, &idle)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Session{}, ErrNotFound
 	}
 	sess.Expires = sess.Expires.UTC()
+	if idle != nil {
+		sess.IdleUntil = idle.UTC()
+	}
 	return sess, err
+}
+
+func (s *Postgres) Touch(ctx context.Context, hash string, idleUntil time.Time) error {
+	_, err := s.pool.Exec(ctx, `update sessions set idle_until = $2 where hash = any($1)`, s.sealer.Hashes(hash), idleUntil)
+	return err
 }
 
 func (s *Postgres) Delete(ctx context.Context, hash string) error {
@@ -472,7 +485,7 @@ func (s *Postgres) Delete(ctx context.Context, hash string) error {
 }
 
 func (s *Postgres) DeleteExpired(ctx context.Context, now time.Time) error {
-	_, err := s.pool.Exec(ctx, `delete from sessions where expires <= $1`, now)
+	_, err := s.pool.Exec(ctx, `delete from sessions where expires <= $1 or idle_until <= $1`, now)
 	return err
 }
 

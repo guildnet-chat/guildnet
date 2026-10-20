@@ -157,6 +157,18 @@ func twoStepOnEmail(n Network, origin, account, way string, first bool, at time.
 	}
 }
 
+// passkeyCopiedEmail alerts the owner that one of account's passkeys was
+// refused: its count of uses went back, as a copy's does.
+func passkeyCopiedEmail(n Network, origin, account string, at time.Time) Letter {
+	return Letter{Subject: account + "'s passkey on " + n.Name + " may have been copied",
+		Heading: account + "'s passkey may have been copied",
+		Paras: []string{"A sign-in to " + n.Name + " as " + account + " used one of their passkeys at " + stamp(at) + ", but its count of uses went back, as a copy's does. It wasn't accepted.",
+			"Whoever tried had " + account + "'s password too. Ask " + account + " to set a new password and remove that passkey, or reset their two-step sign-in from their page."},
+		Button: "See " + account, Link: origin + "/people/" + account,
+		Why: securityWhy,
+	}
+}
+
 // resetMadeEmail alerts the owner that maker made a password reset link
 // for account: whoever has it can sign in as them.
 func resetMadeEmail(n Network, origin, maker, account string, at time.Time) Letter {
