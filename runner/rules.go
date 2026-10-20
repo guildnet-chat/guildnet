@@ -212,8 +212,13 @@ func (r *Runner) hireAgent(actor, nick string, fields []field) (p config.Persona
 	if refusal != "" {
 		return p, nil, refuse(forbidden, "%s", refusal)
 	}
-	if !explicit["REPORTS-TO"] {
-		p.ReportsTo = r.defaultManager(actor, p.Team, nick)
+	newcomer := target{person: nick, team: p.Team}
+	if explicit["REPORTS-TO"] {
+		if err := r.mayMakeManager(actor, p.ReportsTo, newcomer); err != nil {
+			return p, nil, err
+		}
+	} else if p.ReportsTo = r.defaultManager(actor, p.Team, nick); r.mayMakeManager(actor, p.ReportsTo, newcomer) != nil {
+		p.ReportsTo = r.cfg.Owner // hiring alone doesn't make actor its manager
 	}
 	if err := r.claimAccount(nick); err != nil {
 		return p, nil, err
@@ -247,7 +252,7 @@ func (r *Runner) setAgent(actor, nick string, fields []field) (p config.Persona,
 		return p, nil, err
 	}
 	before := p
-	budgetChanged := false
+	budgetChanged, budgetSet := false, false
 	for _, f := range presetFirst(fields) {
 		name := word(f.name)
 		if msg := r.applyField(&p, f.name, f.value); msg != "" {
@@ -263,7 +268,19 @@ func (r *Runner) setAgent(actor, nick string, fields []field) (p config.Persona,
 			if err := r.allowed(actor, canBudget, onPerson(p.Nick), "set agents' budgets"); err != nil {
 				return p, nil, err
 			}
-			budgetChanged = true
+			budgetChanged, budgetSet = true, true
+		}
+	}
+	// A preset brings its own budget.
+	if p.DailyBudgetUSD != before.DailyBudgetUSD && !budgetSet {
+		if err := r.allowed(actor, canBudget, onPerson(p.Nick), "set agents' budgets"); err != nil {
+			return p, nil, err
+		}
+		budgetChanged = true
+	}
+	if !strings.EqualFold(p.ReportsTo, before.ReportsTo) {
+		if err := r.mayMakeManager(actor, p.ReportsTo, target{person: p.Nick, team: p.Team}); err != nil {
+			return p, nil, err
 		}
 	}
 	if msg := deskProblem(p); msg != "" {
@@ -663,8 +680,13 @@ func (r *Runner) addMember(actor, account string, fields []field) (org.Member, e
 			return m, err
 		}
 	}
-	if !explicit {
-		m.ReportsTo = r.defaultManager(actor, m.Team, account)
+	newcomer := target{person: account, team: m.Team}
+	if explicit {
+		if err := r.mayMakeManager(actor, m.ReportsTo, newcomer); err != nil {
+			return m, err
+		}
+	} else if m.ReportsTo = r.defaultManager(actor, m.Team, account); r.mayMakeManager(actor, m.ReportsTo, newcomer) != nil {
+		m.ReportsTo = r.cfg.Owner // adding someone alone doesn't make actor their manager
 	}
 	if err := r.store.AddMember(context.Background(), m); err != nil {
 		return m, r.storeRefusal(account, err)
@@ -713,6 +735,11 @@ func (r *Runner) setMember(actor, account string, fields []field) (org.Member, e
 			if m.Guest && len(r.teamsLedBy(m.Account)) > 0 {
 				return m, refuse(invalid, "%s leads a team; guests can't, so DEMOTE them first.", m.Account)
 			}
+		}
+	}
+	if !strings.EqualFold(m.ReportsTo, before.ReportsTo) {
+		if err := r.mayMakeManager(actor, m.ReportsTo, target{person: m.Account, team: m.Team}); err != nil {
+			return m, err
 		}
 	}
 	if err := r.store.UpdateMember(context.Background(), m); err != nil {

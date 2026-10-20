@@ -306,6 +306,12 @@ func (r *Runner) holdsLevel(actor string, l org.AccessLevel, person string) bool
 			}
 		}
 	}
+	// Reaching nothing yet, it reaches whatever person is given later (a
+	// team to lead, reports), by whoever gives that: only someone who holds
+	// it across the org may give it.
+	if len(reach) == 0 {
+		reach = []target{wholeOrg}
+	}
 	for _, ab := range l.Abilities {
 		for _, t := range reach {
 			if !r.can(actor, ability(ab), t) {
@@ -327,6 +333,28 @@ func (r *Runner) mayLead(actor string, t target) error {
 	for _, ab := range lead.Abilities {
 		if !r.can(actor, ability(ab), t) {
 			return refuse(forbidden, "you can't choose leads %s: a lead could %s there, and you can't.", t.describe(), ab)
+		}
+	}
+	return nil
+}
+
+// mayMakeManager refuses unless actor may have subject (at t) report to
+// manager. Everyone up manager's line then holds the Manager level over
+// subject and whoever's below them (approve, say): any of them who doesn't
+// already is given it by actor, and nobody gives more than they hold,
+// themselves included.
+func (r *Runner) mayMakeManager(actor, manager string, t target) error {
+	l, _ := r.accessLevel(levelManager)
+	for _, ab := range l.Abilities {
+		if r.can(actor, ability(ab), t) {
+			continue
+		}
+		seen := map[string]bool{}
+		for cur := manager; cur != "" && !seen[strings.ToLower(cur)]; cur = r.managerOf(cur) {
+			seen[strings.ToLower(cur)] = true
+			if !r.can(cur, ability(ab), t) {
+				return refuse(forbidden, "you can't have %s report to %s: %s would then %s %s, and you can't.", t.person, manager, cur, ab, t.describe())
+			}
 		}
 	}
 	return nil

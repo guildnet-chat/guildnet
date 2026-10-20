@@ -203,6 +203,76 @@ func TestYouCantGiveMoreThanYouHold(t *testing.T) {
 	expectStatus(t, n, "dana", http.StatusOK, "DELETE", "/v1/people/eve/access/Sales helper", nil)
 }
 
+// A level that reaches nothing yet (the teams someone leads, when they lead
+// none) would reach whatever they're given later, by whoever gives it: so
+// only someone holding it across the org may give it.
+func TestALevelThatReachesNothingYetIsntGivenFromBelow(t *testing.T) {
+	n := salesOrg(t)
+	expectStatus(t, n, "method", http.StatusOK, "PUT", "/v1/access/Recruiter", map[string]any{"abilities": []string{"invite"}, "scope": "led"})
+
+	expectStatus(t, n, "dana", http.StatusForbidden, "POST", "/v1/people/eve/access/Recruiter", nil)
+	expectStatus(t, n, "method", http.StatusOK, "POST", "/v1/people/eve/promote", nil)
+	expectStatus(t, n, "dana", http.StatusOK, "POST", "/v1/people/eve/access/Recruiter", nil)
+	expectStatus(t, n, "method", http.StatusOK, "POST", "/v1/people/eli/access/Recruiter", nil)
+}
+
+// A preset brings its own budget: it changes the budget like BUDGET does.
+func TestAPresetCountsAsSettingTheBudget(t *testing.T) {
+	n := salesOrg(t)
+	expectStatus(t, n, "method", http.StatusOK, "PUT", "/v1/access/Hirer", map[string]any{"abilities": []string{"hire"}, "scope": "teams", "teams": []string{"Sales"}})
+	expectStatus(t, n, "method", http.StatusOK, "POST", "/v1/people/eli/access/Hirer", nil)
+	expectStatus(t, n, "method", http.StatusCreated, "POST", "/v1/staff", map[string]any{"nick": "rex", "team": "Sales", "budget": 1})
+
+	expectStatus(t, n, "eli", http.StatusForbidden, "PATCH", "/v1/staff/rex", map[string]any{"preset": "software-engineer"})
+	expectStatus(t, n, "eli", http.StatusOK, "PATCH", "/v1/staff/rex", map[string]any{"role": "Closer"})
+	if out := expectStatus(t, n, "method", http.StatusOK, "GET", "/v1/staff/rex", nil); out["budget"] != 1.0 {
+		t.Errorf("rex's budget = %v, want the $1 it had", out["budget"])
+	}
+}
+
+func TestAPresetCantTakeATeamPastItsBudget(t *testing.T) {
+	n := salesOrg(t)
+	expectStatus(t, n, "method", http.StatusOK, "PATCH", "/v1/members/eve", map[string]any{"cost": 3990})
+	expectStatus(t, n, "dana", http.StatusCreated, "POST", "/v1/staff", map[string]any{"nick": "rex", "team": "EMEA", "budget": 0.1})
+
+	out := expectStatus(t, n, "dana", http.StatusForbidden, "PATCH", "/v1/staff/rex", map[string]any{"preset": "software-engineer"})
+	if !strings.Contains(errorOf(out), "left") {
+		t.Errorf("refusal = %q, want it to say what EMEA has left", errorOf(out))
+	}
+}
+
+// An agent's manager may approve what it does, so whoever picks the manager
+// must hold that already: hiring, or naming yourself, doesn't hand it out.
+func TestHiringDoesntMakeYouTheAgentsManager(t *testing.T) {
+	n := salesOrg(t)
+	expectStatus(t, n, "method", http.StatusCreated, "POST", "/v1/teams", map[string]any{"name": "Support", "budget": 1000})
+	expectStatus(t, n, "method", http.StatusCreated, "POST", "/v1/members", map[string]any{"account": "sue", "team": "Support"})
+	expectStatus(t, n, "method", http.StatusOK, "PUT", "/v1/access/Hirer", map[string]any{"abilities": []string{"hire"}, "scope": "own"})
+	expectStatus(t, n, "method", http.StatusOK, "POST", "/v1/people/sue/access/Hirer", nil)
+
+	expectStatus(t, n, "sue", http.StatusCreated, "POST", "/v1/staff", map[string]any{"nick": "bot", "team": "Support"})
+	if out := expectStatus(t, n, "method", http.StatusOK, "GET", "/v1/staff/bot", nil); out["reports_to"] != "method" {
+		t.Errorf("bot reports to %v, want the owner: sue can't approve for it", out["reports_to"])
+	}
+	expectStatus(t, n, "sue", http.StatusForbidden, "PATCH", "/v1/staff/bot", map[string]any{"reports_to": "sue"})
+	expectStatus(t, n, "sue", http.StatusForbidden, "POST", "/v1/staff", map[string]any{"nick": "bot2", "team": "Support", "reports_to": "sue"})
+	expectStatus(t, n, "sue", http.StatusForbidden, "POST", "/v1/staff", map[string]any{"nick": "bot3", "team": "Support", "reports_to": "eli"})
+	expectStatus(t, n, "sue", http.StatusOK, "PATCH", "/v1/staff/bot", map[string]any{"reports_to": "method", "role": "Helpdesk"})
+}
+
+// The same holds for people: whoever someone reports to manages the agents
+// below them too.
+func TestYouCantMakePeopleReportToYouWithoutHoldingWhatManagersDo(t *testing.T) {
+	n := salesOrg(t)
+	expectStatus(t, n, "method", http.StatusOK, "PUT", "/v1/access/Arranger", map[string]any{"abilities": []string{"arrange"}, "scope": "teams", "teams": []string{"Engineering"}})
+	expectStatus(t, n, "method", http.StatusOK, "POST", "/v1/people/eli/access/Arranger", nil)
+	expectStatus(t, n, "method", http.StatusCreated, "POST", "/v1/staff", map[string]any{"nick": "bot", "team": "Engineering", "reports_to": "sam"})
+
+	expectStatus(t, n, "eli", http.StatusForbidden, "PATCH", "/v1/members/sam", map[string]any{"reports_to": "eli"})
+	expectStatus(t, n, "eli", http.StatusOK, "PATCH", "/v1/members/sam", map[string]any{"role": "Staff engineer", "reports_to": "vera"})
+	expectStatus(t, n, "dana", http.StatusOK, "PATCH", "/v1/members/eve", map[string]any{"reports_to": "eli"})
+}
+
 func TestGuestsCantBeGivenAccessOrLead(t *testing.T) {
 	n := salesOrg(t)
 	expectStatus(t, n, "method", http.StatusCreated, "POST", "/v1/members", map[string]any{"account": "gus", "team": "Sales", "guest": true})
