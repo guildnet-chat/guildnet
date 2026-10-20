@@ -277,7 +277,8 @@ func (p *Platform) firstRunSetUp(w http.ResponseWriter, r *http.Request) {
 		p.renderHome(w, r, status, "home-setup", withError{Err: msg, View: v})
 	}
 	visitor, now := p.visitor(r), p.opts.Now()
-	if !p.firstRun.guesses.Try(visitor, now) {
+	// By the address, or an IPv6 visitor's /64, as sign-ins are.
+	if !p.firstRun.guesses.Try(signInSource(visitor), now) {
 		again(http.StatusTooManyRequests, Network{}, "Too many wrong setup codes from here. Try again in 15 minutes.")
 		return
 	}

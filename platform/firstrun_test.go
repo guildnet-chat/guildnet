@@ -120,6 +120,28 @@ func TestGuessingTheSetupCodeIsSlowedDown(t *testing.T) {
 	}
 }
 
+// An IPv6 visitor has a /64 to choose addresses from: the /64 is held
+// back, not one address of it.
+func TestGuessingTheSetupCodeFromAnIPv6NetworkIsSlowedDown(t *testing.T) {
+	w := NewSelfHostedWorld(t, BehindTheEdge)
+	from := func(addr string) *Browser {
+		b := w.Home()
+		b.ForwardedFor = addr
+		b.Get("/")
+		return b
+	}
+	for i := range 5 {
+		from(fmt.Sprintf("2001:db8:1:2::%x", i+1)).Post("/setup", SetupForm("AAAA-BBBB-CCCC"))
+	}
+
+	if r := from("2001:db8:1:2::99").Post("/setup", SetupForm(w.SetupCode())); r.Status != http.StatusTooManyRequests {
+		t.Errorf("the right code, from the same /64: %d", r.Status)
+	}
+	if r := from("2001:db8:9:9::1").Post("/setup", SetupForm(w.SetupCode())); r.Status == http.StatusTooManyRequests {
+		t.Errorf("from another network: %d", r.Status)
+	}
+}
+
 func TestOnceSetUpThereIsNoSetup(t *testing.T) {
 	w := NewSelfHostedWorld(t)
 	code := w.SetupCode()

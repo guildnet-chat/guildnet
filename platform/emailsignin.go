@@ -68,7 +68,7 @@ func (p *Platform) askForSignInEmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now, visitor := p.opts.Now(), p.visitor(r)
-	if !p.linksByVisitor.Try(visitor, now) || !p.linksByAddress.Try(email, now) {
+	if !p.linksByVisitor.Try(signInSource(visitor), now) || !p.linksByAddress.Try(email, now) {
 		again(http.StatusTooManyRequests, "That's a lot of sign-in emails. Use the newest one you have, or wait an hour and ask again.")
 		return
 	}
