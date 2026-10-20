@@ -179,6 +179,18 @@ func TestACommandThatRunsTooLongTakesWhatItStartedWithIt(t *testing.T) {
 	}
 }
 
+// The disk Docker keeps images and containers on is watched too: desks'
+// images are rebuilt at each deploy, beside the desks' own files.
+func TestHowFullDockersDiskIsCanBeSaid(t *testing.T) {
+	dk, _ := dockerRig(t)
+
+	pct, where, err := dk.DockerDiskUse(context.Background())
+
+	if err != nil || pct <= 0 || pct > 100 || where == "" {
+		t.Errorf("Docker's disk: %d%% at %q, %v", pct, where, err)
+	}
+}
+
 func TestADesksFilesOutliveItsContainerStopping(t *testing.T) {
 	dk, d := dockerRig(t)
 	ctx := context.Background()

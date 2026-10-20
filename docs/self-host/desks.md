@@ -123,16 +123,17 @@ mounted with `prjquota`, and set these in `.env`, then apply them with
 sandboxd sets each limit as an XFS project quota, from a short-lived
 privileged container of the desk image. A desk at its network's limit gets
 "No space left on device"; other networks' desks aren't affected. sandboxd
-reports when the folder's disk is 80% full: the limits can add up to more
-than the disk.
+reports when the folder's disk is 80% full (the limits can add up to more
+than the disk), and when the disk Docker keeps images and containers on is.
 
 An XFS filesystem in a file on an existing disk (here 30 GB, allocated in
-full so it can't fill the host's disk):
+full so it can't fill the host's disk; `-K` keeps `mkfs.xfs` from
+discarding the file, which would leave it sparse):
 
 ```bash
 sudo apt-get install -y xfsprogs
 sudo fallocate -l 30G /var/lib/guildnet-desks.img
-sudo mkfs.xfs /var/lib/guildnet-desks.img
+sudo mkfs.xfs -K /var/lib/guildnet-desks.img
 sudo mkdir -p /var/lib/guildnet/desks
 echo '/var/lib/guildnet-desks.img /var/lib/guildnet/desks xfs loop,prjquota 0 0' | sudo tee -a /etc/fstab
 sudo mount /var/lib/guildnet/desks

@@ -398,7 +398,25 @@ func projectID(network string) uint32 {
 
 // DiskUse is how full the disk Files is on is, in percent.
 func (dk *Docker) DiskUse(ctx context.Context) (int, error) {
-	out, err := dk.docker(ctx, "run", "--rm", "--network", "none", "--entrypoint", "/bin/sh", "--volume", dk.Files+":/files:ro", dk.Image, "-c", "df -P /files | tail -n 1")
+	return dk.diskUseOf(ctx, dk.Files)
+}
+
+// DockerDiskUse is how full, in percent, the disk Docker keeps images and
+// containers on is, and where that is on the host (its root folder).
+func (dk *Docker) DockerDiskUse(ctx context.Context) (int, string, error) {
+	root, err := dk.docker(ctx, "info", "--format", "{{.DockerRootDir}}")
+	if err != nil {
+		return 0, "", err
+	}
+	root = strings.TrimSpace(root)
+	pct, err := dk.diskUseOf(ctx, root)
+	return pct, root, err
+}
+
+// diskUseOf is how full, in percent, the disk the host's folder dir is on
+// is, as a short-lived container of the desk image sees it.
+func (dk *Docker) diskUseOf(ctx context.Context, dir string) (int, error) {
+	out, err := dk.docker(ctx, "run", "--rm", "--network", "none", "--entrypoint", "/bin/sh", "--volume", dir+":/files:ro", dk.Image, "-c", "df -P /files | tail -n 1")
 	if err != nil {
 		return 0, err
 	}

@@ -89,9 +89,30 @@ func main() {
 	}
 }
 
-// filesFull is how full, in percent, the desks' disk may get before it's
-// reported.
+// filesFull is how full, in percent, the desks' disk, or Docker's, may get
+// before it's reported.
 const filesFull = 80
+
+// watchDisks reports the desks' disk, and the one Docker keeps images and
+// containers on, if either is past filesFull.
+func watchDisks(logger *log.Logger, backend *sandbox.Docker) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	if backend.Files != "" {
+		switch pct, err := backend.DiskUse(ctx); {
+		case err != nil:
+			logger.Printf("how full the desks' disk is: %v", err)
+		case pct >= filesFull:
+			monitor.Problem(logger, "the desks' disk is %d%% full: give it more room (docs/self-host/desks.md#storage)", pct)
+		}
+	}
+	switch pct, where, err := backend.DockerDiskUse(ctx); {
+	case err != nil:
+		logger.Printf("how full Docker's disk is: %v", err)
+	case pct >= filesFull:
+		monitor.Problem(logger, "the disk Docker keeps images and containers on (%s) is %d%% full: give the machine more disk, or remove images it no longer needs (docker image prune)", where, pct)
+	}
+}
 
 func serve(logger *log.Logger) error {
 	// The platform's key, or keys while it's changed (comma-separated).
@@ -158,21 +179,14 @@ func serve(logger *log.Logger) error {
 	}()
 	if backend.Files != "" {
 		logger.Printf("desks' files in %s", backend.Files)
-		// Networks' limits can add up to more than the disk: it's watched.
-		go func() {
-			for range time.Tick(10 * time.Minute) {
-				ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-				pct, err := backend.DiskUse(ctx)
-				cancel()
-				switch {
-				case err != nil:
-					logger.Printf("how full the desks' disk is: %v", err)
-				case pct >= filesFull:
-					monitor.Problem(logger, "the desks' disk is %d%% full: give it more room (docs/self-host/desks.md#storage)", pct)
-				}
-			}
-		}()
 	}
+	// Networks' limits can add up to more than the desks' disk, and desks'
+	// images (rebuilt at each deploy) fill Docker's: both are watched.
+	go func() {
+		for range time.Tick(10 * time.Minute) {
+			watchDisks(logger, backend)
+		}
+	}()
 	listen := env("GUILDNET_SANDBOX_LISTEN", ":8443")
 	runtime := backend.Runtime
 	if runtime == "" {
