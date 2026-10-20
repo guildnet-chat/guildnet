@@ -443,7 +443,7 @@ Resources:
             - {Name: ERGO__ACCOUNTS__REQUIRE_SASL__ENABLED, Value: "true"}
             - {Name: ERGO__ACCOUNTS__JWT_AUTH__ENABLED, Value: "true"}
             - {Name: ERGO__ACCOUNTS__JWT_AUTH__AUTOCREATE, Value: "false"}
-            - {Name: ERGO__OPERS__GUILDSERV__CLASS, Value: server-admin}
+            - {Name: ERGO__OPERS__GUILDSERV__CLASS, Value: guildserv}
             - {Name: ERGO__OPERS__GUILDSERV__HIDDEN, Value: "true"}
             # People's logins: Ergo asks the console (guildnet-ircauth), which
             # keeps their passwords, at its broker, over TLS from its CA.

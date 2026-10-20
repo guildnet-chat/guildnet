@@ -171,7 +171,7 @@ spec:
             - {name: ERGO__ACCOUNTS__JWT_AUTH__AUTOCREATE, value: "false"}
             - {name: GUILDNET_CHAT_KEY, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_CHAT_KEY}}}
             - {name: ERGO__ACCOUNTS__JWT_AUTH__TOKENS, value: '[{"algorithm":"hmac","key":"$(GUILDNET_CHAT_KEY)","account-claims":["account"],"validate-aud":["$(GUILDNET_NETWORK)"]}]'}
-            - {name: ERGO__OPERS__GUILDSERV__CLASS, value: server-admin}
+            - {name: ERGO__OPERS__GUILDSERV__CLASS, value: guildserv}
             - {name: ERGO__OPERS__GUILDSERV__HIDDEN, value: "true"}
             - {name: GUILDNET_OPER_PASSWORD, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_OPER_PASSWORD}}}
             # People's logins: Ergo asks the console (guildnet-ircauth), which

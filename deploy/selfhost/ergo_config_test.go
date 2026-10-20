@@ -4,6 +4,7 @@ package selfhost_test
 
 import (
 	"os"
+	"regexp"
 	"slices"
 	"testing"
 
@@ -98,8 +99,6 @@ func TestFloodingIsSlowed(t *testing.T) {
 	if f.Window != "1s" || f.Burst < 20 || f.PerWin < 4 || f.PerWin > 10 {
 		t.Errorf("fakelag allows a burst of %d, then %d per %s: want a burst of 20 or more, then 4 to 10 a second", f.Burst, f.PerWin, f.Window)
 	}
-	// GuildServ opers as server-admin, which has chat-moderator's
-	// capabilities too.
 	exempt := func(class string) bool {
 		for class != "" {
 			oc := c.OperClasses[class]
@@ -110,7 +109,7 @@ func TestFloodingIsSlowed(t *testing.T) {
 		}
 		return false
 	}
-	if !exempt("server-admin") {
+	if !exempt("guildserv") {
 		t.Error("GuildServ's operator class is slowed too")
 	}
 }
@@ -122,4 +121,45 @@ func keys(m map[string]any) []string {
 	}
 	slices.Sort(out)
 	return out
+}
+
+// GuildServ's operator class holds what it uses and nothing more: modes on
+// the org's channels (samode), their registrations (chanreg), role
+// hostnames (vhosts), reloading the welcome page (rehash), suspending the
+// accounts of people taken out of the org (ban, which NickServ SUSPEND needs),
+// and not being slowed.
+// Not killing sessions, changing accounts, history, DEFCON, or messaging
+// everyone. Every deployment opers it with that class.
+func TestGuildServsOperClassHoldsOnlyWhatItUses(t *testing.T) {
+	b, err := os.ReadFile("../ergo/ircd.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var c struct {
+		OperClasses map[string]struct {
+			Extends      string   `yaml:"extends"`
+			Capabilities []string `yaml:"capabilities"`
+		} `yaml:"oper-classes"`
+	}
+	if err := yaml.Unmarshal(b, &c); err != nil {
+		t.Fatal(err)
+	}
+	gs, ok := c.OperClasses["guildserv"]
+	if !ok {
+		t.Fatal("no guildserv operator class")
+	}
+	got := slices.Sorted(slices.Values(gs.Capabilities))
+	if want := []string{"ban", "chanreg", "nofakelag", "rehash", "samode", "vhosts"}; gs.Extends != "" || !slices.Equal(got, want) {
+		t.Errorf("guildserv extends %q and holds %v, want nothing extended and %v", gs.Extends, got, want)
+	}
+	for _, f := range []string{"compose.yml", "../gke/statefulset.yaml", "../aws-fargate/guildnet.yaml"} {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		m := regexp.MustCompile(`ERGO__OPERS__GUILDSERV__CLASS\W+(?:value:\s*|Value:\s*)?([\w-]+)`).FindSubmatch(b)
+		if m == nil || string(m[1]) != "guildserv" {
+			t.Errorf("%s opers GuildServ as %q, want guildserv", f, m)
+		}
+	}
 }

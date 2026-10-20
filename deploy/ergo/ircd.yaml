@@ -776,6 +776,19 @@ oper-classes:
             - "massmessage"  # message all users on the server
             - "metadata"     # modify arbitrary metadata on channels and users
 
+    # GuildNet: GuildServ's, what it uses to keep channels, hostnames and
+    # accounts in line with the org, and nothing more.
+    "guildserv":
+        title: GuildServ
+
+        capabilities:
+            - "samode"    # its own +q, and people's ranks, in the org's channels
+            - "chanreg"   # registering all the org's channels (past the per-account limit)
+            - "vhosts"    # role hostnames
+            - "rehash"    # reloading the welcome page
+            - "ban"       # suspending the accounts of people taken out of the org (NickServ SUSPEND)
+            - "nofakelag" # a sync sends many commands at once
+
 # ircd operators
 # GuildNet: no operators built in. Each deployment adds its own (GuildServ's,
 # ERGO__OPERS__GUILDSERV__*), so no password anyone could know opens one.

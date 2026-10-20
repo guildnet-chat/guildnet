@@ -172,7 +172,7 @@ services:
       ERGO__ACCOUNTS__JWT_AUTH__AUTOCREATE: "false"
       ERGO__ACCOUNTS__JWT_AUTH__TOKENS: '[{"algorithm":"hmac","key":"${GUILDNET_CHAT_KEY}","account-claims":["account"],"validate-aud":["${GUILDNET_NETWORK}"]}]'
       # GuildServ keeps IRC in step with the org chart, as an operator.
-      ERGO__OPERS__GUILDSERV__CLASS: server-admin
+      ERGO__OPERS__GUILDSERV__CLASS: guildserv
       ERGO__OPERS__GUILDSERV__HIDDEN: "true"
       GUILDNET_OPER_PASSWORD: ${GUILDNET_OPER_PASSWORD:?run init.sh first}
       # People's logins: Ergo asks the console (guildnet-ircauth), which

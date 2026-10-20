@@ -266,7 +266,7 @@ func (s *Server) config() ([]byte, error) {
 	}
 	conf["api"] = map[string]any{"enabled": true, "listener": ":8089", "bearer-tokens": []string{s.APIToken}}
 	conf["opers"] = map[string]any{s.OperName: map[string]any{
-		"class": "server-admin", "hidden": true, "password": string(hash),
+		"class": "guildserv", "hidden": true, "password": string(hash),
 	}}
 	// As in production: tokens from the platform, for existing accounts
 	// only, from pages on the platform's own addresses.
