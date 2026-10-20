@@ -4,6 +4,7 @@ package platform_test
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -135,6 +136,30 @@ func TestAnOutsideAgentsCallsAreRateLimited(t *testing.T) {
 	}
 	if r := w.Program("acme", token, "GET", "/agents/v1/inbox?wait=0", nil); r.Status != http.StatusOK {
 		t.Errorf("checking the inbox isn't limited that way: %d", r.Status)
+	}
+}
+
+// Made-up tokens can't use up what a network's agents may call between
+// them: a token the runner hasn't taken is held to a small allowance of
+// its own, for where the calls come from, and one it refused is refused
+// here for a while, without asking it again.
+func TestMadeUpTokensDontCrowdOutAnAgent(t *testing.T) {
+	w := NewWorld(t)
+	_, _, token := HireOutside(t, w)
+	if r := w.Program("acme", token, "GET", "/agents/v1/me", nil); r.Status != http.StatusOK {
+		t.Fatalf("rex: %d %s", r.Status, r.Body)
+	}
+
+	statuses := map[int]int{}
+	for i := range 700 {
+		statuses[w.Program("acme", fmt.Sprintf("gna_made-up-%d", i), "GET", "/agents/v1/me", nil).Status]++
+	}
+
+	if statuses[http.StatusOK] != 0 || statuses[http.StatusTooManyRequests] < 600 {
+		t.Errorf("made-up tokens: %v, want refused, nearly all held back", statuses)
+	}
+	if r := w.Program("acme", token, "GET", "/agents/v1/me", nil); r.Status != http.StatusOK {
+		t.Errorf("rex after them: %d %s", r.Status, r.Body)
 	}
 }
 

@@ -42,8 +42,16 @@ var agentClient = &http.Client{Timeout: 40 * time.Second, CheckRedirect: noRedir
 func noRedirects(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 
 // agentNetworkCalls is how many calls a network's agents may make a minute
-// between them: made-up tokens each start with their own allowance.
-const agentNetworkCalls = 600
+// between them. A token the runner hasn't taken lately isn't counted there,
+// but against agentUnknownCalls a minute from where it comes from (an
+// address, or an IPv6 /64), so made-up tokens can't crowd the agents out;
+// one the runner refused is refused here for agentRefusedFor.
+const (
+	agentNetworkCalls = 600
+	agentUnknownCalls = 30
+	agentKnownFor     = time.Hour
+	agentRefusedFor   = 10 * time.Minute
+)
 
 // plainPath says the path climbs nowhere: no "..", ".", or doubled slashes
 // that would take a call out of the API it was sent to.
@@ -55,6 +63,49 @@ type agentLimits struct {
 	calls limit.Minute
 	mu    sync.Mutex
 	polls map[string]int
+	// The runner's last word on each token: taken, or refused, and when.
+	taken, refused map[string]time.Time
+}
+
+// heard keeps what the runner said of a token: taken (any answer but 401)
+// or refused.
+func (l *agentLimits) heard(token string, ok bool, now time.Time) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.taken == nil {
+		l.taken, l.refused = map[string]time.Time{}, map[string]time.Time{}
+	}
+	if len(l.taken)+len(l.refused) > 10000 {
+		for k, at := range l.taken {
+			if now.Sub(at) > agentKnownFor {
+				delete(l.taken, k)
+			}
+		}
+		for k, at := range l.refused {
+			if now.Sub(at) > agentRefusedFor {
+				delete(l.refused, k)
+			}
+		}
+	}
+	if ok {
+		l.taken[token] = now
+		delete(l.refused, token)
+	} else {
+		l.refused[token] = now
+		delete(l.taken, token)
+	}
+}
+
+// standing is what the runner said of a token lately: known (taken), or
+// refused.
+func (l *agentLimits) standing(token string, now time.Time) (known, refused bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if at, ok := l.taken[token]; ok && now.Sub(at) < agentKnownFor {
+		return true, false
+	}
+	at, ok := l.refused[token]
+	return false, ok && now.Sub(at) < agentRefusedFor
 }
 
 // call counts a call, or says to wait (and for how long) if it's one more
@@ -106,13 +157,25 @@ func (p *Platform) agentAPI(w http.ResponseWriter, r *http.Request, n Network) {
 		agentError(w, http.StatusServiceUnavailable, "this network is suspended")
 		return
 	}
-	if ok, retry := p.agentLimits.call("network\x00"+n.Name, p.opts.Now(), agentNetworkCalls); !ok {
+	sum := sha256.Sum256([]byte(n.Name + "\x00" + token))
+	counted := hex.EncodeToString(sum[:])
+	now := p.opts.Now()
+	known, refused := p.agentLimits.standing(counted, now)
+	if refused {
+		agentError(w, http.StatusUnauthorized, "that token isn't an agent's here")
+		return
+	}
+	if !known {
+		if ok, retry := p.agentLimits.call("unknown\x00"+n.Name+"\x00"+signInSource(p.visitor(r)), now, agentUnknownCalls); !ok {
+			w.Header().Set("Retry-After", fmt.Sprint(int(retry.Seconds())))
+			agentError(w, http.StatusTooManyRequests, fmt.Sprintf("at most %d calls a minute from here with tokens not yet seen", agentUnknownCalls))
+			return
+		}
+	} else if ok, retry := p.agentLimits.call("network\x00"+n.Name, now, agentNetworkCalls); !ok {
 		w.Header().Set("Retry-After", fmt.Sprint(int(retry.Seconds())))
 		agentError(w, http.StatusTooManyRequests, fmt.Sprintf("this network's agents may make at most %d calls a minute between them", agentNetworkCalls))
 		return
 	}
-	sum := sha256.Sum256([]byte(n.Name + "\x00" + token))
-	counted := hex.EncodeToString(sum[:])
 	if r.URL.Path == "/agents/v1/inbox" {
 		ok, done := p.agentLimits.poll(counted)
 		if !ok {
@@ -153,6 +216,7 @@ func (p *Platform) agentAPI(w http.ResponseWriter, r *http.Request, n Network) {
 		return
 	}
 	defer resp.Body.Close()
+	p.agentLimits.heard(counted, resp.StatusCode != http.StatusUnauthorized, p.opts.Now())
 	w.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
 	w.Header().Set("Cache-Control", "no-store")
 	for _, h := range []string{"Mcp-Session-Id", "Mcp-Protocol-Version"} {
