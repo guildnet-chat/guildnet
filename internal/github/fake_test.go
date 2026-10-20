@@ -48,6 +48,7 @@ type tokenGrant struct {
 }
 
 type fakeRepo struct {
+	name    string
 	refs    map[string]string            // branch -> commit sha
 	commits map[string]fakeCommit        // sha -> commit
 	trees   map[string]map[string]string // sha -> path -> content
@@ -64,6 +65,8 @@ type fakePull struct {
 	Number              int
 	Title, Body         string
 	Head, Base          string
+	Author              string // a person's login; empty for the App's bot
+	Fork                bool   // from another repo
 	State               string // open, closed
 	Merged              bool
 	Additions, Deletion int
@@ -77,7 +80,7 @@ func newFakeGitHub(t *testing.T, repos ...string) *fakeGitHub {
 	t.Helper()
 	f := &fakeGitHub{t: t, tokens: map[string]tokenGrant{}, repos: map[string]*fakeRepo{}}
 	for _, name := range repos {
-		r := &fakeRepo{refs: map[string]string{}, commits: map[string]fakeCommit{},
+		r := &fakeRepo{name: name, refs: map[string]string{}, commits: map[string]fakeCommit{},
 			trees: map[string]map[string]string{}, checks: map[string][]fakeCheck{}}
 		r.trees["tree0"] = map[string]string{"README.md": "# " + name + "\n", "main.go": "package main\n"}
 		r.commits["c0"] = fakeCommit{Tree: "tree0", Message: "initial"}
@@ -298,8 +301,9 @@ func (f *fakeGitHub) pullJSON(repo *fakeRepo, p *fakePull) map[string]any {
 	return map[string]any{
 		"number": p.Number, "title": p.Title, "body": p.Body, "state": p.State, "merged": p.Merged,
 		"html_url":  fmt.Sprintf("https://github.com/%s/pulls/%d", owner, p.Number),
-		"head":      map[string]any{"ref": p.Head, "sha": repo.refs[p.Head]},
-		"base":      map[string]any{"ref": p.Base},
+		"head":      map[string]any{"ref": p.Head, "sha": repo.refs[p.Head], "repo": map[string]any{"full_name": headRepo(repo, p)}},
+		"base":      map[string]any{"ref": p.Base, "repo": map[string]any{"full_name": owner + "/" + repo.name}},
+		"user":      author(p),
 		"additions": p.Additions, "deletions": p.Deletion, "changed_files": 1, "mergeable": true,
 	}
 }
@@ -687,6 +691,34 @@ func (f *fakeGitHub) editPull(w http.ResponseWriter, r *http.Request, repo *fake
 
 // renameHead moves a PR onto another branch name, as for PRs opened before
 // branch names were enforced.
+// fakeBot is the App's bot, which opens the PRs agents open.
+const fakeBot = "guildnet[bot]"
+
+// author is who opened p, as GitHub says: the App's bot, or a person.
+func author(p *fakePull) map[string]any {
+	if p.Author == "" {
+		return map[string]any{"login": fakeBot, "type": "Bot"}
+	}
+	return map[string]any{"login": p.Author, "type": "User"}
+}
+
+// headRepo is the repo p's branch is in: its own, or a fork.
+func headRepo(r *fakeRepo, p *fakePull) string {
+	if p.Fork {
+		return "mallory/" + r.name
+	}
+	return owner + "/" + r.name
+}
+
+// personOpens is someone (not the App) opening a PR in repo, from head.
+func (f *fakeGitHub) personOpens(repo, who, head, body string, fork bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	r := f.repos[owner+"/"+repo]
+	r.refs[head] = r.refs["main"]
+	r.pulls = append(r.pulls, &fakePull{Number: len(r.pulls) + 1, Title: who + "'s change", Body: body, Head: head, Base: "main", Author: who, Fork: fork, State: "open"})
+}
+
 func (f *fakeGitHub) renameHead(repo string, n int, branch string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

@@ -70,24 +70,29 @@ func (b Broker) Token(ctx context.Context, repos []string, write bool) (string, 
 	return out.Token, out.ExpiresAt, nil
 }
 
-// Installation is the account and repos the network's installation has,
-// and which of them are public; connected false when the network isn't
-// connected to GitHub.
-func (b Broker) Installation(ctx context.Context) (account string, repos, public []string, connected bool, err error) {
-	var out struct {
-		Account string   `json:"account"`
-		Repos   []string `json:"repos"`
-		Public  []string `json:"public"`
-	}
+// Installed is a network's installation, as the broker says: its account
+// and repos, which of them are public, and the App's bot's login.
+type Installed struct {
+	Account      string   `json:"account"`
+	Repos        []string `json:"repos"`
+	Public       []string `json:"public"`
+	Bot          string   `json:"bot"`
+	disconnected bool
+}
+
+// Installation is the network's installation; Connected false when the
+// network isn't connected to GitHub.
+func (b Broker) Installation(ctx context.Context) (Installed, error) {
+	var out Installed
 	status, err := b.do(ctx, "GET", "/github", nil, &out)
 	if status == http.StatusNotFound {
-		return "", nil, nil, false, nil
+		return Installed{disconnected: true}, nil
 	}
-	if err != nil {
-		return "", nil, nil, false, err
-	}
-	return out.Account, out.Repos, out.Public, true, nil
+	return out, err
 }
+
+// Connected says whether the network is connected to GitHub.
+func (i Installed) Connected() bool { return !i.disconnected }
 
 // Live is an installation's account and repos, kept up to date while the
 // runner runs: the owner may connect GitHub, or give it more repos, at any
@@ -97,6 +102,14 @@ type Live struct {
 	account string
 	repos   []string
 	public  []string
+	bot     string
+}
+
+// Bot is the App's bot's login, as last heard ("" if not known).
+func (l *Live) Bot() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.bot
 }
 
 // Get is the account and repos, as last heard.
@@ -123,10 +136,13 @@ func (l *Live) Set(account string, repos, public []string) {
 // Refresh asks the broker again. Not being connected (yet) isn't an error:
 // it's no account and no repos.
 func (l *Live) Refresh(ctx context.Context, b Broker) error {
-	account, repos, public, _, err := b.Installation(ctx)
+	in, err := b.Installation(ctx)
 	if err != nil {
 		return err
 	}
-	l.Set(account, repos, public)
+	l.Set(in.Account, in.Repos, in.Public)
+	l.mu.Lock()
+	l.bot = in.Bot
+	l.mu.Unlock()
 	return nil
 }

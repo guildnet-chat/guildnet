@@ -46,6 +46,10 @@ type Options struct {
 	// their own (agent.PublicRepos). Any not known to be public count as
 	// private.
 	Public []string
+	// Bot is the login GitHub gives the App's bot ("guildnet-agents[bot]"),
+	// which opens the PRs agents open (Live has its own): what makes a PR an
+	// agent's. Empty if not known.
+	Bot string
 	// Teams limits each team to some of Repos, by team name. Agents in a
 	// team that isn't listed get no GitHub. Without Teams, every agent gets
 	// every repo.
@@ -468,8 +472,7 @@ func (c *Client) Run(ctx context.Context, p config.Persona, name string, in map[
 	return "", fmt.Errorf("no tool %s", name)
 }
 
-// closePull closes one of the agent's own PRs: on its branch, or opened by
-// it through GuildNet (the footer says so).
+// closePull closes one of the agent's own PRs (agentsPull).
 func (c *Client) closePull(ctx context.Context, p config.Persona, in map[string]any) (string, error) {
 	repo, n, err := c.repoAndNumber(p, in)
 	if err != nil {
@@ -479,8 +482,7 @@ func (c *Client) closePull(ctx context.Context, p config.Persona, in map[string]
 	if err != nil {
 		return "", err
 	}
-	mine := ownBranch(p, pr.GetHead().GetRef()) == nil || strings.Contains(pr.GetBody(), openedBy(p))
-	if !mine {
+	if !c.agentsPull(p, pr) {
 		return "", fmt.Errorf("PR #%d isn't yours to close; ask whoever opened it", n)
 	}
 	if pr.GetState() != "open" {
@@ -1035,4 +1037,27 @@ func (c *Client) publicRepos() []string {
 		return c.opts.Live.Public()
 	}
 	return c.opts.Public
+}
+
+// bot is the App's bot's login, if it's known.
+func (c *Client) bot() string {
+	if c.opts.Live != nil {
+		if b := c.opts.Live.Bot(); b != "" {
+			return b
+		}
+	}
+	return c.opts.Bot
+}
+
+// agentsPull says whether pr is p's: opened by the App's bot, from the repo
+// itself (not a fork), on p's branch or with p's footer. Nothing anyone can
+// write into a PR makes it so. Not knowing the bot, a bot's PR on p's branch
+// is p's.
+func (c *Client) agentsPull(p config.Persona, pr *gh.PullRequest) bool {
+	ownRepo := strings.EqualFold(pr.GetHead().GetRepo().GetFullName(), pr.GetBase().GetRepo().GetFullName()) && pr.GetHead().GetRepo().GetFullName() != ""
+	onBranch := ownBranch(p, pr.GetHead().GetRef()) == nil
+	if bot := c.bot(); bot != "" {
+		return ownRepo && strings.EqualFold(pr.GetUser().GetLogin(), bot) && (onBranch || strings.Contains(pr.GetBody(), openedBy(p)))
+	}
+	return ownRepo && pr.GetUser().GetType() == "Bot" && onBranch
 }

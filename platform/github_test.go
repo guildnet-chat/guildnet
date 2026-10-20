@@ -511,4 +511,8 @@ func TestTheBrokerSaysWhichReposArePublic(t *testing.T) {
 	if status != http.StatusOK || fmt.Sprint(out["repos"]) != "[docs web]" || fmt.Sprint(out["public"]) != "[web]" {
 		t.Errorf("the broker says %d %v: want repos web and docs, web public", status, out)
 	}
+	// And the App's bot, which opens the agents' PRs: what makes one theirs.
+	if out["bot"] != "guildnet[bot]" {
+		t.Errorf("the broker says the bot is %v, want guildnet[bot]", out["bot"])
+	}
 }

@@ -423,7 +423,12 @@ func (p *Platform) Broker() http.Handler {
 			brokerError(w, http.StatusBadGateway, "couldn't list the installation's repos")
 			return
 		}
-		writeJSONResponse(w, http.StatusOK, map[string]any{"account": link.Account, "repos": repos, "public": p.publicRepos(link.Installation)})
+		answer := map[string]any{"account": link.Account, "repos": repos, "public": p.publicRepos(link.Installation)}
+		// The App's bot opens the agents' PRs: what makes one theirs.
+		if p.opts.GitHub != nil && p.opts.GitHub.Slug != "" {
+			answer["bot"] = p.opts.GitHub.Slug + "[bot]"
+		}
+		writeJSONResponse(w, http.StatusOK, answer)
 	}))
 	mux.HandleFunc("POST /github/token", p.brokered(func(w http.ResponseWriter, r *http.Request, n Network, link GitHubLink) {
 		var in struct {

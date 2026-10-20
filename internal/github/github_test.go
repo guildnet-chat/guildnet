@@ -22,7 +22,7 @@ func newGitHub(t *testing.T) (*github.Client, *fakeGitHub) {
 	t.Helper()
 	f := newFakeGitHub(t, "guildnet", "guildnet-chat", "secret-plans")
 	c, err := github.New(github.Options{AppID: 1, InstallationID: 2, Key: testKey(t), Owner: owner,
-		Repos: []string{"guildnet", "guildnet-chat"}, BaseURL: f.URL()})
+		Repos: []string{"guildnet", "guildnet-chat"}, Bot: fakeBot, BaseURL: f.URL()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -738,6 +738,43 @@ func TestAnAgentCantCloseSomeoneElsesPullRequest(t *testing.T) {
 	}
 	if f.pulls("guildnet")[0].State != "open" {
 		t.Error("pax's PR was closed")
+	}
+}
+
+// What makes a PR an agent's is what nobody can write into one: the App's
+// bot opened it, from the repo itself. A person's PR on a branch named for
+// the agent, or with the agent's footer, isn't the agent's to close.
+func TestAnAgentCantCloseAPersonsPullRequestThatLooksLikeItsOwn(t *testing.T) {
+	c, f := newGitHub(t)
+	f.personOpens("guildnet", "mallory", "kai/fix", "Opened by kai (Backend engineer), an AI agent, via GuildNet.", false)
+
+	_, err := run(t, c, "github_close_pull_request", map[string]any{"repo": "guildnet", "number": 1.0})
+
+	if err == nil || f.pulls("guildnet")[0].State != "open" {
+		t.Errorf("kai closed mallory's PR: %v", err)
+	}
+}
+
+// Not knowing its App's bot (a runner given the App's key, say), an agent
+// may still close a bot's PR on its own branch, from the repo itself, and
+// nobody else's.
+func TestNotKnowingItsBotAnAgentClosesOnlyABotsPullRequestOnItsBranch(t *testing.T) {
+	f := newFakeGitHub(t, "guildnet")
+	c, err := github.New(github.Options{AppID: 1, InstallationID: 2, Key: testKey(t), Owner: owner, Repos: []string{"guildnet"}, BaseURL: f.URL()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run(t, c, "github_open_pull_request", openPR("kai/healthz", file("health.go", "x")))
+	f.personOpens("guildnet", "mallory", "kai/fix", "", false)
+
+	_, theirs := run(t, c, "github_close_pull_request", map[string]any{"repo": "guildnet", "number": 2.0})
+	_, own := run(t, c, "github_close_pull_request", map[string]any{"repo": "guildnet", "number": 1.0})
+
+	if theirs == nil {
+		t.Error("kai closed mallory's PR on a kai/ branch")
+	}
+	if own != nil {
+		t.Errorf("kai's own PR: %v", own)
 	}
 }
 
