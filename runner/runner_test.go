@@ -120,6 +120,20 @@ func TestAgentRepliesByDMWhenDMd(t *testing.T) {
 	}
 }
 
+// "@#engineering" is for the channel's ops only (STATUSMSG): neither a DM
+// nor the channel, so nobody answers it as either.
+func TestAMessageToAChannelsOpsIsntADM(t *testing.T) {
+	brain := &fakeBrain{reply: replyWith("on it")}
+	n := startNetwork(t, brain)
+
+	n.human.say("@#engineering", "kai: deploy now")
+	n.human.say("@#engineering", "HELP")
+
+	n.human.expectQuiet("an answer", time.Second, func(m heard) bool {
+		return m.typing == "" && (m.from == "kai" || m.from == "vera" || m.from == "GuildServ")
+	})
+}
+
 func TestAgentsStayQuietWhenNotAddressed(t *testing.T) {
 	brain := &fakeBrain{reply: replyWith("I have thoughts")}
 	n := startNetwork(t, brain)

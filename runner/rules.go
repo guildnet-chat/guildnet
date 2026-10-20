@@ -83,6 +83,21 @@ func (r *Runner) inOrgAsPerson(account string) bool {
 	return err == nil
 }
 
+func (r *Runner) isGuest(account string) bool {
+	m, err := r.store.Member(context.Background(), account)
+	return err == nil && m.Guest
+}
+
+// mayCatchUp reports whether account gets catch-ups, each a model call on
+// the company's budget: the company's people do, and guests once the owner
+// lets them use agents.
+func (r *Runner) mayCatchUp(account string) bool {
+	if !r.inOrgAsPerson(account) {
+		return false
+	}
+	return !r.isGuest(account) || r.guestsAsk(context.Background())
+}
+
 // mayAsk reports whether account may have agent p work for them: p works
 // with its team's repos and the company's connected services for whoever
 // asks, and answers them. A person in the org may; a guest only once the

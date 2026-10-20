@@ -498,6 +498,9 @@ func (r *Runner) onLedgerPrivmsg(e ircmsg.Message) {
 		}
 		return
 	}
+	if toRank(target) {
+		return // for the channel's ops, say: it isn't the channel's to log or act on
+	}
 	r.chat.Add(target, line)
 
 	// Agent replies are counted toward the loop guard in handle, once per
@@ -1295,7 +1298,14 @@ func accountOf(e ircmsg.Message) string {
 }
 
 func isChannel(target string) bool {
-	return strings.HasPrefix(target, "#") || strings.HasPrefix(target, "&")
+	return strings.HasPrefix(target, "#") || strings.HasPrefix(target, "&") || toRank(target)
+}
+
+// toRank reports whether target is a channel's members of some rank only,
+// "@#chan" (Ergo's STATUSMSG: ~&@%+): not a DM, and not the channel either.
+func toRank(target string) bool {
+	t := strings.TrimLeft(target, "~&@%+")
+	return t != target && strings.HasPrefix(t, "#")
 }
 
 // parseLine turns a PRIVMSG into a Line. CTCP other than ACTION is ignored.

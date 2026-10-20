@@ -33,6 +33,63 @@ func TestGuildServIsForPeopleInTheOrg(t *testing.T) {
 	}
 }
 
+// A guest isn't shown the company's directory (its staff, teams, budgets,
+// goals), and a catch-up, a model call on the company's budget, is theirs
+// only once the owner lets guests use agents.
+func TestAGuestGetsCatchUpsOnlyAndOnlyIfTheOwnerSays(t *testing.T) {
+	brain := &fakeBrain{digest: "summary"}
+	n := startNetwork(t, brain)
+	n.human.say("#general", "the launch is on friday")
+	n.human.say("GuildServ", "MEMBER ADD gus GUEST")
+	n.human.expect("gus added", guildServSaying("method", "added gus"))
+	n.srv.AddAccount("gus", testPassword)
+	gus := n.joinAs("gus", "#general")
+	time.Sleep(200 * time.Millisecond)
+
+	for _, cmd := range []string{"STAFF", "ORG", "TEAMS", "BUDGET", "INFO kai", "GOALS", "COMPANY"} {
+		gus.say("GuildServ", cmd)
+		gus.expect("gus: "+cmd+" refused", guildServSaying("gus", "guest"))
+	}
+	gus.say("GuildServ", "CATCHUP 7d")
+	gus.expect("the catch-up refused", guildServSaying("gus", "owner"))
+	if c := brain.catchupCount(); c != 0 {
+		t.Fatalf("%d catch-ups written for a guest, with guests off", c)
+	}
+
+	n.human.say("GuildServ", "COMPANY GUESTS on")
+	n.human.expect("guests on", fromGuildServ("method"))
+	gus.say("GuildServ", "CATCHUP 7d")
+	gus.expect("the catch-up", guildServSaying("gus", "summary"))
+}
+
+// The catch-up sent on coming back from away is for the same people.
+func TestOnlyTheCompanysPeopleGetACatchUpOnComingBack(t *testing.T) {
+	brain := &fakeBrain{digest: "summary"}
+	n := startNetwork(t, brain, withCatchupAfter(200*time.Millisecond))
+	n.human.say("GuildServ", "MEMBER ADD gus GUEST")
+	n.human.expect("gus added", guildServSaying("method", "added gus"))
+	n.srv.AddAccount("zed", testPassword)
+	n.srv.AddAccount("gus", testPassword)
+	gus, zed := n.joinAs("gus", "#general"), n.joinAs("zed", "#general")
+	anon := joinHuman(t, n.srv.Addr(), "anon", "#general")
+	time.Sleep(200 * time.Millisecond)
+
+	for _, h := range []*human{gus, zed, anon} {
+		h.away("lunch")
+	}
+	time.Sleep(100 * time.Millisecond)
+	n.human.say("#general", "the launch is on friday")
+	time.Sleep(300 * time.Millisecond)
+	for _, h := range []*human{gus, zed, anon} {
+		h.back()
+	}
+
+	time.Sleep(500 * time.Millisecond)
+	if c := brain.catchupCount(); c != 0 {
+		t.Errorf("%d catch-ups written on coming back, for a guest (guests off), a stranger and someone not logged in", c)
+	}
+}
+
 // HELP is shown whole: no line of it is cut short at IRC's line length.
 func TestHelpIsShownWhole(t *testing.T) {
 	n := startNetwork(t, &fakeBrain{})

@@ -156,7 +156,8 @@ func (r *Runner) onAway(e ircmsg.Message) {
 		r.presence.lastAway[key] = since
 	}
 	r.mu.Unlock()
-	if wasAway && r.cfg.Catchup.Enabled && time.Since(since) >= r.cfg.Catchup.After {
+	_, account := e.GetTag("account") // the server's word, never the nick
+	if wasAway && r.cfg.Catchup.Enabled && time.Since(since) >= r.cfg.Catchup.After && r.mayCatchUp(account) {
 		go r.catchup(nick, since, "", true)
 	}
 }
@@ -171,6 +172,10 @@ const catchupEvery = 10 * time.Minute
 func (r *Runner) guildCatchup(from, actor string, args []string) {
 	if !r.cfg.Catchup.Enabled {
 		r.guildReply(from, "catch-ups are turned off on this network.")
+		return
+	}
+	if !r.mayCatchUp(actor) {
+		r.guildReply(from, "a catch-up is a model call on the company's budget: guests get them once the owner lets guests use agents.")
 		return
 	}
 	since, only := time.Time{}, ""

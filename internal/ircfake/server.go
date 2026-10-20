@@ -246,8 +246,13 @@ func (c *client) handle(m ircmsg.Message) bool {
 		s.mu.Lock()
 		ch := s.channels[strings.ToLower(p(0))]
 		to := s.nicks[strings.ToLower(p(0))]
+		// "@#chan" (STATUSMSG) is for the channel's members of that rank. The
+		// fake keeps no ranks, so it goes to all of them, and isn't history.
+		status := s.channels[strings.ToLower(strings.TrimLeft(p(0), "~&@%+"))]
 		s.mu.Unlock()
-		if ch != nil {
+		if ch == nil && to == nil && status != nil {
+			s.toChannel(status, c, c, line)
+		} else if ch != nil {
 			s.mu.Lock()
 			ch.history = append(ch.history, stored{at: time.Now().UTC(), line: line})
 			s.mu.Unlock()

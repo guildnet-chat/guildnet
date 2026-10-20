@@ -118,6 +118,19 @@ func (r *Runner) guildCommand(from, actor, text string, console bool) {
 		}
 		return
 	}
+	// A guest isn't shown the company's directory: its staff, teams, budgets
+	// and goals.
+	if r.isGuest(actor) {
+		switch cmd {
+		case "HELP":
+			r.guildReply(from, "As a guest: CATCHUP [#channel] [3h] (one every 10 minutes), once the owner lets guests use agents.")
+			return
+		case "CATCHUP":
+		default:
+			r.guildReply(from, "as a guest, you have HELP and CATCHUP: the rest of GuildServ is for the company's people.")
+			return
+		}
+	}
 	if !console && changesTheOrg(cmd, args) {
 		if why := r.notOverIRC(actor); why != "" {
 			r.guildReply(from, why)
