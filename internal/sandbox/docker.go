@@ -5,6 +5,7 @@ package sandbox
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -157,11 +158,25 @@ const (
 	deskShell   = "/bin/sh"
 )
 
+// runMark is the variable each command, and so everything it starts, has
+// in its environment: a command that runs too long takes all of those with
+// it (killMarked), however they were started (setsid, nohup).
+const runMark = "DESK_RUN"
+
+// killMarked kills every process at a desk whose environment has
+// DESK_RUN=$1, but the desk's init.
+const killMarked = `for p in /proc/[0-9]*; do
+  pid=${p#/proc/}; [ "$pid" = 1 ] && continue
+  /usr/bin/tr '\0' '\n' < "$p/environ" 2>/dev/null | /bin/grep -qxF "DESK_RUN=$1" && kill -9 "$pid" 2>/dev/null
+done; exit 0`
+
 // Exec runs a command at the desk, stopped (TERM, then KILL 5 seconds on)
-// by the desk's own timeout command once its time is up.
+// by the desk's own timeout command once its time is up, with whatever it
+// started.
 func (dk *Docker) Exec(ctx context.Context, d Desk, e Exec) (Result, error) {
 	secs := max(int(e.Timeout/time.Second), 1)
-	args := []string{"exec", "--interactive", "--workdir", e.Dir, d.Name(), deskTimeout, "-k", "5", strconv.Itoa(secs)}
+	mark := newRunMark()
+	args := []string{"exec", "--interactive", "--workdir", e.Dir, "--env", runMark + "=" + mark, d.Name(), deskTimeout, "-k", "5", strconv.Itoa(secs)}
 	args = append(args, e.Args...)
 	// The docker command itself gets a little longer, in case.
 	ctx, cancel := context.WithTimeout(ctx, e.Timeout+30*time.Second)
@@ -183,9 +198,27 @@ func (dk *Docker) Exec(ctx context.Context, d Desk, e Exec) (Result, error) {
 		// timeout exits 124 when it stopped the command (busybox's, 143),
 		// or 137 if it had to kill it.
 		timedOut := (code == 124 || code == 143 || code == 137) && time.Since(start) >= e.Timeout-time.Second
+		if timedOut {
+			dk.killRun(d, mark)
+		}
 		return Result{Exit: code, TimedOut: timedOut}, nil
 	}
 	return Result{}, fmt.Errorf("running at the desk: %w", err)
+}
+
+// killRun kills what's left of the command marked mark at d.
+func (dk *Docker) killRun(d Desk, mark string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	exec.CommandContext(ctx, dk.bin(), "exec", d.Name(), deskShell, "-c", killMarked, "kill", mark).Run()
+}
+
+// newRunMark is a command's own mark: random, so no command can name
+// another's.
+func newRunMark() string {
+	b := make([]byte, 12)
+	rand.Read(b)
+	return hex.EncodeToString(b)
 }
 
 // readFile prints a file if it's a file no larger than $2: it exits 3 if

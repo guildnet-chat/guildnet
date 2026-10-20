@@ -155,6 +155,30 @@ func TestACommandThatRunsTooLongIsStopped(t *testing.T) {
 	}
 }
 
+// A command that runs too long takes what it started with it, however it
+// started it (setsid, nohup): nothing it began goes on past its time. What
+// a command that finished leaves running (a dev server, say) stays.
+func TestACommandThatRunsTooLongTakesWhatItStartedWithIt(t *testing.T) {
+	dk, d := dockerRig(t)
+	sleeping := func(what string) string {
+		out, _ := run(t, dk, d, 10*time.Second, "sh", "-c", "ps -o args | grep -c '^sleep "+what+"' || true")
+		return strings.TrimSpace(out)
+	}
+
+	run(t, dk, d, 10*time.Second, "sh", "-c", "setsid sleep 303 >/dev/null 2>&1 &")
+	_, res := run(t, dk, d, 2*time.Second, "sh", "-c", "setsid sleep 301 >/dev/null 2>&1 & nohup sleep 302 >/dev/null 2>&1 & sleep 60")
+
+	if !res.TimedOut {
+		t.Fatalf("%+v, want timed out", res)
+	}
+	if n := sleeping("30[12]"); n != "0" {
+		t.Errorf("%s of what the timed-out command started still run", n)
+	}
+	if n := sleeping("303"); n != "1" {
+		t.Errorf("what a finished command left running: %s, want it still running", n)
+	}
+}
+
 func TestADesksFilesOutliveItsContainerStopping(t *testing.T) {
 	dk, d := dockerRig(t)
 	ctx := context.Background()
