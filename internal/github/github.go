@@ -424,8 +424,14 @@ func (c *Client) Prepare(ctx context.Context, p config.Persona, name string, in 
 		return "", nil, fmt.Errorf("PR #%d is %s", n, pr.GetState())
 	}
 	checks := c.checks(ctx, repo, pr.GetHead().GetSHA())
-	summary := fmt.Sprintf("merge PR #%d %q into %s in %s (%d files, +%d -%d; checks: %s)",
-		n, pr.GetTitle(), pr.GetBase().GetRef(), repo, pr.GetChangedFiles(), pr.GetAdditions(), pr.GetDeletions(), checks.short())
+	// The facts first and the agent's title last, cut short: a long title
+	// can't push the checks out of a message cut to fit.
+	title := []rune(pr.GetTitle())
+	if len(title) > 80 {
+		title = append(title[:79], '…')
+	}
+	summary := fmt.Sprintf("merge PR #%d into %s in %s (%d files, +%d -%d; checks: %s): %q",
+		n, pr.GetBase().GetRef(), repo, pr.GetChangedFiles(), pr.GetAdditions(), pr.GetDeletions(), checks.short(), string(title))
 	pinned := map[string]any{"repo": repo, "number": float64(n), "head_sha": pr.GetHead().GetSHA(), "base_ref": pr.GetBase().GetRef()}
 	return summary, pinned, nil
 }

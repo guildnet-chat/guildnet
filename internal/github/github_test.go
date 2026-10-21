@@ -215,6 +215,31 @@ func TestMergingNeedsApprovalAndTheApproverSeesWhatTheyreApproving(t *testing.T)
 	}
 }
 
+// The title is the agent's: however long it is, the facts the approver
+// decides on (where it merges, how big it is, its checks) come first, and
+// the title is cut short, so a message cut at 200 characters still has them.
+func TestALongPRTitleDoesntPushTheChecksOutOfTheApproval(t *testing.T) {
+	c, _ := newGitHub(t)
+	pr := openPR("kai/healthz", file("health.go", "x"))
+	pr["title"] = "Add a health check " + strings.Repeat("and something more ", 30)
+	run(t, c, "github_open_pull_request", pr)
+
+	summary, _, err := c.Prepare(context.Background(), kai, "github_merge_pull_request", map[string]any{"repo": "guildnet", "number": 1.0})
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := []rune(summary)[:min(200, len([]rune(summary)))]
+	for _, want := range []string{"#1", "into main", "guildnet", "1 files", "checks: ", "Add a health check"} {
+		if !strings.Contains(string(first), want) {
+			t.Errorf("the first 200 characters of %q should have %q", summary, want)
+		}
+	}
+	if strings.Count(summary, "something more") > 4 {
+		t.Errorf("the title isn't cut short: %q", summary)
+	}
+}
+
 func TestAnApprovedMergeMergesWhatWasApproved(t *testing.T) {
 	c, f := newGitHub(t)
 	run(t, c, "github_open_pull_request", openPR("kai/healthz", file("health.go", "x")))
