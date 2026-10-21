@@ -47,10 +47,11 @@ type waitState struct {
 	on     map[string]org.Approval // lowercase agent -> the approval it waits on
 	parked map[string][]job        // wake-ups that arrived meanwhile
 	told   map[string]bool         // agent+conversation already told it's waiting
+	asking map[string]bool         // outside agents raising one now (agentAsk)
 }
 
 func newWaitState() waitState {
-	return waitState{on: map[string]org.Approval{}, parked: map[string][]job{}, told: map[string]bool{}}
+	return waitState{on: map[string]org.Approval{}, parked: map[string][]job{}, told: map[string]bool{}, asking: map[string]bool{}}
 }
 
 func (r *Runner) now() time.Time {

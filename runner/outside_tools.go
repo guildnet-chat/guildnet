@@ -225,9 +225,27 @@ func (r *Runner) agentAsk(p config.Persona, summary, where, tool string, pinned 
 	if len(summary) > 300 {
 		return org.Approval{}, refuse(invalid, "keep the summary under 300 characters.")
 	}
-	if a, waiting := r.waitingOn(p.Nick); waiting {
-		return org.Approval{}, refuse(conflict, "you're already waiting on approval #%d; one at a time.", a.ID)
+	// One at a time: the check and the asking are one step, so calls at
+	// once can't each raise one.
+	k := strings.ToLower(p.Nick)
+	r.mu.Lock()
+	a, waiting := r.wait.on[k]
+	asking := r.wait.asking[k]
+	if !waiting && !asking {
+		r.wait.asking[k] = true
 	}
+	r.mu.Unlock()
+	switch {
+	case waiting:
+		return org.Approval{}, refuse(conflict, "you're already waiting on approval #%d; one at a time.", a.ID)
+	case asking:
+		return org.Approval{}, refuse(conflict, "you're already asking for an approval; one at a time.")
+	}
+	defer func() {
+		r.mu.Lock()
+		delete(r.wait.asking, k)
+		r.mu.Unlock()
+	}()
 	channel, asker := where, ""
 	if x := r.outside.current(p.Nick); x != nil {
 		asker = x.wake.Trigger.From

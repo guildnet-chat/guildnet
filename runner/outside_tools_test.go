@@ -5,6 +5,7 @@ package runner_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -127,6 +128,37 @@ func TestAnOutsideAgentAsksForApprovalAndIsWokenWithTheDecision(t *testing.T) {
 	n.human.expect("kai carrying on", fromContaining("kai", "#engineering", "Deploying 1.4 now."))
 	if _, out, _ := agent.call("GET", "/approvals/1", nil); out["status"] != "approved" {
 		t.Errorf("approval #1: %v", out)
+	}
+}
+
+// One approval at a time, even asked for many times at once.
+func TestAnOutsideAgentWaitsOnOneApprovalEvenAskingAtOnce(t *testing.T) {
+	n := startNetwork(t, &fakeBrain{}, withAPI())
+	agent := n.outsider(outside(t, n))
+	agent.inbox(0)
+
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	accepted := 0
+	for i := range 50 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			status, _, _ := agent.call("POST", "/approvals", map[string]any{"summary": fmt.Sprintf("deploy 1.%d to production", i), "where": "#engineering"})
+			mu.Lock()
+			defer mu.Unlock()
+			if status == http.StatusAccepted {
+				accepted++
+			}
+		}()
+	}
+	wg.Wait()
+
+	if accepted != 1 {
+		t.Errorf("%d approvals raised at once, want 1", accepted)
+	}
+	if pending, _ := n.store.PendingApprovals(t.Context()); len(pending) != 1 {
+		t.Errorf("%d approvals pending, want 1", len(pending))
 	}
 }
 
