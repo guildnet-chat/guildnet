@@ -575,6 +575,56 @@ func (s *sleepy) Open(ctx context.Context, nick string) error {
 	return s.fakeSandbox.Open(ctx, nick)
 }
 
+// Firing an agent while the sandbox VM sleeps: the VM is woken and the desk
+// removed once it's up (firing doesn't wait the minute that takes), so a
+// new agent given the nick doesn't find the old one's work.
+func TestADeskIsRemovedOnceTheSandboxWakes(t *testing.T) {
+	sb := &asleepToRemove{fakeSandbox: newSandbox(), asleepFor: 3}
+	w := desk.New(sb, nil)
+	var mu sync.Mutex
+	wakes := 0
+	w.Wake = func(context.Context) error { mu.Lock(); wakes++; mu.Unlock(); return nil }
+	w.Retry = time.Millisecond
+
+	if err := w.Clear(context.Background(), kai); err != nil {
+		t.Fatal(err)
+	}
+
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
+		sb.mu.Lock()
+		done := slices.Equal(sb.removed, []string{"kai"})
+		sb.mu.Unlock()
+		if done {
+			break
+		}
+	}
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+	mu.Lock()
+	defer mu.Unlock()
+	if !slices.Equal(sb.removed, []string{"kai"}) || wakes != 1 {
+		t.Errorf("removed %v, woken %d times", sb.removed, wakes)
+	}
+}
+
+// asleepToRemove is a sandbox that can't be reached for its first few
+// removals.
+type asleepToRemove struct {
+	*fakeSandbox
+	asleepFor, tries int
+}
+
+func (s *asleepToRemove) Remove(ctx context.Context, nick string) error {
+	s.mu.Lock()
+	s.tries++
+	asleep := s.tries <= s.asleepFor
+	s.mu.Unlock()
+	if asleep {
+		return fmt.Errorf("dialing: %w", desk.ErrUnreachable)
+	}
+	return s.fakeSandbox.Remove(ctx, nick)
+}
+
 func TestACheckoutThatFailsSaysWhy(t *testing.T) {
 	sb := newSandbox()
 	sb.answer = func(desk.Command) desk.Output { return desk.Output{Text: "fatal: repository not found", Exit: 128} }

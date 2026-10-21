@@ -12,6 +12,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log"
 	"path"
 	"slices"
 	"strings"
@@ -21,6 +22,7 @@ import (
 	"github.com/guildnet-chat/guildnet/config"
 	"github.com/guildnet-chat/guildnet/internal/agent"
 	"github.com/guildnet-chat/guildnet/internal/gitwire"
+	"github.com/guildnet-chat/guildnet/monitor"
 )
 
 // Root is where an agent's workspace is, in its sandbox.
@@ -649,9 +651,42 @@ func shell(script string) []string {
 	return []string{"bash", "--noprofile", "--norc", "-c", script}
 }
 
-// Clear removes p's desk, workspace and all.
+// Clear removes p's desk, workspace and all. With the sandbox VM asleep,
+// it's woken and the desk removed once it's up, in the background: whoever
+// fired the agent doesn't wait the minute that takes, and a new agent given
+// the nick doesn't find the old one's work.
 func (w *Workspace) Clear(ctx context.Context, p config.Persona) error {
-	return w.sb.Remove(ctx, p.Nick)
+	err := w.sb.Remove(ctx, p.Nick)
+	if !errors.Is(err, ErrUnreachable) || w.Wake == nil {
+		return err
+	}
+	go w.clearOnceAwake(p.Nick)
+	return nil
+}
+
+func (w *Workspace) clearOnceAwake(nick string) {
+	defer monitor.Recover()
+	ctx, cancel := context.WithTimeout(context.Background(), wakeFor)
+	defer cancel()
+	err := w.Wake(ctx)
+	retry := w.Retry
+	if retry <= 0 {
+		retry = 5 * time.Second
+	}
+	for err == nil {
+		if err = w.sb.Remove(ctx, nick); !errors.Is(err, ErrUnreachable) {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			err = fmt.Errorf("the sandbox didn't wake within %s", wakeFor)
+		case <-time.After(retry):
+			err = nil
+		}
+	}
+	if err != nil {
+		monitor.Problem(log.Default(), "removing %s's desk: %v", nick, err)
+	}
 }
 
 // where is a path in the workspace: relative ones are from its root.
