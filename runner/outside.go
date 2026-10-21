@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -611,9 +612,10 @@ func cleanAgentText(w http.ResponseWriter, s string) (string, bool) {
 }
 
 // cleanText is s without control characters (tabs become spaces), line
-// breaks kept.
+// breaks kept. IRC's colours go with the numbers that say which.
 func cleanText(s string) string {
 	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = ircColour.ReplaceAllString(s, "")
 	clean := strings.Map(func(c rune) rune {
 		switch {
 		case c == '\n':
@@ -626,6 +628,40 @@ func cleanText(s string) string {
 		return c
 	}, s)
 	return strings.TrimSpace(clean)
+}
+
+// ircColour is a colour code and its colours: ^C4,12, or ^D and hex.
+var ircColour = regexp.MustCompile(`\x03(\d{1,2}(,\d{1,2})?)?|\x04([0-9A-Fa-f]{6}(,[0-9A-Fa-f]{6})?)?`)
+
+// maxMentions is how many people one message may highlight.
+const maxMentions = 5
+
+// mentionWord is a word that could be someone's nick.
+var mentionWord = regexp.MustCompile(`[A-Za-z][A-Za-z0-9_-]*`)
+
+// quietMentions keeps text from highlighting more than maxMentions people:
+// names past that get a zero-width space after their first letter, which
+// reads the same and pings nobody.
+func (r *Runner) quietMentions(text string) string {
+	names := map[string]bool{strings.ToLower(r.cfg.Owner): true}
+	for _, p := range r.people() {
+		names[strings.ToLower(p.name)] = true
+	}
+	for _, p := range r.staff() {
+		names[strings.ToLower(p.Nick)] = true
+	}
+	pinged := map[string]bool{}
+	return mentionWord.ReplaceAllStringFunc(text, func(w string) string {
+		k := strings.ToLower(w)
+		if !names[k] || pinged[k] {
+			return w
+		}
+		if len(pinged) < maxMentions {
+			pinged[k] = true
+			return w
+		}
+		return w[:1] + "​" + w[1:]
+	})
 }
 
 // newAgentToken makes an outside agent a new token, in place of any it

@@ -868,7 +868,10 @@ func (r *Runner) deliver(p config.Persona, channel, target, key, reply, replyTo 
 		r.streak[strings.ToLower(channel)]++
 		r.mu.Unlock()
 	}
-	for _, l := range r.send(conn, target, dropSelfAddress(reply, p.Nick), replyTo) {
+	// The model's words, and what it read, are text: no control codes, and
+	// no pinging a crowd.
+	reply = r.quietMentions(cleanText(dropSelfAddress(reply, p.Nick)))
+	for _, l := range r.send(conn, target, reply, replyTo) {
 		if channel == "" { // channel lines come back through the ledger's view
 			r.chat.Add(key, chat.Line{At: time.Now(), Nick: p.Nick, Text: l.Text, Action: l.Action})
 		}
@@ -999,8 +1002,13 @@ func (a *activity) ack() {
 // step shows one tool step: in the away message always, and where the
 // agent is working as its chatter says. What a step achieved always shows.
 func (a *activity) step(s agent.Step) {
+	// A step is a line of text, however a tool or what it read put it.
+	s.Summary = strings.Join(strings.Fields(cleanText(s.Summary)), " ")
 	if a.conn == nil || s.Summary == "" {
 		return
+	}
+	if a.r != nil {
+		s.Summary = a.r.quietMentions(s.Summary)
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
