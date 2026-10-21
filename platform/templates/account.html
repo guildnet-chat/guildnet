@@ -7,7 +7,7 @@
 <form method="post" action="/account/password" class="card fields">
   <input type="hidden" name="csrf" value="{{$.CSRF}}">
   <h2 class="wide">Change your password</h2>
-  <p class="muted wide">For {{.Account}}: the password you sign in to the console and your IRC apps with. At least 12 characters, no spaces.</p>
+  <p class="muted wide">For {{.Account}}: the password you sign in to the console{{if not (or .TwoStep.On .TwoStep.Required)}} and your IRC apps{{end}} with. At least 12 characters, no spaces.</p>
   <input type="text" name="username" value="{{.Account}}" autocomplete="username" hidden>
   <label>Current password <input name="current" type="password" required autocomplete="current-password"></label>
   <label>New password <input name="password" type="password" required minlength="12" autocomplete="new-password"></label>
@@ -46,6 +46,26 @@
   {{end}}
 </section>
 {{end}}{{end}}
+
+<section class="card fields">
+  <h2 class="wide">IRC app passwords</h2>
+  {{if .NewAppPassword}}<div class="note wide" role="status">
+    <p>The app password for {{.NewAppPasswordName}}, shown this once: give it to the app as its password, with {{.Account}} as the account.</p>
+    <p><code class="app-password">{{.NewAppPassword}}</code></p>
+  </div>{{end}}
+  <p class="muted wide">{{if or .TwoStep.On .TwoStep.Required}}IRC apps sign in with an app password, not your own password: your password alone can't read your chat.{{else}}An IRC app can sign in with a password of its own, so yours stays out of it.{{end}} Revoking one ends your IRC sessions: apps with another sign in again.</p>
+  {{if .AppPasswords}}<ul class="people wide">
+    {{range .AppPasswords}}
+    <li><span><span class="name">{{.Name}}</span><br><span class="role">Made {{when .Created}}, last used {{when .Used}}</span></span>
+      <form method="post" action="/account/app-passwords/{{.ID}}/revoke" class="inline push"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="link">Revoke</button></form></li>
+    {{end}}
+  </ul>{{end}}
+  <form method="post" action="/account/app-passwords" class="inline-form wide">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <label>Which app <input name="name" maxlength="60" required placeholder="Laptop: WeeChat"></label>
+    <button class="outline">Make an app password</button>
+  </form>
+</section>
 
 {{with .Alerts}}{{if .CanEmail}}
 <section class="card fields">

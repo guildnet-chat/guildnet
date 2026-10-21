@@ -51,7 +51,7 @@
 <dl class="facts irc-settings">
   <dt>Server</dt><dd><code>{{.Host}}</code></dd>
   <dt>Port</dt><dd><code>{{.Port}}</code>, with TLS (SSL) on. In mIRC, type the port as <code>+{{.Port}}</code>: the plus means TLS.</dd>
-  <dt>Sign in</dt><dd>SASL (PLAIN), with your nick <code>{{.Account}}</code> and your IRC password. To have each app catch up on its own, add a name for it: <code>{{.Account}}@phone</code>, <code>{{.Account}}@mirc</code>.</dd>
+  <dt>Sign in</dt><dd>SASL (PLAIN), with your nick <code>{{.Account}}</code> and an app password from your account page in the console (or, without two-step sign-in, your password). To have each app catch up on its own, add a name for it: <code>{{.Account}}@phone</code>, <code>{{.Account}}@mirc</code>.</dd>
 </dl>
 <p class="muted small">In mIRC: Tools, Options, Connect, Servers, Add. Server <code>{{.Host}}</code>, ports <code>+{{.Port}}</code>, login method SASL.</p>
 {{else}}

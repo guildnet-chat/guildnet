@@ -762,6 +762,14 @@ func (r *Runner) apiRemoveMember(w http.ResponseWriter, req *http.Request) {
 
 func (r *Runner) apiPromote(w http.ResponseWriter, req *http.Request) {
 	change := req.PathValue("change")
+	if change == "disconnect" {
+		if err := r.endIRCSessions(actorOf(req), req.PathValue("name")); err != nil {
+			apiRefusal(w, err)
+			return
+		}
+		apiJSON(w, http.StatusOK, map[string]string{"disconnected": req.PathValue("name")})
+		return
+	}
 	if change != "promote" && change != "demote" {
 		apiError(w, http.StatusNotFound, "no such change")
 		return

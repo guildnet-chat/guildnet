@@ -37,6 +37,7 @@ type Server struct {
 	channels map[string]*channel
 	clients  map[*client]bool
 	accounts map[string]string // account -> password
+	nickserv []string          // what NickServ was told, in order
 }
 
 type channel struct {
@@ -96,6 +97,15 @@ func (s *Server) AddAccount(name, password string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.accounts[strings.ToLower(name)] = password
+}
+
+// NickServ is what NickServ was told, in order. Of it, the fake acts on
+// SUSPEND ADD <account>, as Ergo does: that account's clients are
+// disconnected.
+func (s *Server) NickServ() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.nickserv...)
 }
 
 // Addr is host:port for clients.
@@ -250,6 +260,23 @@ func (c *client) handle(m ircmsg.Message) bool {
 		// fake keeps no ranks, so it goes to all of them, and isn't history.
 		status := s.channels[strings.ToLower(strings.TrimLeft(p(0), "~&@%+"))]
 		s.mu.Unlock()
+		if strings.EqualFold(p(0), "NickServ") {
+			s.mu.Lock()
+			s.nickserv = append(s.nickserv, p(1))
+			var gone []*client
+			if f := strings.Fields(p(1)); len(f) >= 3 && strings.EqualFold(f[0], "SUSPEND") && strings.EqualFold(f[1], "ADD") {
+				for other := range s.clients {
+					if strings.EqualFold(other.account, f[2]) {
+						gone = append(gone, other)
+					}
+				}
+			}
+			s.mu.Unlock()
+			for _, g := range gone {
+				g.conn.Close()
+			}
+			return true
+		}
 		if ch == nil && to == nil && status != nil {
 			s.toChannel(status, c, c, line)
 		} else if ch != nil {

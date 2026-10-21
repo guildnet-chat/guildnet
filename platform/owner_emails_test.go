@@ -94,7 +94,7 @@ func TestTheOwnerHearsWhenTwoStepIsTurnedOnOrAddedTo(t *testing.T) {
 	cy.AddPasskey(NewAuthenticator(t, "initech"), "/account/two-step")
 	cy.AddPasskey(NewAuthenticator(t, "initech"), "/account")
 
-	out.One(t, "ada@example.com", "Two-step sign-in for bo on initech was turned on", "an authenticator app", "If bo didn't")
+	out.One(t, "ada@example.com", "Two-step sign-in for bo on initech was turned on", "an authenticator app", "If bo didn't", "app password")
 	out.One(t, "ada@example.com", "Two-step sign-in for cy on initech was turned on", "a passkey")
 	out.One(t, "ada@example.com", "cy added a passkey on initech")
 }

@@ -144,7 +144,7 @@ func twoStepOffEmail(n Network, origin, account, how string, at time.Time) Lette
 // passkey"): whoever did holds their account from then on.
 func twoStepOnEmail(n Network, origin, account, way string, first bool, at time.Time) Letter {
 	subject, heading := "Two-step sign-in for "+account+" on "+n.Name+" was turned on", "Two-step sign-in for "+account+" was turned on"
-	what := "Two-step sign-in for " + account + " on " + n.Name + " was turned on, with " + way + ", at " + stamp(at) + ". From now on, signing in as " + account + " asks for it."
+	what := "Two-step sign-in for " + account + " on " + n.Name + " was turned on, with " + way + ", at " + stamp(at) + ". From now on, signing in as " + account + " asks for it. Their IRC apps now sign in with an app password, made on their account page: their password alone no longer signs in over IRC."
 	if !first {
 		thing := strings.TrimPrefix(strings.TrimPrefix(way, "an "), "a ")
 		subject, heading = account+" added "+way+" on "+n.Name, account+" added "+way

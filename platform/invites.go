@@ -512,6 +512,9 @@ type accountView struct {
 	// Two-step sign-in, if it's offered here.
 	TwoStepOffered bool
 	TwoStep        twoStepState
+	// IRC app passwords, and one just made, shown this once.
+	AppPasswords                       []AppPassword
+	NewAppPassword, NewAppPasswordName string
 }
 
 func (p *Platform) accountPage(w http.ResponseWriter, r *http.Request) {

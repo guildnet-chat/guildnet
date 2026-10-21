@@ -409,6 +409,23 @@ func (r *Runner) letIn(account string) {
 	r.guildConn.Privmsg("NickServ", "SUSPEND DEL "+account)
 }
 
+// endIRCSessions ends every IRC session of account's, as actor: they
+// themselves (an app password revoked, a laptop lost) or the owner. It's
+// suspended and let in again at once: Ergo disconnects a suspended account.
+func (r *Runner) endIRCSessions(actor, account string) error {
+	m, err := r.store.Member(context.Background(), account)
+	if err != nil {
+		return r.storeRefusal(account, err)
+	}
+	if !strings.EqualFold(actor, m.Account) && !r.isOwner(actor) {
+		return refuse(forbidden, "only %s, or the owner, can end %s's IRC sessions.", m.Account, m.Account)
+	}
+	r.guildConn.Privmsg("NickServ", "SUSPEND ADD "+m.Account+" its IRC sessions ended")
+	r.letIn(m.Account)
+	r.logChange(actor, "end irc sessions", m.Account, m.Team, "")
+	return nil
+}
+
 // endOutside ends the token and webhook nick had outside GuildNet: its
 // token becomes one nobody was given, and wake-ups go back to the inbox.
 func (r *Runner) endOutside(nick string) {

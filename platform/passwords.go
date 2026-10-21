@@ -37,7 +37,13 @@ type Passwords interface {
 	// IRCPassword is account's password hash on network, or ErrNotFound.
 	IRCPassword(ctx context.Context, network, account string) ([]byte, error)
 	SetIRCPassword(ctx context.Context, network, account string, hash []byte) error
+	// RemoveIRCPassword removes account's password, and its app passwords.
 	RemoveIRCPassword(ctx context.Context, network, account string) error
+	// AppPasswords are account's IRC app passwords, oldest first.
+	AppPasswords(ctx context.Context, network, account string) ([]AppPassword, error)
+	AddAppPassword(ctx context.Context, network, account string, a AppPassword) error
+	RemoveAppPassword(ctx context.Context, network, account, id string) error // ErrNotFound if not theirs
+	UsedAppPassword(ctx context.Context, network, account, id string, at time.Time) error
 	// SignInFailed and SignedIn keep where account's sign-ins came from.
 	SignInFailed(ctx context.Context, network, account, source string, at time.Time) error
 	SignedIn(ctx context.Context, network, account, source string, at time.Time) error
@@ -124,6 +130,16 @@ var errNotAPerson = errors.New("not a person in the org")
 // checkSignIn checks a person's password, given from ip, for the console
 // or IRC, holding back guessing.
 func (p *Platform) checkSignIn(ctx context.Context, n Network, account, password, ip string) (signInResult, error) {
+	return p.checkSignInWith(ctx, n, account, password, ip, p.passwordIsRight)
+}
+
+// checkIRCSignIn is checkSignIn for a password given over IRC: an app
+// password, or the person's own unless they use two-step sign-in.
+func (p *Platform) checkIRCSignIn(ctx context.Context, n Network, account, password, ip string) (signInResult, error) {
+	return p.checkSignInWith(ctx, n, account, password, ip, p.ircPasswordIsRight)
+}
+
+func (p *Platform) checkSignInWith(ctx context.Context, n Network, account, password, ip string, isRight func(context.Context, Network, string, string) (bool, error)) (signInResult, error) {
 	account = strings.ToLower(account)
 	// One at a time for an account: passwords sent at once are counted
 	// before the next is checked.
@@ -159,7 +175,7 @@ func (p *Platform) checkSignIn(ctx context.Context, n Network, account, password
 			return signInHeld, nil
 		}
 	}
-	right, err := p.passwordIsRight(ctx, n, account, password)
+	right, err := isRight(ctx, n, account, password)
 	switch {
 	case errors.Is(err, errNotAPerson):
 		return signInNotAPerson, nil
@@ -308,7 +324,7 @@ func (p *Platform) ircLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	answer := "no"
 	if in.Account != "" && in.Password != "" {
-		res, err := p.checkSignIn(r.Context(), n, in.Account, in.Password, in.IP)
+		res, err := p.checkIRCSignIn(r.Context(), n, in.Account, in.Password, in.IP)
 		if err != nil {
 			p.opts.Logger.Printf("an IRC login on %s: %v", n.Name, err)
 			brokerError(w, http.StatusServiceUnavailable, "couldn't check: try again")
@@ -364,6 +380,7 @@ type signIns struct {
 	hashes map[string][]byte               // network|account
 	failed map[string][]FailedSignIn       // network|account
 	known  map[string]map[string]time.Time // network|account -> source -> last
+	apps   map[string][]AppPassword        // network|account
 }
 
 func signInKey(network, account string) string {
@@ -394,6 +411,7 @@ func (s *signIns) RemoveIRCPassword(_ context.Context, network, account string) 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.hashes, signInKey(network, account))
+	delete(s.apps, signInKey(network, account))
 	return nil
 }
 
@@ -513,6 +531,10 @@ func (s *Postgres) SetIRCPassword(ctx context.Context, network, account string, 
 }
 
 func (s *Postgres) RemoveIRCPassword(ctx context.Context, network, account string) error {
+	if _, err := s.pool.Exec(ctx, `delete from irc_app_passwords where network = $1 and account = $2`,
+		strings.ToLower(network), strings.ToLower(account)); err != nil {
+		return err
+	}
 	_, err := s.pool.Exec(ctx, `delete from irc_passwords where network = $1 and account = $2`,
 		strings.ToLower(network), strings.ToLower(account))
 	return err

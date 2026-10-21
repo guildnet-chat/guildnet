@@ -56,8 +56,19 @@ func (p *Platform) alertsOf(ctx context.Context, n Network, account string) (ale
 }
 
 func (p *Platform) renderAccount(w http.ResponseWriter, r *http.Request, status int, problem string, saved bool) {
+	p.renderAccountWith(w, r, status, problem, func(v *accountView) { v.Saved = saved })
+}
+
+// renderAccountWith is the account page, with what more set shows.
+func (p *Platform) renderAccountWith(w http.ResponseWriter, r *http.Request, status int, problem string, more func(*accountView)) {
 	s, _ := sessionOf(r)
-	v := accountView{Account: s.Account, Saved: saved}
+	v := accountView{Account: s.Account}
+	more(&v)
+	apps, err := p.passwords().AppPasswords(r.Context(), networkOf(r).Name, s.Account)
+	if err != nil {
+		monitor.Problem(p.opts.Logger, "loading %s's app passwords on %s: %v", s.Account, networkOf(r).Name, err)
+	}
+	v.AppPasswords = apps
 	alerts, err := p.alertsOf(r.Context(), networkOf(r), s.Account)
 	if err != nil {
 		monitor.Problem(p.opts.Logger, "loading %s's alerts on %s: %v", s.Account, networkOf(r).Name, err)

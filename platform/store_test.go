@@ -52,6 +52,46 @@ func eachStore(t *testing.T, test func(t *testing.T, s store)) {
 	})
 }
 
+// IRC app passwords are kept per person, found by id, noted when used, and
+// go with the person's password when they leave the org.
+func TestAppPasswordsAreKeptPerPerson(t *testing.T) {
+	eachStore(t, func(t *testing.T, s store) {
+		ctx := context.Background()
+		if err := s.AddNetwork(ctx, acmeNet); err != nil {
+			t.Fatal(err)
+		}
+		pw := s.(platform.Passwords)
+		made := time.Date(2026, 10, 21, 9, 0, 0, 0, time.UTC)
+		for _, a := range []platform.AppPassword{{ID: "aaaaaa", Name: "Laptop", Hash: []byte("h1"), Created: made}, {ID: "bbbbbb", Name: "Phone", Hash: []byte("h2"), Created: made.Add(time.Minute)}} {
+			if err := pw.AddAppPassword(ctx, "acme", "Cy", a); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := pw.UsedAppPassword(ctx, "acme", "cy", "aaaaaa", made.Add(time.Hour)); err != nil {
+			t.Fatal(err)
+		}
+		got, err := pw.AppPasswords(ctx, "acme", "cy")
+		if err != nil || len(got) != 2 || got[0].Name != "Laptop" || !got[0].Used.Equal(made.Add(time.Hour)) || !got[1].Used.IsZero() || string(got[1].Hash) != "h2" {
+			t.Fatalf("cy's: %+v %v", got, err)
+		}
+		if err := pw.RemoveAppPassword(ctx, "acme", "ada", "aaaaaa"); !errors.Is(err, platform.ErrNotFound) {
+			t.Errorf("removing cy's as ada: %v, want ErrNotFound", err)
+		}
+		if err := pw.RemoveAppPassword(ctx, "acme", "cy", "aaaaaa"); err != nil {
+			t.Fatal(err)
+		}
+		if got, _ := pw.AppPasswords(ctx, "acme", "cy"); len(got) != 1 || got[0].ID != "bbbbbb" {
+			t.Errorf("after removing one: %+v", got)
+		}
+		if err := pw.RemoveIRCPassword(ctx, "acme", "cy"); err != nil {
+			t.Fatal(err)
+		}
+		if got, _ := pw.AppPasswords(ctx, "acme", "cy"); len(got) != 0 {
+			t.Errorf("after cy's password went: %+v", got)
+		}
+	})
+}
+
 var acmeNet = platform.Network{Name: "acme", Region: "us-west1", RunnerURL: "http://runner-acme:8090", RunnerToken: "acme-runner-secret",
 	ErgoURL: "http://ergo-acme:8089", ErgoToken: "acme-ergo-secret",
 	ChatURL: "ws://ergo-acme:8097", ChatKey: "acme-chat-key",

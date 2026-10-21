@@ -490,6 +490,8 @@ func (p *Platform) Handler() http.Handler {
 	console.HandleFunc("POST /people/{account}/remove", p.signedIn(p.removePerson))
 	console.HandleFunc("GET /account", p.signedIn(p.accountPage))
 	console.HandleFunc("POST /account/password", p.signedIn(p.changeOwnPassword))
+	console.HandleFunc("POST /account/app-passwords", p.signedIn(p.makeAppPassword))
+	console.HandleFunc("POST /account/app-passwords/{id}/revoke", p.signedIn(p.revokeAppPassword))
 	if p.opts.TwoSteps != nil {
 		console.HandleFunc("GET /account/two-step", p.signedIn(p.twoStepPage))
 		console.HandleFunc("POST /account/two-step", p.signedIn(p.setUpTwoStep))
