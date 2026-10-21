@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -79,6 +80,38 @@ func TestTheRunnerTrustsTheBrokerCAInItsSettings(t *testing.T) {
 		t.Fatalf("reaching the broker: %v", err)
 	}
 	resp.Body.Close()
+}
+
+// Given a CA, the runner reaches the broker over TLS or not at all: a broker
+// named with http:// (a mistake in its settings, say) never sees the
+// network's secret.
+func TestWithACATheRunnerNeverCallsTheBrokerInPlainHTTP(t *testing.T) {
+	_, caPEM := tlsBroker(t)
+	caFile := filepath.Join(t.TempDir(), "ca.crt")
+	if err := os.WriteFile(caFile, caPEM, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	heard := 0
+	plain := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { heard++ }))
+	t.Cleanup(plain.Close)
+	for name, env := range map[string]map[string]string{
+		"in its settings": {"GUILDNET_BROKER_CA": b64(caPEM)},
+		"as a file":       {"GUILDNET_BROKER_CA_FILE": caFile},
+	} {
+		client, err := brokerClient(func(k string) string { return env[k] })
+		if err != nil {
+			t.Fatal(err)
+		}
+		req, _ := http.NewRequest("GET", plain.URL+"/model-keys", nil)
+		req.Header.Set("Authorization", "Bearer the-network-secret")
+		if resp, err := client.Do(req); err == nil {
+			resp.Body.Close()
+			t.Errorf("with the CA %s, the runner called %s", name, plain.URL)
+		}
+	}
+	if heard != 0 {
+		t.Errorf("a plain-HTTP broker was called %d times", heard)
+	}
 }
 
 func TestTheRunnerRefusesACAThatIsntOne(t *testing.T) {

@@ -85,6 +85,10 @@ func answer(in io.Reader, getenv func(string) string) output {
 	if err != nil {
 		return output{Fallback: true, Error: "GUILDNET_IRC_AUTH_URL: " + err.Error()}
 	}
+	if req.URL.Scheme != "https" {
+		// People's passwords go over TLS or not at all.
+		return output{Fallback: true, Error: "GUILDNET_IRC_AUTH_URL isn't https"}
+	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+getenv("GUILDNET_ERGO_TOKEN"))
 	req.Header.Set("GuildNet-Network", getenv("GUILDNET_NETWORK"))

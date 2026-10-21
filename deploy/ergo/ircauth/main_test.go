@@ -153,6 +153,23 @@ func TestOnlyTheConsoleIsBelieved(t *testing.T) {
 	}
 }
 
+// People's passwords go to the console over TLS or not at all: one named
+// with http:// is never sent them.
+func TestPasswordsNeverGoToTheConsoleInPlainHTTP(t *testing.T) {
+	c := newConsole(t)
+	heard := 0
+	plain := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { heard++ }))
+	t.Cleanup(plain.Close)
+	env := c.env(t)
+	env["GUILDNET_IRC_AUTH_URL"] = plain.URL + "/irc/login"
+
+	o := login(t, env, `{"accountName":"ada","passphrase":"right"}`)
+
+	if o.Success || heard != 0 {
+		t.Errorf("%+v, and a plain-HTTP console was asked %d times", o, heard)
+	}
+}
+
 // Logins without a password (a certificate's) aren't the console's: no.
 func TestALoginWithoutAPasswordIsRefused(t *testing.T) {
 	c := newConsole(t)

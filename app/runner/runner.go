@@ -521,7 +521,22 @@ func brokerClient(getenv func(string) string) (*http.Client, error) {
 		// desks host of its own by name or address.
 		client.Transport = pki.ClientTransport(file)
 	}
+	if client.Transport != nil {
+		// Given a CA, TLS or nothing: a broker named with http:// never sees
+		// the network's secret.
+		client.Transport = tlsOnly{client.Transport}
+	}
 	return client, nil
+}
+
+// tlsOnly refuses any request that isn't https.
+type tlsOnly struct{ next http.RoundTripper }
+
+func (t tlsOnly) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.URL.Scheme != "https" {
+		return nil, fmt.Errorf("%s isn't https: with GuildNet's CA set, the broker is only reached over TLS", req.URL.Redacted())
+	}
+	return t.next.RoundTrip(req)
 }
 
 // gitPrivateHosts are git servers on the install's own network, named by
