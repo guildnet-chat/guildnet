@@ -178,6 +178,24 @@ func TestSecretsAndPeopleStayOut(t *testing.T) {
 	}
 }
 
+// Public IPv6 addresses go too, and secrets in standard base64 (with / in
+// them); what helps find a fault (private addresses, paths, times) stays.
+func TestScrubbingTakesIPv6AndBase64WithSlashes(t *testing.T) {
+	in := "from 2001:db8:85a3::8a2e:370:7334 and [2600:1f18:4a3:6900::1]:443 with key q0b/Xq8Zs+9fT2mK/LpR4wE7yN1vA6cH3uJ5dG0iO8k= " + // trufflehog:ignore (made up)
+		"at 09:30:00 via fd12:3456:789a::1 and ::1 in /var/lib/guildnet-broker/shared/ca.crt and open/internal/github/github.go:427"
+	got := monitor.Scrub(in)
+	for _, gone := range []string{"2001:db8", "2600:1f18", "q0b/Xq8Zs", "LpR4wE7yN1vA6cH3uJ5dG0iO8k"} {
+		if strings.Contains(got, gone) {
+			t.Errorf("%q kept %q", got, gone)
+		}
+	}
+	for _, kept := range []string{"09:30:00", "fd12:3456:789a::1", "::1", "/var/lib/guildnet-broker/shared/ca.crt", "open/internal/github/github.go:427"} {
+		if !strings.Contains(got, kept) {
+			t.Errorf("%q lost %q", got, kept)
+		}
+	}
+}
+
 // A problem that keeps happening doesn't use up Sentry's quota: from one
 // place in the code, it's sent once in a while (it's always logged).
 func TestAProblemFromOnePlaceIsSentOnceInAWhile(t *testing.T) {

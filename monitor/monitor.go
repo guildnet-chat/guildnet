@@ -21,6 +21,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode"
 
 	"github.com/getsentry/sentry-go"
 )
@@ -315,7 +316,13 @@ var scrubs = []struct {
 	{regexp.MustCompile(`[A-Za-z0-9+_=-]{32,}`), "[removed]"},
 }
 
-var ipv4 = regexp.MustCompile(`\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b`)
+var (
+	ipv4 = regexp.MustCompile(`\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b`)
+	// Anything that might be an IPv6 address; net.ParseIP says if it is.
+	ipv6 = regexp.MustCompile(`(?i)[0-9a-f]*:[0-9a-f:]*:[0-9a-f]*`)
+	// Standard base64, which the opaque rule above misses: it has / in it.
+	base64ish = regexp.MustCompile(`[A-Za-z0-9+/]{32,}={0,2}`)
+)
 
 // Scrub is s without email addresses, keys, tokens, passwords or public IP
 // addresses (private ones, inside GuildNet, help find a fault).
@@ -323,11 +330,19 @@ func Scrub(s string) string {
 	for _, x := range scrubs {
 		s = x.re.ReplaceAllString(s, x.with)
 	}
-	return ipv4.ReplaceAllStringFunc(s, func(a string) string {
+	// Mixed case and a digit: a secret's look, not a path's.
+	s = base64ish.ReplaceAllStringFunc(s, func(b string) string {
+		if strings.ContainsAny(b, "0123456789") && strings.ContainsFunc(b, unicode.IsUpper) && strings.ContainsFunc(b, unicode.IsLower) {
+			return "[removed]"
+		}
+		return b
+	})
+	public := func(a string) string {
 		ip := net.ParseIP(a)
 		if ip == nil || ip.IsPrivate() || ip.IsLoopback() || ip.IsUnspecified() || ip.IsLinkLocalUnicast() {
 			return a
 		}
 		return "[ip]"
-	})
+	}
+	return ipv6.ReplaceAllStringFunc(ipv4.ReplaceAllStringFunc(s, public), public)
 }
