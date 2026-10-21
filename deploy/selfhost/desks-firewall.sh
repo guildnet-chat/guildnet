@@ -45,6 +45,14 @@ if [ -w /proc/sys/net/bridge/bridge-nf-call-iptables ] || modprobe br_netfilter 
   sysctl -q -w net.bridge.bridge-nf-call-iptables=1 2>/dev/null || true
 fi
 
+# These rules are IPv4's, and desks get no IPv6 (their network says so): a
+# desks' network that has it anyway is refused, not kept half apart.
+if command -v docker >/dev/null 2>&1 &&
+   [ "$(docker network inspect guildnet-desks --format '{{.EnableIPv6}}' 2>/dev/null)" = true ]; then
+  echo "desks firewall: the desks' network (guildnet-desks) has IPv6, which these rules don't cover: remake it without (enable_ipv6: false)" >&2
+  exit 1
+fi
+
 # chain makes an empty chain, or empties it.
 chain() { iptables -N "$1" 2>/dev/null || iptables -F "$1"; }
 # once adds a rule unless it's there.

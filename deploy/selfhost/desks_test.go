@@ -86,6 +86,15 @@ func TestDesksReachOnlyTheirProxy(t *testing.T) {
 	if desks == "" || !s.Networks[desks].Internal {
 		t.Fatalf("sandboxd's desk network %q: want one of the stack's, with no way out", deskNet)
 	}
+	// No IPv6, said outright (a daemon set to give networks IPv6 doesn't
+	// give desks a way round the firewall, which is IPv4's), and the
+	// firewall won't run if the network has it anyway.
+	if v6 := s.Networks[desks].EnableIPv6; v6 == nil || *v6 {
+		t.Errorf("the desks' network's enable_ipv6 is %v, want false, said outright", v6)
+	}
+	if b, _ := os.ReadFile("desks-firewall.sh"); !strings.Contains(string(b), "EnableIPv6") {
+		t.Error("desks-firewall.sh doesn't check the desks' network has no IPv6")
+	}
 	proxy, err := url.Parse(fmt.Sprint(sandboxd.Environment["GUILDNET_DESK_PROXY"]))
 	if err != nil {
 		t.Fatal(err)

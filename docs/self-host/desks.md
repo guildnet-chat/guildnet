@@ -16,7 +16,7 @@ console on GKE or Fargate, say).
 | Layer | |
 | --- | --- |
 | gVisor (`runsc`) | each desk gets its own kernel; a container escape reaches gVisor, not the host kernel |
-| The `desks` network | `internal` Docker network, 172.31.255.0/24, with no route out |
+| The `desks` network | `internal` Docker network, 172.31.255.0/24, with no route out; IPv4 only (`desks-firewall.sh` refuses a desks' network with IPv6) |
 | `egress` | the only way out: an HTTPS (CONNECT) proxy to port 443 of the hosts in `GUILDNET_DESK_ALLOWED`, and to a network's git hosts with its egress pass ([git.md](git.md#reaching-the-host)); public addresses only. It isn't on the console's, runner's or database's networks |
 | `desks-firewall.sh` | iptables rules: a desk reaches `egress` and nothing else on its network, not other desks and not the host |
 | sandboxd | creates and stops desks. It holds the Docker socket (root-equivalent), so it's on the private network only and acts only on a console-signed token: valid 15 minutes, for one network's desks; only the console's admin token removes all of them |

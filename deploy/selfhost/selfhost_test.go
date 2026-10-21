@@ -49,9 +49,10 @@ type service struct {
 type stack struct {
 	Services map[string]service `yaml:"services"`
 	Networks map[string]struct {
-		Name     string `yaml:"name"`
-		Internal bool   `yaml:"internal"`
-		IPAM     struct {
+		Name       string `yaml:"name"`
+		Internal   bool   `yaml:"internal"`
+		EnableIPv6 *bool  `yaml:"enable_ipv6"`
+		IPAM       struct {
 			Config []struct {
 				Subnet string `yaml:"subnet"`
 			} `yaml:"config"`

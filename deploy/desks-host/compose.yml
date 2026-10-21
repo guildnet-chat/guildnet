@@ -122,6 +122,8 @@ networks:
   desks:
     name: guildnet-desks
     internal: true
+    # No IPv6: the desks' firewall is IPv4's.
+    enable_ipv6: false
     ipam:
       config:
         - subnet: 172.31.255.0/24

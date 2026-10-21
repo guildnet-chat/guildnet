@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"slices"
 	"strings"
@@ -69,7 +70,7 @@ func TestTheDesksHostPublishesOnlySandboxdOnItsAddress(t *testing.T) {
 // to; and every service has only the capabilities it needs.
 func TestTheDesksHostKeepsDesksAsTheStackDoes(t *testing.T) {
 	host, stack := readDesksHost(t), readStack(t)
-	if fmt.Sprint(host.Networks["desks"]) != fmt.Sprint(stack.Networks["desks"]) {
+	if !reflect.DeepEqual(host.Networks["desks"], stack.Networks["desks"]) {
 		t.Errorf("the desks' network is %+v on the desks host, %+v in the stack", host.Networks["desks"], stack.Networks["desks"])
 	}
 	for _, name := range []string{"egress", "desk"} {
