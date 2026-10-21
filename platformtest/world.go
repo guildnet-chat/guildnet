@@ -403,6 +403,7 @@ func StartTestNetwork(t *testing.T, name, owner string, seed org.Seed) *Network 
 		GeneralChannel: "#general", AnnouncementsChannel: "#announcements", FeedbackChannel: "#feedback", Location: time.UTC, ContinueWithin: -1,
 	}
 	cfg.API.Listen, cfg.API.Token = "127.0.0.1:0", name+"-runner-secret"
+	cfg.Accounts.Secret = name + "-account-secret"                            // the network's own, as every install has
 	cfg.GitHub.Owner, cfg.GitHub.Repos = name+"-inc", []string{"web", "docs"} // what its GitHub installation has
 	l, err := ledger.Open(cfg.DataDir, cfg.DailyBudgetUSD)
 	if err != nil {

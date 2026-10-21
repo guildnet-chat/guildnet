@@ -87,6 +87,7 @@ Optional; see [desks.md](desks.md).
 | `GUILDNET_DESK_STORAGE_GB` | how much each network's desks' files may take, in all, with `GUILDNET_DESK_FILES` on XFS (default: no limit) |
 | `GUILDNET_DESK_ALLOWED` | where desks may go, comma-separated; `*.example.com` takes its subdomains. Default: GitHub, and the Go, npm and Python registries |
 | `GUILDNET_DESK_RUNTIME` | the Docker runtime desks run in (default `runsc`, gVisor); `desks.sh --without-gvisor` sets `runc` |
+| `GUILDNET_DESK_FIREWALL` | `off`: sandboxd doesn't check, as it starts, that the desks' firewall keeps desks apart (it won't serve if a desk reaches another); `desks.sh --without-firewall` sets it |
 | `GUILDNET_MANAGED` | `on`: agents can have desks on Anthropic's Managed Agents instead (they need an Anthropic key, and Anthropic charges for them) |
 | `GUILDNET_DESK_BUDGET_CENTS` | the most a Managed Agents desk may spend, in US cents (default 100) |
 

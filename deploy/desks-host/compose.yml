@@ -39,6 +39,8 @@ services:
       GUILDNET_SANDBOX_PUBLIC_KEY: ${GUILDNET_SANDBOX_PUBLIC_KEY:-}
       GUILDNET_DESK_IMAGE: ${GUILDNET_REGISTRY:-ghcr.io/guildnet-chat}/desk:${GUILDNET_VERSION:?run init.sh first}
       GUILDNET_DESK_RUNTIME: ${GUILDNET_DESK_RUNTIME:-runsc}
+      # The desks' firewall is checked as sandboxd starts; "off" skips it.
+      GUILDNET_DESK_FIREWALL: ${GUILDNET_DESK_FIREWALL:-}
       GUILDNET_DESK_NETWORK: guildnet-desks
       # By address: under gVisor, desks can't use Docker's name lookup.
       GUILDNET_DESK_PROXY: http://172.31.255.2:3128

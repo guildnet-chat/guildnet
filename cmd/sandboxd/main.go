@@ -165,6 +165,22 @@ func serve(logger *log.Logger) error {
 		logger.Printf("stopping desks left running: %v", err)
 	}
 	cancel()
+	// Desks are kept apart by the desks' firewall, which is checked, not
+	// taken on trust: if one desk reaches another, sandboxd won't serve.
+	// Only an install trying desks out without it says so (off).
+	if os.Getenv("GUILDNET_DESK_FIREWALL") != "off" {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		apart, err := backend.Apart(ctx)
+		cancel()
+		switch {
+		case err != nil:
+			monitor.Problem(logger, "checking desks are kept apart: %v", err)
+		case !apart:
+			return fmt.Errorf("a desk on %s reached another: the desks' firewall isn't keeping them apart (desks-firewall.sh); GUILDNET_DESK_FIREWALL=off serves without it, only to try desks out", backend.Network)
+		default:
+			logger.Printf("desks are kept apart (checked)")
+		}
+	}
 	// Shared by several networks (guildnet.chat's sandbox VM), each has only
 	// so many of them, unless unset.
 	perNetwork, _ := strconv.Atoi(os.Getenv("GUILDNET_DESKS_PER_NETWORK"))

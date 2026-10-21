@@ -18,7 +18,7 @@ console on GKE or Fargate, say).
 | gVisor (`runsc`) | each desk gets its own kernel; a container escape reaches gVisor, not the host kernel |
 | The `desks` network | `internal` Docker network, 172.31.255.0/24, with no route out; IPv4 only (`desks-firewall.sh` refuses a desks' network with IPv6) |
 | `egress` | the only way out: an HTTPS (CONNECT) proxy to port 443 of the hosts in `GUILDNET_DESK_ALLOWED`, and to a network's git hosts with its egress pass ([git.md](git.md#reaching-the-host)); public addresses only. It isn't on the console's, runner's or database's networks |
-| `desks-firewall.sh` | iptables rules: a desk reaches `egress` and nothing else on its network, not other desks and not the host |
+| `desks-firewall.sh` | iptables rules: a desk reaches `egress` and nothing else on its network, not other desks and not the host. sandboxd checks it as it starts (one probe desk tries to reach another) and won't serve if it isn't working |
 | sandboxd | creates and stops desks. It holds the Docker socket (root-equivalent), so it's on the private network only and acts only on a console-signed token: valid 15 minutes, for one network's desks; only the console's admin token removes all of them |
 | Limits | memory, CPUs and processes per desk; commands run as an unprivileged user |
 | Fresh start | each time a desk is readied, shell, git, Go, npm and pip startup files in its home are reset to the image's, and commands run without reading shell startup files. Caches and the workspace persist |
@@ -87,7 +87,7 @@ them up, within a minute; agents can then be moved to desks on their pages.
 | Flag | Effect | Use |
 | --- | --- | --- |
 | `--without-gvisor` | desks use Docker's default runtime (`runc`) and share the host kernel | trials only |
-| `--without-firewall` | desks can reach each other and anything the host listens on | trials only, e.g. Docker Desktop (no systemd) |
+| `--without-firewall` | desks can reach each other and anything the host listens on; sandboxd doesn't check for the firewall (`GUILDNET_DESK_FIREWALL=off`) | trials only, e.g. Docker Desktop (no systemd) |
 
 A desk created before gVisor was enabled, or before its limits or image
 changed, is recreated with the new settings on its next start. Its files

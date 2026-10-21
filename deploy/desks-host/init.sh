@@ -104,6 +104,11 @@ trap 'rm -f "$env" "$console"' EXIT
     echo "# Without gVisor: each desk shares this machine's kernel."
     echo "GUILDNET_DESK_RUNTIME=runc"
   fi
+  if [ "$firewall" = no ]; then
+    echo "# Without the desks' firewall: desks can reach each other and this"
+    echo "# machine. sandboxd doesn't check for it."
+    echo "GUILDNET_DESK_FIREWALL=off"
+  fi
   echo
   echo "# Every setting is in docs/self-host/configuration.md#desks."
 } > "$env"

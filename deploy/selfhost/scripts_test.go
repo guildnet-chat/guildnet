@@ -5,6 +5,7 @@ package selfhost_test
 import (
 	"archive/tar"
 	"encoding/base64"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -497,8 +498,17 @@ func TestDesksShWantsTheFirewall(t *testing.T) {
 		t.Errorf("without the firewall, desks.sh should refuse, change nothing and say how to set it up:\n%s", out)
 	}
 	out, err = s.run("sh desks.sh --without-firewall")
-	if err != nil || envOf(t, s.read(".env"))["COMPOSE_PROFILES"] != "desks" {
+	env := envOf(t, s.read(".env"))
+	if err != nil || env["COMPOSE_PROFILES"] != "desks" {
 		t.Errorf("desks.sh --without-firewall should turn desks on all the same:\n%s", out)
+	}
+	// sandboxd checks the firewall as it starts, and refuses to serve
+	// without it: told it goes without, it doesn't check.
+	if env["GUILDNET_DESK_FIREWALL"] != "off" {
+		t.Errorf("desks.sh --without-firewall should tell sandboxd (GUILDNET_DESK_FIREWALL=off); .env has %q", env["GUILDNET_DESK_FIREWALL"])
+	}
+	if got := fmt.Sprint(readStack(t).Services["sandboxd"].Environment["GUILDNET_DESK_FIREWALL"]); got != "${GUILDNET_DESK_FIREWALL:-}" {
+		t.Errorf("sandboxd's GUILDNET_DESK_FIREWALL is %q, want it from .env", got)
 	}
 }
 
