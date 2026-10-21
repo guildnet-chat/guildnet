@@ -389,6 +389,24 @@ func TestTheOwnerDisconnectsAService(t *testing.T) {
 	}
 }
 
+// Deleting a network disconnects its services the same way: the service is
+// asked to forget GuildNet's tokens, not only GuildNet.
+func TestDeletingANetworkRevokesItsServicesTokens(t *testing.T) {
+	w, f := newConnectorWorld(t)
+	bob, console := w.Created("bob@example.com", "bobco")
+	connectLinear(t, bob, f, "bobco")
+
+	console.Get("/settings")
+	console.Post("/settings/delete", url.Values{"confirm": {"bobco"}})
+	w.Host.WaitRemoved(t, "bobco")
+
+	for deadline := time.Now().Add(5 * time.Second); len(f.revokedTokens()) == 0 && time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+	}
+	if got := f.revokedTokens(); len(got) != 1 || got[0] != "rt-1" {
+		t.Errorf("revoked %v, want the refresh token", got)
+	}
+}
+
 // Some servers (Atlassian's) don't say where their authorization server is;
 // the catalogue does.
 func TestAServerWithoutResourceMetadataUsesTheCataloguesIssuer(t *testing.T) {

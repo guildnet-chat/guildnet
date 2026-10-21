@@ -174,6 +174,15 @@ func (p *Platform) forgetNetwork(ctx context.Context, n Network) error {
 		}
 		return err
 	}
+	// Its services are asked to forget GuildNet's tokens, as when the owner
+	// disconnects one (best effort: a service that doesn't answer doesn't
+	// keep the name taken).
+	if p.opts.Connections != nil {
+		cs, _ := p.opts.Connections.Connections(ctx, n.Name)
+		for _, c := range cs {
+			p.forgetConnection(ctx, n, c.Connector)
+		}
+	}
 	if err := p.opts.Networks.RemoveNetwork(ctx, n.Name); err != nil {
 		monitor.Problem(p.opts.Logger, "forgetting %s: %v", n.Name, err)
 		return err
