@@ -171,6 +171,21 @@ func TestAWebhookSecretGoesOnlyWhereItWasSetFor(t *testing.T) {
 	}
 }
 
+// A webhook's secret is sealed with the network's own secret, which only its
+// runner has: without one, there are no webhooks (never a key the console
+// knows too, such as the API token).
+func TestWebhooksNeedTheNetworksOwnSecret(t *testing.T) {
+	h := newHook(t, func(int, map[string]any) (int, string) { return http.StatusOK, `{"reply": "hi"}` })
+	n := startNetwork(t, &fakeBrain{}, withAPI(), reachingHooks(h), func(cfg *config.Runner, _ *[]config.Persona) { cfg.Accounts.Secret = "" })
+	outside(t, n)
+
+	status, out := n.api("method").call("POST", "/v1/staff/kai/webhook", map[string]any{"url": h.url()})
+
+	if status == http.StatusOK || !strings.Contains(errorOf(out), "GUILDNET_ACCOUNT_SECRET") {
+		t.Errorf("setting a webhook without the network's secret: %d %v", status, out)
+	}
+}
+
 // A webhook can take the wake-up (202) and answer later, through the API.
 func TestAWebhookAgentCanAnswerLater(t *testing.T) {
 	var n *network

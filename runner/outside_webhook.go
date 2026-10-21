@@ -41,15 +41,17 @@ func (r *Runner) webhookClient() *http.Client {
 }
 
 // sealKey is the key webhook secrets are sealed with in the org database:
-// from the network's own secret, which only its runner has.
-func (r *Runner) sealKey() []byte {
-	seed := r.cfg.Accounts.Secret
-	if seed == "" {
-		seed = r.cfg.API.Token
+// from the network's own secret, which only its runner has (never the API
+// token, which the console has too).
+func (r *Runner) sealKey() ([]byte, error) {
+	if r.cfg.Accounts.Secret == "" {
+		return nil, errNoSealKey
 	}
-	sum := sha256.Sum256([]byte("guildnet webhook secrets\x00" + seed))
-	return sum[:]
+	sum := sha256.Sum256([]byte("guildnet webhook secrets\x00" + r.cfg.Accounts.Secret))
+	return sum[:], nil
 }
+
+var errNoSealKey = errors.New("webhooks need the network's own secret (GUILDNET_ACCOUNT_SECRET)")
 
 // webhookSealed starts a webhook secret sealed bound to its agent and
 // address; one sealed before has nothing in front, and is sealed again so
@@ -63,7 +65,11 @@ func webhookAAD(nick, url string) []byte {
 }
 
 func (r *Runner) gcm() (cipher.AEAD, error) {
-	block, err := aes.NewCipher(r.sealKey())
+	key, err := r.sealKey()
+	if err != nil {
+		return nil, err
+	}
+	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
 	}
@@ -149,6 +155,9 @@ func (r *Runner) setAgentWebhook(ctx context.Context, actor, nick, url string) (
 	}
 	if err := egress.CheckURL(url); err != nil {
 		return "", refuse(invalid, "GuildNet can't send work to %s: %v.", url, err)
+	}
+	if _, err := r.sealKey(); err != nil {
+		return "", refuse(invalid, "%v; until it's set, %s's program checks its inbox.", err, p.Nick)
 	}
 	key := make([]byte, 32)
 	if _, err := rand.Read(key); err != nil {

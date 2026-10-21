@@ -170,6 +170,8 @@ func testOrgSeed(t *testing.T, server string, opts ...option) (*config.Runner, o
 		// turn it on.
 		ContinueWithin: -1,
 	}
+	// The network's own secret, as every install has (init.sh, the host).
+	cfg.Accounts.Secret = "test-account-secret"
 	cfg.Catchup.Enabled = true
 	cfg.Catchup.Model = "claude-haiku-4-5"
 	cfg.Catchup.After = time.Hour

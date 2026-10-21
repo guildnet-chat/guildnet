@@ -114,7 +114,7 @@ encrypted or authenticated with them: never change them; keep `.env` private.
 | `GUILDNET_API_TOKEN` | the network's secret: the console calls the runner with it, and the runner the console's broker |
 | `GUILDNET_ERGO_API_TOKEN` | how the console and the runner call Ergo's API |
 | `GUILDNET_CHAT_KEY` | what web chat's sign-in tokens to Ergo are signed with |
-| `GUILDNET_ACCOUNT_SECRET` | what agents' IRC passwords are made from |
+| `GUILDNET_ACCOUNT_SECRET` | what agents' IRC passwords are made from, and what outside agents' webhook secrets are sealed with (no webhooks without it) |
 | `GUILDNET_OPER_PASSWORD` | GuildServ's operator password on Ergo (Ergo hashes it as it starts) |
 | `GUILDNET_SANDBOX_KEY` | the console's half of the sandbox's key pair: it signs the runner's desk tokens, and networks' egress passes ([git.md](git.md#reaching-the-host)) |
 | `GUILDNET_SANDBOX_PUBLIC_KEY` | sandboxd's and egress's half: they check them (comma-separated, the old and the new, while the pair's changed). A token is good for 15 minutes, and only for its network's desks |
