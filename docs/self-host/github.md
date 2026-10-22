@@ -59,14 +59,15 @@ access immediately.
 
 ## Running the programs another way
 
-The console serves the broker on `GUILDNET_GITHUB_BROKER_LISTEN` (`:8082` in
-the stack), on a private network only, over TLS when it keeps its own CA
+The console serves the broker on `GUILDNET_GITHUB_BROKER_LISTEN` (port 8082
+of its address on the stack's `broker` network), on a private network only,
+where the edge can't reach it, over TLS when it keeps its own CA
 (`GUILDNET_BROKER_TLS_DIR`; see [configuration.md](configuration.md#set-by-the-stack)).
 Runner settings:
 
 | Variable | |
 | --- | --- |
-| `GUILDNET_GITHUB_BROKER` | the broker's address, e.g. `https://platform:8082` |
+| `GUILDNET_GITHUB_BROKER` | the broker's address, e.g. `https://broker:8082` |
 | `GUILDNET_BROKER_CA_FILE` | the CA certificate to verify the broker with |
 | `GUILDNET_NETWORK` | the network's name, as the console knows it |
 

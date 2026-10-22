@@ -69,6 +69,10 @@ func (r *Runner) gcm() (cipher.AEAD, error) {
 	if err != nil {
 		return nil, err
 	}
+	return gcmWith(key)
+}
+
+func gcmWith(key []byte) (cipher.AEAD, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err

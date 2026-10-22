@@ -118,13 +118,14 @@ func gkeObject(t *testing.T, kind, name string) k8sObject {
 
 // The pod's containers have the settings Compose's services have, with the
 // same values where Compose fixes them, except where one pod differs from
-// a machine's networks: the edge's address, and sandboxd's certificate
-// folder (desks are on a host of their own here).
+// a machine's networks: the edge's address, the broker's (localhost's, in
+// one pod), and sandboxd's certificate folder (desks are on a host of their
+// own here).
 func TestTheGKEPodHasTheStacksSettings(t *testing.T) {
 	stack := readStack(t)
 	pod := gkeObject(t, "StatefulSet", "guildnet").Spec.Template.Spec
 	differs := map[string]bool{"GUILDNET_TRUSTED_PROXIES": true, "ERGO__SERVER__PROXY_ALLOWED_FROM": true,
-		"GUILDNET_PLATFORM_DATABASE_URL": true, "GUILDNET_DATABASE_URL": true}
+		"GUILDNET_PLATFORM_DATABASE_URL": true, "GUILDNET_DATABASE_URL": true, "GUILDNET_GITHUB_BROKER_LISTEN": true}
 	notHere := map[string]bool{"GUILDNET_SANDBOX_TLS_DIR": true}
 	for _, name := range []string{"caddy", "platform", "ergo", "runner"} {
 		var c *k8sContainer
@@ -155,6 +156,9 @@ func TestTheGKEPodHasTheStacksSettings(t *testing.T) {
 				t.Errorf("%s: %s is %q in the pod, %q in the stack", name, k, got, want)
 			}
 		}
+		if listen, ok := env["GUILDNET_GITHUB_BROKER_LISTEN"]; ok && !strings.HasPrefix(listen, "127.0.0.1:") {
+			t.Errorf("%s: the broker listens on %q; in one pod, want localhost only", name, listen)
+		}
 	}
 	var aliased []string
 	for _, a := range pod.HostAliases {
@@ -163,8 +167,8 @@ func TestTheGKEPodHasTheStacksSettings(t *testing.T) {
 		}
 	}
 	slices.Sort(aliased)
-	if !slices.Equal(aliased, []string{"ergo", "platform", "runner"}) {
-		t.Errorf("localhost is called %v in the pod, want ergo, platform and runner, as the stack's addresses have them", aliased)
+	if !slices.Equal(aliased, []string{"broker", "ergo", "platform", "runner"}) {
+		t.Errorf("localhost is called %v in the pod, want broker, ergo, platform and runner, as the stack's addresses have them", aliased)
 	}
 }
 

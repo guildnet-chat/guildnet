@@ -96,12 +96,24 @@ func (p *Postgres) Unresumed(ctx context.Context) ([]Approval, error) {
 }
 
 func (p *Postgres) ClaimResume(ctx context.Context, id int64, at time.Time) (bool, error) {
-	tag, err := p.pool.Exec(ctx, `UPDATE approvals SET resumed_at = $2
+	tag, err := p.pool.Exec(ctx, `UPDATE approvals SET resumed_at = $2, resume = ''
 		WHERE id = $1 AND status <> 'pending' AND resumed_at IS NULL`, id, at)
 	if err != nil {
 		return false, err
 	}
 	return tag.RowsAffected() == 1, nil
+}
+
+func (p *Postgres) SetApprovalResume(ctx context.Context, id int64, resume string) error {
+	tag, err := p.pool.Exec(ctx, `UPDATE approvals SET resume = $2 WHERE id = $1 AND resumed_at IS NULL`, id, resume)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		_, err := p.Approval(ctx, id) // carried on with already: nothing to keep
+		return err
+	}
+	return nil
 }
 
 // orNull stores a zero time as NULL.

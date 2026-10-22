@@ -374,7 +374,8 @@ Resources:
             - {Name: GUILDNET_RUNNER_URL, Value: "http://localhost:8090"}
             - {Name: GUILDNET_ERGO_URL, Value: "http://localhost:8089"}
             - {Name: GUILDNET_CHAT_URL, Value: "ws://localhost:8097"}
-            - {Name: GUILDNET_GITHUB_BROKER_LISTEN, Value: ":8082"}
+            # The broker on localhost only: in one task, never the task's address.
+            - {Name: GUILDNET_GITHUB_BROKER_LISTEN, Value: "127.0.0.1:8082"}
             - {Name: GUILDNET_BROKER_TLS_DIR, Value: /var/lib/guildnet-broker/own}
             - {Name: GUILDNET_BROKER_CA_SHARE, Value: /var/lib/guildnet-broker/shared}
             - {Name: GUILDNET_BROKER_NAMES, Value: localhost}

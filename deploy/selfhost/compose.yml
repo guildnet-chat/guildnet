@@ -104,13 +104,14 @@ services:
       GUILDNET_API_TOKEN: ${GUILDNET_API_TOKEN:?run init.sh first}
       GUILDNET_ERGO_API_TOKEN: ${GUILDNET_ERGO_API_TOKEN:?run init.sh first}
       GUILDNET_CHAT_KEY: ${GUILDNET_CHAT_KEY:?run init.sh first}
-      # The broker, on the private network only, never the internet: over
-      # TLS from a CA the console keeps (in a volume only it has), whose
-      # certificate it shares with the runner.
-      GUILDNET_GITHUB_BROKER_LISTEN: ":8082"
+      # The broker, at the console's address on the broker's network only:
+      # never the edge, never the internet. Over TLS from a CA the console
+      # keeps (in a volume only it has), whose certificate it shares with
+      # the runner and Ergo.
+      GUILDNET_GITHUB_BROKER_LISTEN: "172.30.2.3:8082"
       GUILDNET_BROKER_TLS_DIR: /var/lib/guildnet-broker/own
       GUILDNET_BROKER_CA_SHARE: /var/lib/guildnet-broker/shared
-      GUILDNET_BROKER_NAMES: platform
+      GUILDNET_BROKER_NAMES: broker
       # IRC apps connect at the edge with TLS on 6697; one that forgot TLS is
       # sent here to be told so.
       GUILDNET_IRC_PORT: "6697"
@@ -170,6 +171,9 @@ services:
       data: {}
       irc:
         ipv4_address: 172.30.1.3
+      broker:
+        ipv4_address: 172.30.2.3
+        aliases: [broker]
 
   ergo:
     # The network's IRC server. Members only: an account is needed to
@@ -205,7 +209,7 @@ services:
       GUILDNET_OPER_PASSWORD: ${GUILDNET_OPER_PASSWORD:?run init.sh first}
       # People's logins: Ergo asks the console (guildnet-ircauth), which
       # keeps their passwords, at its broker, over TLS from its CA.
-      GUILDNET_IRC_AUTH_URL: https://platform:8082/irc/login
+      GUILDNET_IRC_AUTH_URL: https://broker:8082/irc/login
       GUILDNET_ERGO_TOKEN: ${GUILDNET_ERGO_API_TOKEN}
       GUILDNET_BROKER_CA_FILE: /var/lib/guildnet-broker/ca.crt
     volumes:
@@ -216,9 +220,11 @@ services:
       # The welcome, shared with the runner: GuildServ adds what the company
       # is for.
       - welcome:/welcome
-    # Its own network, with no way out: Ergo needs nothing from the internet.
+    # Its own network, and the broker's, with no way out: Ergo needs nothing
+    # from the internet.
     networks:
       - irc
+      - broker
 
   runner:
     # The network's agents, GuildServ and the ledger. It waits for first-run
@@ -245,10 +251,10 @@ services:
       GUILDNET_SETTINGS_FROM_BROKER: "on"
       # Its settings, model keys, GitHub and connectors' tokens: from the
       # console's broker, over TLS, kept only in memory.
-      GUILDNET_KEYS_BROKER: https://platform:8082
+      GUILDNET_KEYS_BROKER: https://broker:8082
       # Git servers on your own network, which it pushes agents' branches to.
       GUILDNET_GIT_PRIVATE_HOSTS: ${GUILDNET_GIT_PRIVATE_HOSTS:-}
-      GUILDNET_GITHUB_BROKER: https://platform:8082
+      GUILDNET_GITHUB_BROKER: https://broker:8082
       GUILDNET_BROKER_CA_FILE: /var/lib/guildnet-broker/ca.crt
       GUILDNET_DATA_DIR: /app/data
       GUILDNET_SERVER: ergo:6667
@@ -277,10 +283,11 @@ services:
       - broker-ca-shared:/var/lib/guildnet-broker:ro
     networks:
       # Its way out (to the model providers) and to the console, its
-      # database, and Ergo.
+      # database, Ergo, and the broker.
       - private
       - data
       - irc
+      - broker
 
   postgres:
     # The console's and the runner's databases, each with its own login.
@@ -424,6 +431,15 @@ networks:
         - subnet: 172.30.1.0/24
           # The others' addresses come from the top half.
           ip_range: 172.30.1.128/25
+  # The broker, at the console's fixed address, and what asks it: the runner
+  # and Ergo. No way out, and not the edge.
+  broker:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.30.2.0/24
+          # The others' addresses come from the top half.
+          ip_range: 172.30.2.128/25
   # The console and the runner, and their way out.
   private:
   # The database, the console and the runner; no way out.

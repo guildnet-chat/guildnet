@@ -61,8 +61,12 @@ type Approvals interface {
 	// to.
 	Unresumed(ctx context.Context) ([]Approval, error)
 	// ClaimResume marks a decided approval as carried on with, and reports
-	// whether this was the first to: each is carried on with once.
+	// whether this was the first to: each is carried on with once. What the
+	// agent carries on from isn't kept after.
 	ClaimResume(ctx context.Context, id int64, at time.Time) (bool, error)
+	// SetApprovalResume replaces what the agent carries on from (to seal
+	// one kept before they were), until it has.
+	SetApprovalResume(ctx context.Context, id int64, resume string) error
 }
 
 // Settings are the org's own settings, by name; unset ones read as "".
@@ -161,9 +165,23 @@ func (m *Memory) ClaimResume(_ context.Context, id int64, at time.Time) (bool, e
 	if a.Status == Pending || !a.resumed.IsZero() {
 		return false, nil
 	}
-	a.resumed = at
+	a.resumed, a.Resume = at, ""
 	m.approvals[id] = a
 	return true, nil
+}
+
+func (m *Memory) SetApprovalResume(_ context.Context, id int64, resume string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	a, ok := m.approvals[id]
+	if !ok {
+		return ErrNotFound
+	}
+	if a.resumed.IsZero() { // carried on with already: nothing to keep
+		a.Resume = resume
+		m.approvals[id] = a
+	}
+	return nil
 }
 
 func (m *Memory) Setting(_ context.Context, key string) (string, error) {

@@ -102,6 +102,7 @@ func (r *Runner) raiseApproval(p config.Persona, channel, asker string, req *age
 	if after := r.moveAfter(); after > 0 && len(route) > 1 {
 		a.MovesAt = workweek.After(now, after, r.loc())
 	}
+	a.Resume = r.sealResume(a)
 	a, err := r.store.RaiseApproval(context.Background(), a)
 	if err != nil {
 		monitor.Problem(r.logger, "couldn't record %s's approval request: %v", p.Nick, err)
@@ -328,6 +329,22 @@ func (r *Runner) resumeAfter(a org.Approval, allow bool, reason string) {
 			a.Resume = full.Resume
 		}
 	}
+	token, _, err := r.openResume(a)
+	if err != nil {
+		// Nothing safe to carry on from: it's done with, and they're told.
+		monitor.Problem(r.logger, "%s can't carry on after #%d: %v", a.Agent, a.ID, err)
+		r.store.ClaimResume(context.Background(), a.ID, r.now())
+		r.mu.Lock()
+		delete(r.resuming, a.ID)
+		r.mu.Unlock()
+		target := a.Channel
+		if target == "" {
+			target = a.Asker
+		}
+		r.ledgerConn.Privmsg(target, fmt.Sprintf("%s can't carry on after #%d: %v.", a.Agent, a.ID, err))
+		return
+	}
+	a.Resume = token
 	if !r.enqueue(job{persona: p, key: fmt.Sprintf("approval #%d", a.ID), decision: &decision{approval: a, allow: allow, reason: reason}}) {
 		// The agent's queue is full: replayDecisions tries again.
 		r.mu.Lock()
@@ -485,6 +502,7 @@ func (r *Runner) expireApprovals() {
 // watchApprovals restores waits after a restart and expires old approvals.
 func (r *Runner) watchApprovals(stop <-chan struct{}) {
 	defer monitor.Recover()
+	r.sealKept()
 	if pending, err := r.store.PendingApprovals(context.Background()); err == nil {
 		r.mu.Lock()
 		for _, a := range pending {

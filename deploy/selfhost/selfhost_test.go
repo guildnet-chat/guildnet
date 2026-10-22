@@ -186,12 +186,23 @@ func addressOn(s service, network string) string {
 // talks to it: the edge (IRC over TLS), the console (web chat, its API) and
 // the runner. Only the edge and the console, at their fixed addresses
 // there, may say who a visitor is (PROXY, X-Forwarded-For): not the runner,
-// not sandboxd, not anything else on the machine's private networks.
+// not sandboxd, not anything else on the machine's private networks. (It
+// asks the broker about logins on the broker's network, also with no way
+// out.)
 func TestErgoIsReachedOnlyOnANetworkOfItsOwn(t *testing.T) {
 	s := readStack(t)
-	on := networksOf(s.Services["ergo"])
+	var on []string
+	for _, n := range networksOf(s.Services["ergo"]) {
+		if !s.Networks[n].Internal {
+			t.Errorf("ergo is on %s, which has a way out", n)
+		}
+		if !slices.Contains(networksOf(s.Services["caddy"]), n) {
+			continue // the broker's
+		}
+		on = append(on, n)
+	}
 	if len(on) != 1 {
-		t.Fatalf("ergo is on %v, want one network", on)
+		t.Fatalf("ergo shares %v with the edge, want one network", on)
 	}
 	irc := on[0]
 	if !s.Networks[irc].Internal {
@@ -220,6 +231,69 @@ func TestErgoIsReachedOnlyOnANetworkOfItsOwn(t *testing.T) {
 	}
 	if subnets := s.Networks[irc].IPAM.Config; len(subnets) != 1 {
 		t.Errorf("%s's addresses: %v, want one subnet the fixed ones are in", irc, subnets)
+	}
+}
+
+// The broker (settings, keys, tokens; people's logins) listens only on a
+// network of its own with no way out, at the console's fixed address there,
+// shared only with what asks it: the runner and Ergo. Not the edge: Caddy
+// faces the internet, and can't reach it.
+func TestTheBrokerIsReachedOnlyOnANetworkOfItsOwn(t *testing.T) {
+	s := readStack(t)
+	platform := s.Services["platform"]
+	host, port, err := net.SplitHostPort(fmt.Sprint(platform.Environment["GUILDNET_GITHUB_BROKER_LISTEN"]))
+	if err != nil || net.ParseIP(host) == nil {
+		t.Fatalf("the broker listens on %v; want one address of the console's", platform.Environment["GUILDNET_GITHUB_BROKER_LISTEN"])
+	}
+	var broker string
+	for _, n := range networksOf(platform) {
+		if addressOn(platform, n) == host {
+			broker = n
+		}
+	}
+	if broker == "" {
+		t.Fatalf("the broker's address %s isn't the console's on any network", host)
+	}
+	if !s.Networks[broker].Internal {
+		t.Errorf("the broker's network %s has a way out; want internal", broker)
+	}
+	if subnets := s.Networks[broker].IPAM.Config; len(subnets) != 1 {
+		t.Errorf("%s's addresses: %v, want one subnet the console's is in", broker, subnets)
+	} else if _, in, err := net.ParseCIDR(subnets[0].Subnet); err != nil || !in.Contains(net.ParseIP(host)) {
+		t.Errorf("%s's subnet %s doesn't have %s", broker, subnets[0].Subnet, host)
+	}
+	for name, svc := range s.Services {
+		on := slices.Contains(networksOf(svc), broker)
+		if want := name == "platform" || name == "runner" || name == "ergo"; on != want {
+			t.Errorf("%s on %s (the broker's network): %v, want %v", name, broker, on, want)
+		}
+	}
+
+	// Its callers ask for it by a name only that network has, which its
+	// certificate is for.
+	n, _ := platform.Networks.(map[string]any)
+	on, _ := n[broker].(map[string]any)
+	var aliases []string
+	if list, ok := on["aliases"].([]any); ok {
+		for _, a := range list {
+			aliases = append(aliases, fmt.Sprint(a))
+		}
+	}
+	if len(aliases) != 1 {
+		t.Fatalf("the console's names on %s: %v, want one", broker, aliases)
+	}
+	if names := strings.Split(fmt.Sprint(platform.Environment["GUILDNET_BROKER_NAMES"]), ","); !slices.Contains(names, aliases[0]) {
+		t.Errorf("the broker's certificate is for %v, not %s", names, aliases[0])
+	}
+	at := "https://" + aliases[0] + ":" + port
+	for _, k := range []struct{ service, env, want string }{
+		{"runner", "GUILDNET_KEYS_BROKER", at},
+		{"runner", "GUILDNET_GITHUB_BROKER", at},
+		{"ergo", "GUILDNET_IRC_AUTH_URL", at + "/irc/login"},
+	} {
+		if got := fmt.Sprint(s.Services[k.service].Environment[k.env]); got != k.want {
+			t.Errorf("%s's %s = %q, want %q", k.service, k.env, got, k.want)
+		}
 	}
 }
 
@@ -258,7 +332,7 @@ func TestTheRunnerWaitsForFirstRunSetup(t *testing.T) {
 	r := readStack(t).Services["runner"]
 	for k, want := range map[string]string{
 		"GUILDNET_SETTINGS_FROM_BROKER": "on",
-		"GUILDNET_KEYS_BROKER":          "https://platform:8082",
+		"GUILDNET_KEYS_BROKER":          "https://broker:8082",
 	} {
 		if got := fmt.Sprint(r.Environment[k]); got != want {
 			t.Errorf("runner's %s = %q, want %q", k, got, want)
@@ -279,8 +353,8 @@ func TestTheRunnerReachesTheBrokerOverTLS(t *testing.T) {
 	s := readStack(t)
 	platform, runner := s.Services["platform"], s.Services["runner"]
 	for _, k := range []string{"GUILDNET_KEYS_BROKER", "GUILDNET_GITHUB_BROKER"} {
-		if got := fmt.Sprint(runner.Environment[k]); !strings.HasPrefix(got, "https://platform:") {
-			t.Errorf("runner's %s = %q, want https://platform:...", k, got)
+		if got := fmt.Sprint(runner.Environment[k]); !strings.HasPrefix(got, "https://") {
+			t.Errorf("runner's %s = %q, want https://...", k, got)
 		}
 	}
 	mountOf := func(svc service, path string) string {
@@ -320,8 +394,8 @@ func TestTheRunnerReachesTheBrokerOverTLS(t *testing.T) {
 func TestErgoAsksTheConsoleAboutLogins(t *testing.T) {
 	s := readStack(t)
 	ergo, platform := s.Services["ergo"], s.Services["platform"]
-	if got := fmt.Sprint(ergo.Environment["GUILDNET_IRC_AUTH_URL"]); got != "https://platform"+fmt.Sprint(platform.Environment["GUILDNET_GITHUB_BROKER_LISTEN"])+"/irc/login" {
-		t.Errorf("ergo's GUILDNET_IRC_AUTH_URL = %q, want the broker's /irc/login", got)
+	if got := fmt.Sprint(ergo.Environment["GUILDNET_IRC_AUTH_URL"]); !strings.HasPrefix(got, "https://") || !strings.HasSuffix(got, "/irc/login") {
+		t.Errorf("ergo's GUILDNET_IRC_AUTH_URL = %q, want the broker's /irc/login (TestTheBrokerIsReachedOnlyOnANetworkOfItsOwn)", got)
 	}
 	if got := fmt.Sprint(ergo.Environment["GUILDNET_ERGO_TOKEN"]); got != "${GUILDNET_ERGO_API_TOKEN}" {
 		t.Errorf("ergo's GUILDNET_ERGO_TOKEN = %q, want its API token", got)

@@ -115,7 +115,7 @@ encrypted or authenticated with them: never change them; keep `.env` private.
 | `GUILDNET_API_TOKEN` | the network's secret: the console calls the runner with it, and the runner the console's broker |
 | `GUILDNET_ERGO_API_TOKEN` | how the console and the runner call Ergo's API |
 | `GUILDNET_CHAT_KEY` | what web chat's sign-in tokens to Ergo are signed with |
-| `GUILDNET_ACCOUNT_SECRET` | what agents' IRC passwords are made from, and what outside agents' webhook secrets are sealed with (no webhooks without it) |
+| `GUILDNET_ACCOUNT_SECRET` | what agents' IRC passwords are made from, and what outside agents' webhook secrets (no webhooks without it) and agents' paused conversations, while they wait on an approval, are sealed with |
 | `GUILDNET_OPER_PASSWORD` | GuildServ's operator password on Ergo (Ergo hashes it as it starts) |
 | `GUILDNET_SANDBOX_KEY` | the console's half of the sandbox's key pair: it signs the runner's desk tokens, and networks' egress passes ([git.md](git.md#reaching-the-host)) |
 | `GUILDNET_SANDBOX_PUBLIC_KEY` | sandboxd's and egress's half: they check them (comma-separated, the old and the new, while the pair's changed). A token is good for 15 minutes, and only for its network's desks |
@@ -145,7 +145,7 @@ Defaults are the programs' own.
 | `GUILDNET_RUNNER_URL`, `GUILDNET_ERGO_URL`, `GUILDNET_CHAT_URL` | where the network's runner API, Ergo's API and Ergo's WebSocket listener are. Read at every start: moving the install (to a cloud, say) only needs these changed |
 | `GUILDNET_CHAT_DIR` | the web chat's built files (the image has them at `/chat`) |
 | `GUILDNET_BRAND_DIR` | your own files ([brand.md](brand.md)): the stack mounts `brand/` there |
-| `GUILDNET_GITHUB_BROKER_LISTEN` | where the broker serves the runner its settings, keys and tokens: never on the internet |
+| `GUILDNET_GITHUB_BROKER_LISTEN` | where the broker serves the runner its settings, keys and tokens, and Ergo people's logins: never on the internet, nor anywhere the edge can reach (the stack: the console's address on the `broker` network only) |
 | `GUILDNET_BROKER_TLS_DIR` | where the console keeps the CA it gives the broker its certificate from: a volume only it has |
 | `GUILDNET_BROKER_CA_SHARE` | where it puts that CA's certificate for the runner |
 | `GUILDNET_BROKER_NAMES` | the names and IP addresses the broker's certificate is for (default `platform`) |

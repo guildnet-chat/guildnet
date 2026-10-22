@@ -627,6 +627,33 @@ func TestADecisionIsCarriedOnWithOnce(t *testing.T) {
 	})
 }
 
+// What an agent carries on from can be replaced (sealed) while it waits,
+// and isn't kept once it has carried on.
+func TestWhatAnAgentCarriesOnFromIsKeptUntilItHas(t *testing.T) {
+	eachStore(t, org.Seed{}, func(t *testing.T, s org.Store) {
+		a, _ := s.RaiseApproval(ctx, mergeRequest())
+		if err := s.SetApprovalResume(ctx, a.ID, "sealed"); err != nil {
+			t.Fatal(err)
+		}
+		if got, _ := s.Approval(ctx, a.ID); got.Resume != "sealed" {
+			t.Errorf("replaced: %q", got.Resume)
+		}
+		if err := s.SetApprovalResume(ctx, 9999, "sealed"); !errors.Is(err, org.ErrNotFound) {
+			t.Errorf("replacing an unknown approval's: %v, want ErrNotFound", err)
+		}
+
+		now := time.Now().UTC()
+		s.DecideApproval(ctx, a.ID, org.Approved, "ada", "", now)
+		if got, _ := s.Approval(ctx, a.ID); got.Resume != "sealed" {
+			t.Errorf("decided, not carried on with yet: %q", got.Resume)
+		}
+		s.ClaimResume(ctx, a.ID, now)
+		if got, _ := s.Approval(ctx, a.ID); got.Resume != "" || got.Status != org.Approved {
+			t.Errorf("carried on with: %+v", got)
+		}
+	})
+}
+
 // Upgrading a network's database counts what was decided before as carried
 // on with: the first start after the upgrade doesn't do it all again.
 func TestDecisionsFromBeforeTheUpgradeArentCarriedOnWithAgain(t *testing.T) {
@@ -653,6 +680,42 @@ func TestDecisionsFromBeforeTheUpgradeArentCarriedOnWithAgain(t *testing.T) {
 
 	if got, _ := upgraded.Unresumed(ctx); len(got) != 0 {
 		t.Errorf("after the upgrade, decisions to carry on with: %+v", got)
+	}
+}
+
+// Upgrading drops the conversations agents already carried on from, and
+// keeps the ones still needed.
+func TestTheUpgradeDropsConversationsAlreadyCarriedOnFrom(t *testing.T) {
+	s, url := newPostgres(t, org.Seed{})
+	done, _ := s.RaiseApproval(ctx, mergeRequest())
+	waiting, _ := s.RaiseApproval(ctx, mergeRequest())
+	now := time.Now().UTC()
+	s.DecideApproval(ctx, done.ID, org.Approved, "ada", "", now)
+	conn, err := pgx.Connect(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close(ctx)
+	// As before migration 17: carried on with, and its conversation kept.
+	if _, err := conn.Exec(ctx, `UPDATE approvals SET resumed_at = now(), resume = 'sess_1/sevt_9' WHERE id = $1`, done.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.Exec(ctx, `DELETE FROM goose_db_version WHERE version_id >= 17`); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+
+	upgraded, err := org.OpenPostgres(ctx, url, org.Seed{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer upgraded.Close()
+
+	if got, _ := upgraded.Approval(ctx, done.ID); got.Resume != "" {
+		t.Errorf("carried on from, still kept: %q", got.Resume)
+	}
+	if got, _ := upgraded.Approval(ctx, waiting.ID); got.Resume != "sess_1/sevt_9" {
+		t.Errorf("still waiting, kept as %q", got.Resume)
 	}
 }
 

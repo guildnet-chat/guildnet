@@ -4,9 +4,9 @@
 # the network's Ergo and runner, as in deploy/selfhost/compose.yml, with
 # Postgres on Cloud SQL. One replica, never two (a StatefulSet replaces its
 # pod, it doesn't run a second): one network has nothing to scale, and two
-# Ergos would split it. hostAliases give the stack's names (platform, ergo,
-# runner) to localhost, so every address and certificate name is as in
-# Compose, and a Compose install's backup restores here unchanged.
+# Ergos would split it. hostAliases give the stack's names (platform,
+# broker, ergo, runner) to localhost, so every address and certificate name
+# is as in Compose, and a Compose install's backup restores here unchanged.
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -24,7 +24,7 @@ spec:
       enableServiceLinks: false
       hostAliases:
         - ip: 127.0.0.1
-          hostnames: [platform, ergo, runner]
+          hostnames: [platform, broker, ergo, runner]
       securityContext:
         seccompProfile: {type: RuntimeDefault}
       initContainers:
@@ -97,10 +97,11 @@ spec:
             - {name: GUILDNET_API_TOKEN, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_API_TOKEN}}}
             - {name: GUILDNET_ERGO_API_TOKEN, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_ERGO_API_TOKEN}}}
             - {name: GUILDNET_CHAT_KEY, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_CHAT_KEY}}}
-            - {name: GUILDNET_GITHUB_BROKER_LISTEN, value: ":8082"}
+            # The broker on localhost only: in one pod, never the pod's address.
+            - {name: GUILDNET_GITHUB_BROKER_LISTEN, value: "127.0.0.1:8082"}
             - {name: GUILDNET_BROKER_TLS_DIR, value: /var/lib/guildnet-broker/own}
             - {name: GUILDNET_BROKER_CA_SHARE, value: /var/lib/guildnet-broker/shared}
-            - {name: GUILDNET_BROKER_NAMES, value: platform}
+            - {name: GUILDNET_BROKER_NAMES, value: broker}
             - {name: GUILDNET_IRC_PORT, value: "6697"}
             - {name: GUILDNET_IRC_HINT_LISTEN, value: ":6699"}
             - {name: GUILDNET_SMTP_ADDR, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_SMTP_ADDR, optional: true}}}
@@ -176,7 +177,7 @@ spec:
             - {name: GUILDNET_OPER_PASSWORD, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_OPER_PASSWORD}}}
             # People's logins: Ergo asks the console (guildnet-ircauth), which
             # keeps their passwords, at its broker, over TLS from its CA.
-            - {name: GUILDNET_IRC_AUTH_URL, value: "https://platform:8082/irc/login"}
+            - {name: GUILDNET_IRC_AUTH_URL, value: "https://broker:8082/irc/login"}
             - {name: GUILDNET_ERGO_TOKEN, value: $(GUILDNET_ERGO_API_TOKEN)}
             - {name: GUILDNET_BROKER_CA_FILE, value: /var/lib/guildnet-broker/ca.crt}
           securityContext:
@@ -201,9 +202,9 @@ spec:
           env:
             - {name: GUILDNET_NETWORK, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_NETWORK}}}
             - {name: GUILDNET_SETTINGS_FROM_BROKER, value: "on"}
-            - {name: GUILDNET_KEYS_BROKER, value: "https://platform:8082"}
+            - {name: GUILDNET_KEYS_BROKER, value: "https://broker:8082"}
             - {name: GUILDNET_GIT_PRIVATE_HOSTS, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_GIT_PRIVATE_HOSTS, optional: true}}}
-            - {name: GUILDNET_GITHUB_BROKER, value: "https://platform:8082"}
+            - {name: GUILDNET_GITHUB_BROKER, value: "https://broker:8082"}
             - {name: GUILDNET_BROKER_CA_FILE, value: /var/lib/guildnet-broker/ca.crt}
             - {name: GUILDNET_DATA_DIR, value: /app/data}
             - {name: GUILDNET_SERVER, value: "ergo:6667"}
