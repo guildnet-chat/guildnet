@@ -351,6 +351,10 @@ func Run(build Config) {
 	// asleep, or (on a developer's machine, given the platform's key) signed
 	// here.
 	sandboxURL := os.Getenv("GUILDNET_SANDBOX_URL")
+	// The hosts the network's owner lets desks reach (the runner keeps the
+	// list), and the desks' tool to ask for one.
+	deskHosts := &runner.DeskHosts{}
+	deskBlocked := listFrom(os.Getenv("GUILDNET_DESK_BLOCKED"))
 	var tokens desk.TokenSource
 	var pass func(context.Context) (string, error)
 	if sandboxURL != "" {
@@ -362,14 +366,22 @@ func Run(build Config) {
 		tokens = func(context.Context, bool) (string, error) {
 			return sandbox.TokenFor(key, network, sandbox.Desks, time.Now(), 15*time.Minute), nil
 		}
-		// The network's egress pass, for its git repositories' hosts.
+		// The network's egress pass, for its git repositories' hosts and the
+		// owner's list, signed here as the platform would.
 		pass = func(context.Context) (string, error) {
-			if git == nil {
-				return "", nil
-			}
 			var hosts []string
-			for _, repo := range git.Repos() {
-				hosts = append(hosts, repo.HostPort())
+			if git != nil {
+				for _, repo := range git.Repos() {
+					hosts = append(hosts, repo.HostPort())
+				}
+			}
+			for _, h := range deskHosts.Hosts() {
+				if h, problem := sandbox.CheckDeskHost(h, deskBlocked); problem == "" {
+					hosts = append(hosts, h+":443")
+				}
+			}
+			if len(hosts) == 0 {
+				return "", nil
 			}
 			return sandbox.PassFor(key, network, hosts, time.Now(), 15*time.Minute), nil
 		}
@@ -383,12 +395,13 @@ func Run(build Config) {
 		}
 		ws := desk.New(sd, repos)
 		ws.Wake = wakeSandbox
+		ws.Pass = pass
 		// The team's git repositories on any host, reached with the network's
 		// egress pass, and pushed to by the runner (the push credential never
 		// reaches a desk).
 		var pusher agent.Toolbox
 		if git != nil {
-			ws.Git, ws.Pass = gitremote.Checkouts{Live: git, TeamRepos: teamRepos}, pass
+			ws.Git = gitremote.Checkouts{Live: git, TeamRepos: teamRepos}
 			hosts := egress.Client(egress.Options{PrivateHosts: gitPrivateHosts(os.Getenv)})
 			hosts.Timeout = 5 * time.Minute
 			pusher = &gitremote.Pusher{Live: git, TeamRepos: teamRepos, Desk: sd, HTTP: hosts,
@@ -399,7 +412,7 @@ func Run(build Config) {
 					}
 				}}
 		}
-		router.WithDesks(chat.Desks(brain.DeskOptions{Toolbox: agent.Join(ws, toolbox, pusher), Ready: ws.Ready, Retire: ws.Clear}))
+		router.WithDesks(chat.Desks(brain.DeskOptions{Toolbox: agent.Join(ws, toolbox, pusher, deskHosts), Ready: ws.Ready, Retire: ws.Clear}))
 		// The platform counts desks' time against the network's plan (on a
 		// developer's machine, with the sandbox from the environment, it
 		// isn't counted).
@@ -423,10 +436,11 @@ func Run(build Config) {
 			url, _, err := b.Sandbox(ctx)
 			return url, err
 		}, time.Minute, func(url string) {
-			useSandbox(url, b.Tokens(), b.Wake, b, b.Pass)
+			useSandbox(url, b.Tokens(), b.Wake, b, desk.KeptPass(b.Pass, deskHosts.Hosts, 4*time.Minute, nil))
 		}, func(err error) { check.Failed("desks: %v", err) })
 	}
 	r := runner.New(cfg, store, router, l, logger)
+	r.UseDeskHosts(deskHosts, deskBlocked...)
 	if outside != nil {
 		r.UseModels(outside.Handler)
 	}
@@ -542,8 +556,13 @@ func (t tlsOnly) RoundTrip(req *http.Request) (*http.Response, error) {
 // gitPrivateHosts are git servers on the install's own network, named by
 // whoever runs it; everywhere else, git hosts must be on the internet.
 func gitPrivateHosts(getenv func(string) string) []string {
+	return listFrom(getenv("GUILDNET_GIT_PRIVATE_HOSTS"))
+}
+
+// listFrom is a comma-separated setting's items.
+func listFrom(v string) []string {
 	var out []string
-	for _, h := range strings.Split(getenv("GUILDNET_GIT_PRIVATE_HOSTS"), ",") {
+	for _, h := range strings.Split(v, ",") {
 		if h = strings.TrimSpace(h); h != "" {
 			out = append(out, h)
 		}

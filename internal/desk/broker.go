@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -67,11 +68,40 @@ func (b *Broker) Sandbox(ctx context.Context) (url, token string, err error) {
 }
 
 // Pass is the network's egress pass, which opens its git repositories'
-// hosts at the desks' proxy: asked for fresh, as the owner may have added
-// one. "" if it has none.
-func (b *Broker) Pass(ctx context.Context) (string, error) {
-	s, err := b.sandbox(ctx)
+// hosts at the desks' proxy, and hosts (the owner's list, on 443) as the
+// platform allows: asked for fresh, as the owner may have added one. "" if
+// it opens none.
+func (b *Broker) Pass(ctx context.Context, hosts []string) (string, error) {
+	s, err := b.sandboxFor(ctx, hosts)
 	return s.Egress, err
+}
+
+// KeptPass is a network's egress pass from get, for the hosts hosts gives,
+// kept for keep (well inside the 15 minutes a pass is good for, and the 10
+// a command may run): asked for again sooner only when the hosts change.
+// now is the clock; nil means time.Now.
+func KeptPass(get func(ctx context.Context, hosts []string) (string, error), hosts func() []string, keep time.Duration, now func() time.Time) func(context.Context) (string, error) {
+	if now == nil {
+		now = time.Now
+	}
+	var mu sync.Mutex
+	var pass, kept string
+	var at time.Time
+	return func(ctx context.Context) (string, error) {
+		h := hosts()
+		key := strings.Join(h, ",")
+		mu.Lock()
+		defer mu.Unlock()
+		if pass != "" && key == kept && now().Sub(at) < keep {
+			return pass, nil
+		}
+		p, err := get(ctx, h)
+		if err != nil {
+			return "", err
+		}
+		pass, kept, at = p, key, now()
+		return pass, nil
+	}
 }
 
 // sandboxAnswer is the broker's answer about the sandbox.
@@ -82,9 +112,17 @@ type sandboxAnswer struct {
 	Egress  string    `json:"egress"`
 }
 
-func (b *Broker) sandbox(ctx context.Context) (sandboxAnswer, error) {
+func (b *Broker) sandbox(ctx context.Context) (sandboxAnswer, error) { return b.sandboxFor(ctx, nil) }
+
+// sandboxFor asks with the hosts the network's pass should open too.
+func (b *Broker) sandboxFor(ctx context.Context, hosts []string) (sandboxAnswer, error) {
 	var out sandboxAnswer
-	resp, err := b.do(ctx, "GET", "/sandbox")
+	path := "/sandbox"
+	if len(hosts) > 0 {
+		q := url.Values{"host": hosts}
+		path += "?" + q.Encode()
+	}
+	resp, err := b.do(ctx, "GET", path)
 	if err != nil {
 		return out, err
 	}

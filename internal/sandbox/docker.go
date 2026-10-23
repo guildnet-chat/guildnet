@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io"
+	"net/url"
+	"os"
 	"os/exec"
 	"slices"
 	"strconv"
@@ -142,13 +144,16 @@ func (dk *Docker) runArgs(ctx context.Context, d Desk) ([]string, error) {
 		args = append(args, "--pids-limit", strconv.Itoa(dk.Pids))
 	}
 	if dk.Proxy != "" {
-		for _, v := range []string{"HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"} {
+		for _, v := range proxyVars {
 			args = append(args, "--env", v+"="+dk.Proxy)
 		}
 		args = append(args, "--env", "NO_PROXY=localhost,127.0.0.1", "--env", "no_proxy=localhost,127.0.0.1")
 	}
 	return append(args, strings.TrimSpace(image), "sleep", "infinity"), nil
 }
+
+// proxyVars are where programs at a desk look for the proxy.
+var proxyVars = []string{"HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"}
 
 // What sandboxd runs at a desk itself is the image's, by its full path, so
 // nothing an earlier command left in the desk's home, ahead on the PATH,
@@ -176,12 +181,28 @@ done; exit 0`
 func (dk *Docker) Exec(ctx context.Context, d Desk, e Exec) (Result, error) {
 	secs := max(int(e.Timeout/time.Second), 1)
 	mark := newRunMark()
-	args := []string{"exec", "--interactive", "--workdir", e.Dir, "--env", runMark + "=" + mark, d.Name(), deskTimeout, "-k", "5", strconv.Itoa(secs)}
+	args := []string{"exec", "--interactive", "--workdir", e.Dir, "--env", runMark + "=" + mark}
+	// The pass goes to the proxy as its password. Docker takes each value
+	// from its own environment, so the pass is never in a list of processes.
+	var env []string
+	if e.Pass != "" && dk.Proxy != "" {
+		if u, err := url.Parse(dk.Proxy); err == nil {
+			u.User = url.UserPassword("guildnet", e.Pass)
+			for _, v := range proxyVars {
+				args = append(args, "--env", v)
+				env = append(env, v+"="+u.String())
+			}
+		}
+	}
+	args = append(args, d.Name(), deskTimeout, "-k", "5", strconv.Itoa(secs))
 	args = append(args, e.Args...)
 	// The docker command itself gets a little longer, in case.
 	ctx, cancel := context.WithTimeout(ctx, e.Timeout+30*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, dk.bin(), args...)
+	if env != nil {
+		cmd.Env = append(os.Environ(), env...)
+	}
 	cmd.Stdin = e.Stdin
 	if cmd.Stdin == nil {
 		cmd.Stdin = strings.NewReader("")

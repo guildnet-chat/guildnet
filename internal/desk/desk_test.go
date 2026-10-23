@@ -435,6 +435,73 @@ func TestADesksSecretsAreBlankedFromWhatItShows(t *testing.T) {
 	}
 }
 
+// Every command goes out with the network's egress pass as it is now, so
+// whatever it runs (curl, pip, npm) reaches the hosts the owner chose, one
+// added a moment ago too; the pass, printed, is blanked like any secret.
+func TestEveryCommandCarriesTheNetworksPassAsItIsNow(t *testing.T) {
+	sb := newSandbox()
+	w := desk.New(sb, nil)
+	passes := []string{"v2.pass-before", "v2.pass-after"}
+	w.Pass = func(context.Context) (string, error) {
+		p := passes[0]
+		if len(passes) > 1 {
+			passes = passes[1:]
+		}
+		return p, nil
+	}
+	w.Ready(context.Background(), kai)
+	sb.answer = func(c desk.Command) desk.Output {
+		return desk.Output{Text: "HTTPS_PROXY=http://guildnet:" + c.Pass + "@proxy:3128\n"}
+	}
+
+	first, _ := w.Run(context.Background(), kai, "bash", map[string]any{"command": "env"})
+	w.Run(context.Background(), kai, "bash", map[string]any{"command": "curl https://api.stripe.com"})
+
+	ran := sb.commands()
+	if got := ran[len(ran)-1].Pass; got != "v2.pass-after" {
+		t.Errorf("the second command went with %q, want the pass as it is now", got)
+	}
+	if got := ran[len(ran)-2].Pass; got != "v2.pass-before" {
+		t.Errorf("the first command went with %q", got)
+	}
+	if strings.Contains(first, "v2.pass-before") || !strings.Contains(first, "[a secret]") {
+		t.Errorf("the agent was shown the pass:\n%s", first)
+	}
+	// Without a pass to give (no hosts beyond the usual), commands go as
+	// they are.
+	w.Pass = func(context.Context) (string, error) { return "", nil }
+	w.Run(context.Background(), kai, "bash", map[string]any{"command": "ls"})
+	if ran := sb.commands(); ran[len(ran)-1].Pass != "" {
+		t.Errorf("a command went with pass %q", ran[len(ran)-1].Pass)
+	}
+}
+
+// A pass is asked for once in a while, not for every command; one for
+// other hosts (the owner added one) is asked for at once.
+func TestAPassIsKeptAWhileForTheSameHosts(t *testing.T) {
+	asked := 0
+	hosts := []string{"api.stripe.com"}
+	now := time.Date(2026, 10, 23, 9, 0, 0, 0, time.UTC)
+	pass := desk.KeptPass(func(_ context.Context, h []string) (string, error) {
+		asked++
+		return fmt.Sprintf("v2.pass-%d-%s", asked, strings.Join(h, ",")), nil
+	}, func() []string { return hosts }, 4*time.Minute, func() time.Time { return now })
+
+	first, _ := pass(context.Background())
+	again, _ := pass(context.Background())
+	if first != again || asked != 1 {
+		t.Errorf("asked %d times for the same hosts: %q then %q", asked, first, again)
+	}
+	hosts = []string{"api.stripe.com", "crates.io"}
+	if p, _ := pass(context.Background()); !strings.HasSuffix(p, "api.stripe.com,crates.io") {
+		t.Errorf("with a host added: %q, want a new pass for both", p)
+	}
+	now = now.Add(5 * time.Minute)
+	if pass(context.Background()); asked != 3 {
+		t.Errorf("after a while, asked %d times, want a fresh pass", asked)
+	}
+}
+
 func TestADeskWithoutReposIsJustWokenAndMadeFresh(t *testing.T) {
 	sb := newSandbox()
 	w := desk.New(sb, fakeRepos{})

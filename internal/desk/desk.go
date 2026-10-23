@@ -60,6 +60,9 @@ type Command struct {
 	Dir     string        // where it runs
 	Stdin   string        // its input (secrets go here, never in Args)
 	Timeout time.Duration // it's stopped after this
+	// Pass is the network's egress pass, for the desks' proxy to open its
+	// hosts to whatever the command reaches; "" for none.
+	Pass string
 }
 
 // Output is what came of a command: what it printed (stdout and stderr
@@ -114,7 +117,8 @@ type Workspace struct {
 	// Git is the team's git repositories on other hosts; nil for none.
 	Git GitRepos
 	// Pass is the network's egress pass, which lets its desks reach its git
-	// repositories' hosts through the desks' proxy; nil for none.
+	// repositories' hosts, and the hosts its owner chose, through the desks'
+	// proxy: asked for afresh for each command; nil for none.
 	Pass func(ctx context.Context) (string, error)
 	// Wake asks for the sandbox VM to be started, when it can't be reached
 	// (it powers off when idle); nil if it never sleeps.
@@ -124,8 +128,9 @@ type Workspace struct {
 
 	mu sync.Mutex
 	// secrets are what each desk was handed when last readied (tokens, the
-	// pass), blanked out of whatever it shows its agent.
-	secrets map[string][]string
+	// pass), and passes the latest passes its commands went out with: both
+	// blanked out of whatever it shows its agent.
+	secrets, passes map[string][]string
 }
 
 // New is the workspace tools, in sb, checking out repos (nil for none).
@@ -219,8 +224,10 @@ func (w *Workspace) Run(ctx context.Context, p config.Persona, name string, in m
 // blank is s without the secrets p's desk was handed.
 func (w *Workspace) blank(nick, s string) string {
 	w.mu.Lock()
-	secrets := w.secrets[strings.ToLower(nick)]
+	secrets := append(slices.Clone(w.passes[strings.ToLower(nick)]), w.secrets[strings.ToLower(nick)]...)
 	w.mu.Unlock()
+	// Longest first, so one inside another is blanked whole.
+	slices.SortStableFunc(secrets, func(a, b string) int { return len(b) - len(a) })
 	for _, secret := range secrets {
 		s = strings.ReplaceAll(s, secret, "[a secret]")
 	}
@@ -245,6 +252,37 @@ func (w *Workspace) handed(nick string, secrets []string) {
 	}
 	w.secrets[strings.ToLower(nick)] = keep
 }
+
+// passFor is the network's egress pass as it is now, for a command at
+// nick's desk (and blanked from what it shows), or "" for none. A pass
+// that can't be had leaves the command to the hosts every desk reaches.
+func (w *Workspace) passFor(ctx context.Context, nick string) string {
+	if w.Pass == nil {
+		return ""
+	}
+	pass, err := w.Pass(ctx)
+	if err != nil || pass == "" {
+		return ""
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.passes == nil {
+		w.passes = map[string][]string{}
+	}
+	k := strings.ToLower(nick)
+	if !slices.Contains(w.passes[k], pass) {
+		w.passes[k] = append(w.passes[k], pass)
+		// A command's background work outlives it a little: the last few.
+		if n := len(w.passes[k]); n > keptPasses {
+			w.passes[k] = w.passes[k][n-keptPasses:]
+		}
+	}
+	return pass
+}
+
+// keptPasses is how many of a desk's latest passes are blanked from what it
+// shows (each command is given one freshly signed).
+const keptPasses = 8
 
 func (w *Workspace) look(ctx context.Context, p config.Persona, name string, in map[string]any) (string, error) {
 	switch name {
@@ -288,7 +326,7 @@ func (w *Workspace) bash(ctx context.Context, p config.Persona, in map[string]an
 	if s := num(in, "timeout"); s > 0 {
 		timeout = min(time.Duration(s)*time.Second, maxTimeout)
 	}
-	out, err := w.sb.Run(ctx, p.Nick, Command{Args: shell(cmd), Dir: Root, Timeout: timeout})
+	out, err := w.sb.Run(ctx, p.Nick, Command{Args: shell(cmd), Dir: Root, Timeout: timeout, Pass: w.passFor(ctx, p.Nick)})
 	if err != nil {
 		return "", err
 	}

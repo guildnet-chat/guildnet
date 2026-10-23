@@ -86,6 +86,10 @@ type Runner struct {
 	// notifier tells the platform news people may want by email; guarded by
 	// mu, nil for none.
 	notifier Notifier
+	// deskBlocked are the install's own hosts desks never reach (deskhosts.go),
+	// guarded by mu; deskHostsMu keeps changes to the list one at a time.
+	deskBlocked []string
+	deskHostsMu sync.Mutex
 	// models answers outside agents' model calls (modelcalls.go); guarded
 	// by mu, nil for none.
 	models http.Handler

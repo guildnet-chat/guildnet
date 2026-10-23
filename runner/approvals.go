@@ -94,6 +94,9 @@ func (r *Runner) park(j job, a org.Approval) {
 func (r *Runner) raiseApproval(p config.Persona, channel, asker string, req *agent.ApprovalRequest) (org.Approval, bool) {
 	now := r.now()
 	route := r.approvalRoute(p)
+	if req.Tool == deskHostTool {
+		route = []string{r.cfg.Owner} // only the owner chooses who desks reach
+	}
 	a := org.Approval{
 		Agent: p.Nick, Approver: route[0], Route: route, Tool: req.Tool, Summary: req.Summary,
 		Channel: channel, Asker: asker, Resume: req.Resume,
@@ -185,6 +188,9 @@ func (r *Runner) moveAfter() time.Duration {
 func (r *Runner) canDecide(account string, a org.Approval) bool {
 	if r.isOwner(account) {
 		return true
+	}
+	if a.Tool == deskHostTool {
+		return false // only the owner chooses who desks reach
 	}
 	// Only someone still in the org: one taken out since keeps no say.
 	if !r.inOrgAsPerson(account) {

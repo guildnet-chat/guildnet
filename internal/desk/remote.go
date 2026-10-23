@@ -127,7 +127,7 @@ func (r *Remote) Run(ctx context.Context, nick string, c Command) (Output, error
 		TimedOut bool   `json:"timed_out"`
 	}
 	err := r.call(ctx, "POST", nick, "run", map[string]any{
-		"args": c.Args, "dir": c.Dir, "stdin": c.Stdin, "timeout_ms": c.Timeout.Milliseconds(),
+		"args": c.Args, "dir": c.Dir, "stdin": c.Stdin, "timeout_ms": c.Timeout.Milliseconds(), "pass": c.Pass,
 	}, &out)
 	return Output{Text: out.Output, Exit: out.Exit, TimedOut: out.TimedOut}, err
 }

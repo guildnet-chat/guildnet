@@ -17,7 +17,7 @@ console on GKE or Fargate, say).
 | --- | --- |
 | gVisor (`runsc`) | each desk gets its own kernel; a container escape reaches gVisor, not the host kernel |
 | The `desks` network | `internal` Docker network, 172.31.255.0/24, with no route out; IPv4 only (`desks-firewall.sh` refuses a desks' network with IPv6) |
-| `egress` | the only way out: an HTTPS (CONNECT) proxy to port 443 of the hosts in `GUILDNET_DESK_ALLOWED`, and to a network's git hosts with its egress pass ([git.md](git.md#reaching-the-host)); public addresses only. It isn't on the console's, runner's or database's networks |
+| `egress` | the only way out: an HTTPS (CONNECT) proxy to port 443 of the hosts in `GUILDNET_DESK_ALLOWED`, and to a network's git hosts and its owner's hosts with its egress pass ([git.md](git.md#reaching-the-host), [below](#a-networks-own-hosts)); public addresses only. It isn't on the console's, runner's or database's networks |
 | `desks-firewall.sh` | iptables rules: a desk reaches `egress` and nothing else on its network, not other desks and not the host. sandboxd checks it as it starts (one probe desk tries to reach another) and won't serve if it isn't working |
 | sandboxd | creates and stops desks. It holds the Docker socket (root-equivalent), so it's on the private network only and acts only on a console-signed token: valid 15 minutes, for one network's desks; only the console's admin token removes all of them |
 | Limits | memory, CPUs and processes per desk; commands run as an unprivileged user |
@@ -36,7 +36,7 @@ blocks everything else, not that.
 Mitigations:
 
 - Give teams only the repositories they need; a desk clones only its team's.
-- Keep `GUILDNET_DESK_ALLOWED` short.
+- Keep `GUILDNET_DESK_ALLOWED`, and each network's own hosts, short.
 - Desk output counts as untrusted: a write through a connector shortly
   after (a Linear issue, say) asks a person first, whatever its policy.
 
@@ -155,6 +155,27 @@ subdomains. Keep GitHub's hosts. Example, adding Rust's registry:
 ```sh
 GUILDNET_DESK_ALLOWED=github.com,api.github.com,codeload.github.com,*.githubusercontent.com,proxy.golang.org,sum.golang.org,dl.google.com,registry.npmjs.org,pypi.org,files.pythonhosted.org,crates.io,static.crates.io
 ```
+
+### A network's own hosts
+
+Past that list, each network's owner chooses more hosts for its desks, on
+the console's Connectors page ("Hosts desks may reach"). Anyone else asks:
+a person there, or an agent whose desk was refused a host (its
+`request_host` tool). It goes to the owner, and only the owner, as an
+approval, and approving adds the host. Each change is in the org log and
+emailed to the owner.
+
+- Exact host names only (no `*.`), on port 443. Never an address, a
+  single-label name, or one ending `.internal`, `.local`, `.localhost`,
+  `.lan`, `.home.arpa` and the like.
+- A blocklist wins whatever an owner's list says: GuildNet's own (paste
+  sites, file drops, request catchers and tunnels, in
+  `internal/sandbox/hosts.go`) and `GUILDNET_DESK_BLOCKED` (comma-separated,
+  on the console and runner; each blocks the name and every name under it).
+- The hosts reach `egress` in the network's egress pass, which the console
+  signs, as for its git hosts: `egress` needs `GUILDNET_SANDBOX_PUBLIC_KEY`.
+  Each command at a desk carries the pass as it is then, so a host approved
+  while an agent works opens from its next command.
 
 ## Managed Agents
 

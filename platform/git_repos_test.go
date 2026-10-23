@@ -363,8 +363,40 @@ func TestARunnersEgressPassOpensItsGitHostsOnly(t *testing.T) {
 	broker := httptest.NewServer(w.Broker)
 	defer broker.Close()
 	runners := desk.Broker{URL: broker.URL, Network: "acme", Secret: RunnerSecret(w, "acme")}
-	if pass, err := runners.Pass(context.Background()); err != nil || !sandbox.PassOpens(keys, pass, time.Now(), "127.0.0.1", port) {
+	if pass, err := runners.Pass(context.Background(), nil); err != nil || !sandbox.PassOpens(keys, pass, time.Now(), "127.0.0.1", port) {
 		t.Errorf("the runner's pass: %q, %v", pass, err)
+	}
+}
+
+// The hosts a network's owner chose (kept by its runner, which names them
+// when it asks) are in its pass too, on 443, but only as the platform
+// allows: names, public ones, none GuildNet's or the install's blocklist
+// names.
+func TestARunnersEgressPassOpensTheHostsItsOwnerChose(t *testing.T) {
+	w := NewWorldWith(t, func() Store { return platform.NewMemoryStore() }, func(o *Setup) {
+		o.Sandbox = platform.Sandbox{URL: "http://10.20.0.5:8443", Key: SandboxKey}
+		o.DeskBlocked = []string{"files.example.org"}
+	})
+	keys := []ed25519.PublicKey{SandboxKey.Public().(ed25519.PublicKey)}
+	broker := httptest.NewServer(w.Broker)
+	defer broker.Close()
+	runners := desk.Broker{URL: broker.URL, Network: "acme", Secret: RunnerSecret(w, "acme")}
+
+	pass, err := runners.Pass(context.Background(), []string{"api.stripe.com", "pastebin.com", "cdn.files.example.org", "10.0.0.5", "metadata.google.internal"})
+
+	if err != nil || !sandbox.PassOpens(keys, pass, time.Now(), "api.stripe.com", 443) {
+		t.Fatalf("the pass %q (%v) doesn't open api.stripe.com", pass, err)
+	}
+	if sandbox.PassOpens(keys, pass, time.Now(), "api.stripe.com", 8443) {
+		t.Error("the pass opens another port")
+	}
+	for _, host := range []string{"pastebin.com", "cdn.files.example.org", "10.0.0.5", "metadata.google.internal"} {
+		if sandbox.PassOpens(keys, pass, time.Now(), host, 443) {
+			t.Errorf("the pass opens %s", host)
+		}
+	}
+	if pass, err := runners.Pass(context.Background(), nil); err != nil || pass != "" {
+		t.Errorf("no git repositories and no hosts: %q, %v; want no pass", pass, err)
 	}
 }
 

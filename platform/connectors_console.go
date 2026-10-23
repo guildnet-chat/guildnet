@@ -62,6 +62,9 @@ type connectorsPage struct {
 	Repos   []gitRepoView
 	GitForm gitForm
 	Tested  *gitCheck
+	// Hosts desks may reach past the usual ones (desk_hosts.go), where there
+	// are desks of the console's own.
+	Hosts *deskHostsView
 }
 
 func (p *Platform) connectorsPage(w http.ResponseWriter, r *http.Request) {
@@ -78,6 +81,13 @@ func (p *Platform) showConnectorsWith(w http.ResponseWriter, r *http.Request, st
 	n := networkOf(r)
 	v := connectorsPage{CanSet: m.inTeam("approve", ""), Owner: m.Owner, GitHubOn: p.githubApp != nil, Connectors: p.connectorViews(r.Context(), n.Name),
 		GitOn: p.opts.GitRepos != nil, Repos: p.gitRepoViews(r.Context(), n.Name)}
+	if p.deskHostsOn() {
+		hosts, err := p.deskHosts(r)
+		if err != nil && problem == "" {
+			status, problem = statusOf(err), messageOf(err)
+		}
+		v.Hosts = hosts
+	}
 	if also != nil {
 		also(&v)
 	}

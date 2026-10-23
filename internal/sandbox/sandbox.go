@@ -42,6 +42,9 @@ type Exec struct {
 	Stdin   io.Reader // nil for none
 	Output  io.Writer // stdout and stderr together
 	Timeout time.Duration
+	// Pass is the network's egress pass, handed to the desks' proxy for
+	// whatever this command reaches; "" for none.
+	Pass string
 }
 
 // Result is how a command ended.

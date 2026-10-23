@@ -511,6 +511,9 @@ func (r *Runner) decideApproval(actor string, id int64, allow bool, reason strin
 	}
 	r.logChange(actor, strings.TrimSuffix(status, "d"), a.Agent, r.teamOf(a.Agent), detail)
 	a.Status, a.DecidedBy, a.Reason = status, actor, reason
+	if a.Tool == deskHostTool {
+		r.hostDecided(actor, a, allow, reason)
+	}
 	r.resumeAfter(a, allow, reason)
 	return a, nil
 }

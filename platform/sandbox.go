@@ -7,6 +7,7 @@ import (
 	"crypto/ed25519"
 	"errors"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -69,13 +70,32 @@ func (p *Platform) brokerSandbox(w http.ResponseWriter, r *http.Request) {
 	out := map[string]any{"url": s.URL,
 		"token": sandbox.DesksTokenFor(s.Key, n.Name, storage, now, deskTokenTTL), "expires": now.Add(deskTokenTTL).UTC().Format(time.RFC3339)}
 	// The network's egress pass: its desks hand it to their proxy to reach
-	// its git repositories' hosts, and only its own.
-	if hosts := p.gitHosts(r.Context(), n.Name); len(hosts) > 0 {
+	// its git repositories' hosts, and the hosts its owner chose (its runner
+	// keeps the list, and names them), as this install allows: only its own.
+	hosts := p.gitHosts(r.Context(), n.Name)
+	for _, raw := range r.URL.Query()["host"] {
+		if len(hosts) >= maxPassHosts {
+			break
+		}
+		host, problem := sandbox.CheckDeskHost(raw, p.opts.DeskBlocked)
+		if problem != "" {
+			p.opts.Logger.Printf("%s's desks: not opening %q: %s", n.Name, oneLine(raw, 100), problem)
+			continue
+		}
+		if h := host + ":443"; !slices.Contains(hosts, h) {
+			hosts = append(hosts, h)
+		}
+	}
+	if len(hosts) > 0 {
 		out["egress"] = sandbox.PassFor(s.Key, n.Name, hosts, now, deskTokenTTL)
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSONResponse(w, http.StatusOK, out)
 }
+
+// maxPassHosts is the most hosts a network's pass opens: its git hosts and
+// its owner's list (50 at most) together.
+const maxPassHosts = 100
 
 // deskTokenTTL is how long a runner's desk token is good for: it asks for
 // another before then, so one that leaks isn't any use for long.

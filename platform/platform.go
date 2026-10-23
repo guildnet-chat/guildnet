@@ -94,6 +94,10 @@ type Options struct {
 	// (a self-hosted install's own).
 	GitRepos        GitRepos
 	GitPrivateHosts []string
+	// DeskBlocked are hosts no network's desks may reach, whatever its
+	// owner's list says, beside GuildNet's own (sandbox.DefaultBlocked): each
+	// blocks the name and every name under it.
+	DeskBlocked []string
 	// Host runs new networks, in Region; nil means networks can't be
 	// created here.
 	Host   Host
@@ -492,6 +496,12 @@ func (p *Platform) Handler() http.Handler {
 	console.HandleFunc("POST /git", p.ownerOnly(p.addGitRepo))
 	console.HandleFunc("POST /git/{name}/test", p.ownerOnly(p.testGitRepo))
 	console.HandleFunc("POST /git/{name}/remove", p.ownerOnly(p.removeGitRepo))
+	if p.deskHostsOn() {
+		// The runner decides who may: the owner adds and removes, others ask.
+		console.HandleFunc("POST /desk-hosts", p.signedIn(p.addDeskHost))
+		console.HandleFunc("POST /desk-hosts/ask", p.signedIn(p.askForDeskHost))
+		console.HandleFunc("POST /desk-hosts/{host}/remove", p.signedIn(p.removeDeskHost))
+	}
 	console.HandleFunc("GET /server", p.signedIn(p.serverPage))
 	console.HandleFunc("POST /server/test-email", p.signedIn(p.sendTestEmail))
 	console.HandleFunc("GET /settings", p.signedIn(p.settingsPage))

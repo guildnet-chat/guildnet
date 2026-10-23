@@ -105,6 +105,28 @@ func TestACommandsOutputExitAndInputThroughDocker(t *testing.T) {
 	}
 }
 
+// A command given the network's pass reaches the proxy with it, as the
+// proxy's password; one without goes as the desk was made.
+func TestACommandsPassGoesToTheProxy(t *testing.T) {
+	dk, d := dockerRig(t)
+	dk.Proxy = "http://172.31.255.2:3128"
+	dk.Remove(context.Background(), d)
+	if err := dk.Ensure(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+
+	dk.Exec(context.Background(), d, sandbox.Exec{Args: []string{"sh", "-c", "echo $HTTPS_PROXY $https_proxy"}, Dir: "/workspace", Output: &out, Pass: "v2.abc.def", Timeout: 10 * time.Second})
+	plain, _ := run(t, dk, d, 10*time.Second, "sh", "-c", "echo $HTTPS_PROXY")
+
+	if got := strings.TrimSpace(out.String()); got != "http://guildnet:v2.abc.def@172.31.255.2:3128 http://guildnet:v2.abc.def@172.31.255.2:3128" { // trufflehog:ignore (made up)
+		t.Errorf("with the pass: %q", got)
+	}
+	if got := strings.TrimSpace(plain); got != "http://172.31.255.2:3128" {
+		t.Errorf("without: %q", got)
+	}
+}
+
 // What sandboxd runs at a desk itself (the timeout around each command, the
 // shell that reads and writes files) is the image's, by its full path: a
 // program an earlier command left in the home, ahead on the PATH, doesn't

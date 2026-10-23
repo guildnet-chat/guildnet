@@ -118,6 +118,12 @@ func (f *fakeBackend) RemoveNetwork(_ context.Context, network string) error {
 	return nil
 }
 
+func (f *fakeBackend) execCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.execs)
+}
+
 func (f *fakeBackend) lastExec() sandbox.Exec {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -525,6 +531,34 @@ func TestACommandsInputReachesIt(t *testing.T) {
 
 	if out.Text != "ghs_token" {
 		t.Errorf("got %q", out.Text)
+	}
+}
+
+// A command goes through the desks' proxy with the network's egress pass,
+// which opens the hosts its owner chose: handed in with each command, as
+// the hosts can change while a desk works.
+func TestACommandCarriesTheNetworksEgressPass(t *testing.T) {
+	r := start(t)
+	pass := sandbox.PassFor(privateKey, "acme", []string{"api.stripe.com:443"}, r.clock.Now(), 15*time.Minute)
+
+	r.client("acme").Run(context.Background(), "kai", desk.Command{Args: []string{"curl", "https://api.stripe.com"}, Pass: pass, Timeout: time.Second})
+	if got := r.backend.lastExec().Pass; got != pass {
+		t.Errorf("the command was run with pass %q, want the network's", got)
+	}
+	r.client("acme").Run(context.Background(), "kai", desk.Command{Args: []string{"true"}, Timeout: time.Second})
+	if got := r.backend.lastExec().Pass; got != "" {
+		t.Errorf("a command given no pass was run with %q", got)
+	}
+	// Only the network's own pass, as the platform signed it.
+	for what, other := range map[string]string{
+		"globex's pass": sandbox.PassFor(privateKey, "globex", []string{"api.stripe.com:443"}, r.clock.Now(), 15*time.Minute),
+		"a desks token": sandbox.TokenFor(privateKey, "acme", sandbox.Desks, r.clock.Now(), 15*time.Minute),
+		"made up":       "v2.e30.AAAA",
+	} {
+		before := r.backend.execCount()
+		if _, err := r.client("acme").Run(context.Background(), "kai", desk.Command{Args: []string{"true"}, Pass: other, Timeout: time.Second}); err == nil || r.backend.execCount() != before {
+			t.Errorf("acme's command with %s: %v, want it refused, not run", what, err)
+		}
 	}
 }
 

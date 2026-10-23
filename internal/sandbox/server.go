@@ -341,6 +341,9 @@ type runRequest struct {
 	Dir       string   `json:"dir"`
 	Stdin     string   `json:"stdin"`
 	TimeoutMS int64    `json:"timeout_ms"`
+	// Pass is the network's egress pass, for the proxy, signed by the
+	// platform for the desk's own network.
+	Pass string `json:"pass,omitempty"`
 }
 
 type runResponse struct {
@@ -367,11 +370,16 @@ func (s *Server) run(w http.ResponseWriter, r *http.Request, d Desk) error {
 	case timeout > maxTimeout:
 		timeout = maxTimeout
 	}
+	if req.Pass != "" {
+		if c, ok := claimsOf(s.opts.PublicKeys, req.Pass, s.opts.Now()); !ok || c.Scope != Egress || !strings.EqualFold(c.Network, d.Network) {
+			return bad("that isn't this network's egress pass")
+		}
+	}
 	if err := s.awake(r.Context(), d, false); err != nil {
 		return err
 	}
 	out := &capped{max: maxOutput}
-	e := Exec{Args: req.Args, Dir: req.Dir, Output: out, Timeout: timeout}
+	e := Exec{Args: req.Args, Dir: req.Dir, Output: out, Timeout: timeout, Pass: req.Pass}
 	if req.Stdin != "" {
 		e.Stdin = strings.NewReader(req.Stdin)
 	}

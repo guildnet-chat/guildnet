@@ -182,6 +182,13 @@ type newsEvent struct {
 		Spent float64 `json:"spent"`
 		Cap   float64 `json:"cap"`
 	} `json:"spend"`
+	DeskHost *struct {
+		Host   string `json:"host"`
+		Change string `json:"change"`
+		By     string `json:"by"`
+		Asked  string `json:"asked"`
+		Why    string `json:"why"`
+	} `json:"desk_host"`
 }
 
 // news takes what a network's runner says happened, and emails whoever
@@ -200,6 +207,9 @@ func (p *Platform) news(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case e.Type == "spend_cap" && e.Spend != nil:
 		p.tellOwner(r.Context(), n, capEmail(n, origin, e.Spend.Spent, e.Spend.Cap, p.opts.Now()))
+	case e.Type == "desk_host" && e.DeskHost != nil && e.DeskHost.Host != "":
+		h := e.DeskHost
+		p.tellOwner(r.Context(), n, deskHostEmail(n, origin+"/connectors#hosts", oneLine(h.Host, 253), h.Change, oneLine(h.By, 64), oneLine(h.Asked, 64), oneLine(h.Why, 300), p.opts.Now()))
 	case e.Type == "approval" && e.Approval != nil && config.ValidNick(e.Approval.Approver):
 		a := e.Approval
 		v, err := p.alertsOf(r.Context(), n, a.Approver)

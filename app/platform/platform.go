@@ -296,6 +296,13 @@ func Run(cfg Config) {
 			opts.GitPrivateHosts = append(opts.GitPrivateHosts, h)
 		}
 	}
+	// Hosts no network's desks reach, whatever its owner's list says, beside
+	// GuildNet's own.
+	for _, h := range strings.Split(os.Getenv("GUILDNET_DESK_BLOCKED"), ",") {
+		if h = strings.TrimSpace(h); h != "" {
+			opts.DeskBlocked = append(opts.DeskBlocked, h)
+		}
+	}
 	// What this GuildNet goes by, and how it looks.
 	brand, err := brandFrom(os.Getenv)
 	if err != nil {

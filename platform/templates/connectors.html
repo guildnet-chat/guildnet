@@ -77,6 +77,47 @@
   {{end}}
 </section>
 {{end}}
+{{with .Hosts}}
+<section class="card" id="hosts">
+  <h2>Hosts desks may reach</h2>
+  <p>Agents' desks reach GitHub, and the Go, npm and PyPI registries. These hosts too, over HTTPS, for every desk here. Anything a desk can read can be sent to a host it reaches, so keep this to hosts you trust.{{if not $.Data.View.Owner}} {{.Owner}} (the owner) chooses them: ask for one below.{{end}}</p>
+  {{with .Asked}}<p class="done" role="status">Asked {{$.Data.View.Hosts.Owner}} to let desks reach {{.}}. GuildServ tells you what they decide.</p>{{end}}
+  {{if .List}}
+  <div class="table-wrap">
+  <table class="data">
+    <tr><th>Host</th><th>Added</th>{{if $.Data.View.Owner}}<th></th>{{end}}</tr>
+    {{range .List}}
+    <tr>
+      <td class="wrap"><strong>{{.Host}}</strong>{{if .Blocked}} <span class="badge danger">Blocked here</span>{{end}}{{if .Asked}}<br><span class="muted small">asked by {{.Asked}}{{with .Why}}: {{.}}{{end}}</span>{{end}}</td>
+      <td>{{when .At}} by {{.By}}</td>
+      {{if $.Data.View.Owner}}
+      <td class="num"><form method="post" action="/desk-hosts/{{.Host}}/remove" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="outline">Remove</button></form></td>
+      {{end}}
+    </tr>
+    {{end}}
+  </table>
+  </div>
+  {{else}}
+  <p class="muted">No other hosts yet. An agent whose desk is refused one asks {{.Owner}} for it.</p>
+  {{end}}
+  {{if $.Data.View.Owner}}
+  <form method="post" action="/desk-hosts" class="fields">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <label>Host <input name="host" value="{{.Form}}" required placeholder="api.example.com" autocomplete="off" spellcheck="false" autocapitalize="off">
+      <span class="hint muted small">its name only: no https://, port or path</span></label>
+    <button>Add host</button>
+  </form>
+  {{else}}
+  <form method="post" action="/desk-hosts/ask" class="fields">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <h3 class="wide">Ask for a host</h3>
+    <label>Host <input name="host" value="{{.Form}}" required placeholder="api.example.com" autocomplete="off" spellcheck="false" autocapitalize="off"></label>
+    <label class="wide">Why desks need it <input name="why" required maxlength="300"></label>
+    <button>Ask {{.Owner}}</button>
+  </form>
+  {{end}}
+</section>
+{{end}}
 {{with .Connectors}}
 <section class="card" id="services">
   <h2>Services</h2>

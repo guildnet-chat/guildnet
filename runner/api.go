@@ -141,6 +141,10 @@ func (r *Runner) startAPI() error {
 	mux.HandleFunc("GET /v1/staff/{nick}/work", r.apiWork)
 	mux.HandleFunc("GET /v1/connectors", r.apiConnectors)
 	mux.HandleFunc("POST /v1/connectors/{connector}/tools/{tool}", r.apiSetConnectorTool)
+	mux.HandleFunc("GET /v1/desk-hosts", r.apiDeskHosts)
+	mux.HandleFunc("POST /v1/desk-hosts", r.apiAddDeskHost)
+	mux.HandleFunc("POST /v1/desk-hosts/ask", r.apiAskForDeskHost)
+	mux.HandleFunc("DELETE /v1/desk-hosts/{host}", r.apiRemoveDeskHost)
 	// Outside agents' programs, through the platform: their own token says
 	// who's calling, instead of a person.
 	agents := http.NewServeMux()

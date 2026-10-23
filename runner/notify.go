@@ -51,14 +51,16 @@ func (b BrokerNews) Notify(ctx context.Context, e Event) error {
 }
 
 // News for the platform, which emails whoever wants to hear it: who an
-// approval is waiting on, and the network reaching its daily spending cap.
-// It's only news: sent in the background, never waited on.
+// approval is waiting on, the network reaching its daily spending cap, and
+// a change to the hosts its desks may reach. It's only news: sent in the
+// background, never waited on.
 
 // Event is one piece of news.
 type Event struct {
-	Type     string         `json:"type"` // "approval" or "spend_cap"
+	Type     string         `json:"type"` // "approval", "spend_cap" or "desk_host"
 	Approval *ApprovalEvent `json:"approval,omitempty"`
 	Spend    *SpendEvent    `json:"spend,omitempty"`
+	DeskHost *DeskHostEvent `json:"desk_host,omitempty"`
 }
 
 // ApprovalEvent says an approval is waiting on Approver: just raised, or
