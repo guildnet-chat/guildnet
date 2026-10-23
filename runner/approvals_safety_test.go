@@ -4,6 +4,7 @@ package runner_test
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -12,9 +13,11 @@ import (
 )
 
 // Someone taken out of the org keeps no say over approvals they were asked
-// to decide while in it.
+// to decide while in it: not through the console, which still knows them by
+// their account, and not over IRC, where their account is suspended (Ergo
+// disconnects it), so nothing they could say would reach GuildServ.
 func TestSomeoneTakenOutCantDecideApprovals(t *testing.T) {
-	n := startNetwork(t, wantsToMerge())
+	n := startNetwork(t, wantsToMerge(), withAPI())
 	n.human.say("GuildServ", `MEMBER ADD dana ROLE "Engineering manager" TEAM Engineering`)
 	n.human.expect("dana added", guildServSaying("method", "added dana"))
 	n.human.say("GuildServ", "SET kai REPORTS-TO dana")
@@ -28,9 +31,20 @@ func TestSomeoneTakenOutCantDecideApprovals(t *testing.T) {
 	n.human.expect("kai back to vera", guildServSaying("method", "reports-to is now vera"))
 	n.human.say("GuildServ", "MEMBER REMOVE dana")
 	n.human.expect("dana removed", guildServSaying("method", "dana"))
-	dana.say("GuildServ", "APPROVE 1")
 
-	dana.expect("a refusal", guildServSaying("dana", "isn't in it"))
+	if status, out := n.api("dana").call("POST", "/v1/approvals/1/approve", nil); status < 400 {
+		t.Errorf("dana, taken out, approved through the console: %d %v", status, out)
+	}
+	var said []string
+	for range 100 {
+		if said = suspensions(n.srv.NickServ()); slices.Contains(said, "ADD dana") {
+			break
+		}
+		time.Sleep(waitTimeout / 100)
+	}
+	if !slices.Contains(said, "ADD dana") {
+		t.Errorf("dana's IRC account wasn't suspended: NickServ was told %v", n.srv.NickServ())
+	}
 	n.human.expectQuiet("kai carrying on", 300*time.Millisecond, fromContaining("kai", "#engineering", "merged"))
 }
 
