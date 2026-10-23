@@ -216,6 +216,7 @@ Public Go API (version 0): every package outside `internal/`.
 | `netspec` | what the console and whatever runs a network exchange: spec, addresses, name rules |
 | `templates` | network templates (`agency`, `opensource`, `saas`, `smallbiz`, `solo`, `team`) |
 | `pki` | internal CA, server and client TLS configs |
+| `serve` | serving until SIGTERM: in-flight requests get 8 seconds, background loops stop, deferred cleanup (Sentry flush, database close) runs |
 | `charts`, `limit`, `mail`, `monitor`, `pgtest` | console charts, rate limiting, SMTP/Resend mail, Sentry fault reports, throwaway Postgres for tests |
 | `internal/agent`, `internal/brain` | prompts, `Tool`/`Toolbox`, untrusted wrapping, read-then-write rule; model calls and the tool loop |
 | `internal/desk`, `internal/sandbox`, `internal/egress` | desk tools and sandboxd client; sandboxd (API, Docker backend, proxy, tokens); public-HTTPS-only dialer |

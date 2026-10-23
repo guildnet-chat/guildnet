@@ -37,6 +37,7 @@ import (
 	"github.com/guildnet-chat/guildnet/internal/sandbox"
 	"github.com/guildnet-chat/guildnet/monitor"
 	"github.com/guildnet-chat/guildnet/pki"
+	"github.com/guildnet-chat/guildnet/serve"
 )
 
 func env(name, fallback string) string {
@@ -48,6 +49,14 @@ func env(name, fallback string) string {
 
 func main() {
 	logger := log.New(os.Stderr, "sandboxd: ", log.LstdFlags)
+	// A failure ends it with 1, once what's deferred (the fault reports'
+	// flush) has run.
+	failed := false
+	defer func() {
+		if failed {
+			os.Exit(1)
+		}
+	}()
 	// Faults in GuildNet itself go to GuildNet's Sentry, when it's set.
 	defer monitor.Start(monitor.FromEnv("sandboxd"))()
 	defer monitor.Recover()
@@ -58,7 +67,7 @@ func main() {
 	var err error
 	switch cmd {
 	case "serve":
-		err = serve(logger)
+		err = serveDesks(logger)
 	case "proxy":
 		err = proxy(logger)
 	case "keygen":
@@ -85,7 +94,8 @@ func main() {
 		err = fmt.Errorf("unknown command %q: serve, proxy, keygen, tls-request or tls-install", cmd)
 	}
 	if err != nil {
-		logger.Fatal(err)
+		logger.Print(err)
+		failed = true
 	}
 }
 
@@ -114,7 +124,7 @@ func watchDisks(logger *log.Logger, backend *sandbox.Docker) {
 	}
 }
 
-func serve(logger *log.Logger) error {
+func serveDesks(logger *log.Logger) error {
 	// The platform's key, or keys while it's changed (comma-separated).
 	var keys []ed25519.PublicKey
 	for _, text := range strings.Split(os.Getenv("GUILDNET_SANDBOX_PUBLIC_KEY"), ",") {
@@ -186,23 +196,20 @@ func serve(logger *log.Logger) error {
 	perNetwork, _ := strconv.Atoi(os.Getenv("GUILDNET_DESKS_PER_NETWORK"))
 	s := sandbox.NewServer(sandbox.Options{Backend: backend, PublicKeys: keys, Logger: logger, MaxRunning: atOnce, MaxPerNetwork: perNetwork, DefaultStorageGB: defaultGB})
 	logger.Printf("room for %d desks at once, %s each", atOnce, backend.Memory)
-	go func() {
-		for range time.Tick(time.Minute) {
-			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-			s.StopIdle(ctx)
-			cancel()
-		}
-	}()
+	// Until it's told to stop (SIGTERM): then calls in flight finish.
+	ctx, stop := serve.Signalled()
+	defer stop()
+	go serve.Every(ctx, time.Minute, func(ctx context.Context) {
+		ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+		s.StopIdle(ctx)
+		cancel()
+	})
 	if backend.Files != "" {
 		logger.Printf("desks' files in %s", backend.Files)
 	}
 	// Networks' limits can add up to more than the desks' disk, and desks'
 	// images (rebuilt at each deploy) fill Docker's: both are watched.
-	go func() {
-		for range time.Tick(10 * time.Minute) {
-			watchDisks(logger, backend)
-		}
-	}()
+	go serve.Every(ctx, 10*time.Minute, func(context.Context) { watchDisks(logger, backend) })
 	listen := env("GUILDNET_SANDBOX_LISTEN", ":8443")
 	runtime := backend.Runtime
 	if runtime == "" {
@@ -215,10 +222,13 @@ func serve(logger *log.Logger) error {
 	if dir := os.Getenv("GUILDNET_SANDBOX_TLS_DIR"); dir != "" {
 		srv.TLSConfig = pki.ServerTLS(filepath.Join(dir, "sandboxd.crt"), filepath.Join(dir, "sandboxd.key"))
 		logger.Printf("over TLS, with the certificate in %s", dir)
-		return srv.ListenAndServeTLS("", "")
 	}
-	return srv.ListenAndServe()
+	return serve.Until(ctx, shutdownGrace, serve.HTTP{Server: srv})
 }
+
+// shutdownGrace is how long calls in flight get to finish once sandboxd is
+// told to stop: within Docker's 10 seconds before it kills it.
+const shutdownGrace = 8 * time.Second
 
 func proxy(logger *log.Logger) error {
 	allowed := sandbox.DefaultAllowed
@@ -252,5 +262,7 @@ func proxy(logger *log.Logger) error {
 		logger.Printf("git servers on this network: %s", strings.Join(private, ", "))
 	}
 	srv := &http.Server{Addr: listen, Handler: monitor.Handler(p), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 2 * time.Minute}
-	return srv.ListenAndServe()
+	ctx, stop := serve.Signalled()
+	defer stop()
+	return serve.Until(ctx, shutdownGrace, serve.HTTP{Server: srv})
 }

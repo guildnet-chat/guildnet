@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -25,6 +26,7 @@ import (
 	"github.com/guildnet-chat/guildnet/netspec"
 	"github.com/guildnet-chat/guildnet/pki"
 	"github.com/guildnet-chat/guildnet/platform"
+	"github.com/guildnet-chat/guildnet/serve"
 )
 
 // Store is what the console keeps its own data in.
@@ -62,6 +64,14 @@ type Config struct {
 // Run serves the console, as its settings say, until it can't.
 func Run(cfg Config) {
 	logger := log.New(os.Stdout, "", log.LstdFlags)
+	// Serving that fails ends the program with 1, once what's deferred has
+	// run.
+	failed := false
+	defer func() {
+		if failed {
+			os.Exit(1)
+		}
+	}()
 	// Faults in GuildNet itself go to GuildNet's Sentry, when it's set.
 	defer monitor.Start(monitor.FromEnv("platform"))()
 	defer monitor.Recover()
@@ -180,14 +190,18 @@ func Run(cfg Config) {
 		return
 	}
 
+	// Until it's told to stop (SIGTERM, at a deploy): then what's in flight
+	// finishes, and Run returns.
+	ctx, stop := serve.Signalled()
+	defer stop()
+	var servers []serve.Server
+
 	// Expired sessions are cleared out hourly.
-	go func() {
-		for range time.Tick(time.Hour) {
-			if err := s.DeleteExpired(context.Background(), time.Now()); err != nil {
-				monitor.Problem(logger, "clearing expired sessions: %v", err)
-			}
+	go serve.Every(ctx, time.Hour, func(ctx context.Context) {
+		if err := s.DeleteExpired(ctx, time.Now()); err != nil {
+			monitor.Problem(logger, "clearing expired sessions: %v", err)
 		}
-	}()
+	})
 
 	// The edge in front (Caddy), whose X-Forwarded-For is believed.
 	var proxies []netip.Prefix
@@ -335,13 +349,11 @@ func Run(cfg Config) {
 			if err := sandboxCerts(own, dir, names, time.Now()); err != nil {
 				logger.Fatalf("sandboxd's certificate: %v", err)
 			}
-			go func() {
-				for range time.Tick(24 * time.Hour) {
-					if err := sandboxCerts(own, dir, names, time.Now()); err != nil {
-						monitor.Problem(logger, "renewing sandboxd's certificate: %v", err)
-					}
+			go serve.Every(ctx, 24*time.Hour, func(context.Context) {
+				if err := sandboxCerts(own, dir, names, time.Now()); err != nil {
+					monitor.Problem(logger, "renewing sandboxd's certificate: %v", err)
 				}
-			}()
+			})
 		}
 		logger.Printf("desks: sandbox at %s", url)
 	}
@@ -352,11 +364,7 @@ func Run(cfg Config) {
 	// What the platform does every so often: finishing off deleted networks'
 	// desks (once the sandbox is awake), and whatever's plugged in does.
 	for _, job := range p.Jobs() {
-		go func() {
-			for range time.Tick(job.Every) {
-				job.Run(context.Background())
-			}
-		}()
+		go serve.Every(ctx, job.Every, job.Run)
 	}
 	// The edge sends IRC apps that forgot TLS here, to be told so.
 	if listen := os.Getenv("GUILDNET_IRC_HINT_LISTEN"); listen != "" {
@@ -364,15 +372,17 @@ func Run(cfg Config) {
 		if err != nil {
 			logger.Fatal(err)
 		}
-		go p.ServeIRCHint(l)
+		servers = append(servers, serve.Func(func() error {
+			if err := p.ServeIRCHint(l); !errors.Is(err, net.ErrClosed) {
+				return err
+			}
+			return nil
+		}, func(context.Context) error { return l.Close() }))
 	}
 	// The edge asks here before getting a network's HTTPS certificate: a
 	// listener of its own, never proxied to the internet.
 	if listen := os.Getenv("GUILDNET_CERT_CHECK_LISTEN"); listen != "" {
-		go func() {
-			srv := &http.Server{Addr: listen, Handler: monitor.Handler(p.CertificateCheck()), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 2 * time.Minute}
-			logger.Fatal(srv.ListenAndServe())
-		}()
+		servers = append(servers, serve.HTTP{Server: &http.Server{Addr: listen, Handler: monitor.Handler(p.CertificateCheck()), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 2 * time.Minute}})
 	}
 	// Networks' runners get their model keys and GitHub tokens here: a
 	// listener of its own, on the networks' private Docker networks, never
@@ -392,28 +402,21 @@ func Run(cfg Config) {
 			logger.Fatalf("the broker's certificate: %v", err)
 		}
 		// Renewed well before it runs out.
-		go func() {
-			for range time.Tick(24 * time.Hour) {
-				if err := brokerCerts(brokerTLS, share, names, time.Now()); err != nil {
-					monitor.Problem(logger, "renewing the broker's certificate: %v", err)
-				}
+		go serve.Every(ctx, 24*time.Hour, func(context.Context) {
+			if err := brokerCerts(brokerTLS, share, names, time.Now()); err != nil {
+				monitor.Problem(logger, "renewing the broker's certificate: %v", err)
 			}
-		}()
+		})
 		logger.Printf("broker: TLS for %s, from the console's own CA", strings.Join(names, ", "))
 	}
 	if listen := os.Getenv("GUILDNET_GITHUB_BROKER_LISTEN"); listen != "" {
-		go func() {
-			srv := &http.Server{Addr: listen, Handler: monitor.Handler(p.Broker()), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 2 * time.Minute}
-			if shared := os.Getenv("GUILDNET_PKI_SHARED"); shared != "" {
-				srv.TLSConfig = pki.ServerTLS(filepath.Join(shared, "broker.crt"), filepath.Join(shared, "broker.key"))
-				logger.Fatal(srv.ListenAndServeTLS("", ""))
-			}
-			if brokerTLS != "" {
-				srv.TLSConfig = pki.ServerTLS(filepath.Join(brokerTLS, "broker.crt"), filepath.Join(brokerTLS, "broker.key"))
-				logger.Fatal(srv.ListenAndServeTLS("", ""))
-			}
-			logger.Fatal(srv.ListenAndServe())
-		}()
+		srv := &http.Server{Addr: listen, Handler: monitor.Handler(p.Broker()), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 2 * time.Minute}
+		if shared := os.Getenv("GUILDNET_PKI_SHARED"); shared != "" {
+			srv.TLSConfig = pki.ServerTLS(filepath.Join(shared, "broker.crt"), filepath.Join(shared, "broker.key"))
+		} else if brokerTLS != "" {
+			srv.TLSConfig = pki.ServerTLS(filepath.Join(brokerTLS, "broker.crt"), filepath.Join(brokerTLS, "broker.key"))
+		}
+		servers = append(servers, serve.HTTP{Server: srv})
 	}
 	srv := &http.Server{Addr: listen, Handler: monitor.Handler(p.Handler()), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 2 * time.Minute}
 	// Listening before saying so: what waits for this line can connect.
@@ -422,5 +425,14 @@ func Run(cfg Config) {
 		logger.Fatal(err)
 	}
 	logger.Printf("platform listening on %s (landing page: http://%s%s)", listen, base, listen)
-	logger.Fatal(srv.Serve(l))
+	if err := serve.Until(ctx, shutdownGrace, append(servers, serve.HTTP{Server: srv, Listener: l})...); err != nil {
+		monitor.Problem(logger, "serving: %v", err)
+		failed = true
+		return
+	}
+	logger.Print("stopped")
 }
+
+// shutdownGrace is how long requests in flight get to finish once the
+// console is told to stop: within Docker's 10 seconds before it kills it.
+const shutdownGrace = 8 * time.Second
