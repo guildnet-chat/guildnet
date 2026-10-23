@@ -4,6 +4,7 @@ package platform
 
 import (
 	"fmt"
+	"html/template"
 	"math"
 	"net/http"
 	"net/url"
@@ -58,10 +59,8 @@ func (p *Platform) loadChrome(r *http.Request) chrome {
 	var c chrome
 	c.Waiting, _ = p.loadApprovals(r)
 	if m, err := p.loadMe(r); err == nil {
-		s, _ := sessionOf(r)
-		n := networkOf(r)
 		c.Owner = m.Owner
-		c.Settings = n.OwnerNick != "" && p.opts.Host != nil && strings.EqualFold(n.OwnerNick, s.Account)
+		c.Settings = p.seesSettings(r)
 		c.Server, _ = p.serverAccess(r)
 		hire, log := m.Abilities["hire"], m.Abilities["log"]
 		c.CanHire = m.Owner || hire.Org || len(hire.Teams) > 0
@@ -69,6 +68,14 @@ func (p *Platform) loadChrome(r *http.Request) chrome {
 		c.CanSpend = m.anywhere("spend")
 	}
 	return c
+}
+
+// seesSettings says whether the one signed in owns the request's network, and
+// the host runs it: whoever sees its Settings.
+func (p *Platform) seesSettings(r *http.Request) bool {
+	s, _ := sessionOf(r)
+	n := networkOf(r)
+	return n.OwnerNick != "" && p.opts.Host != nil && strings.EqualFold(n.OwnerNick, s.Account)
 }
 
 func (p *Platform) render(w http.ResponseWriter, r *http.Request, status int, name string, data any) {
@@ -239,6 +246,7 @@ type orgView struct {
 	Models       []modelGroup
 	DefaultModel string
 	Checklist    *checklistView // the owner's getting started, until it's done
+	Notice       template.HTML  // the extension's, for the owner (Hooks.Notice)
 	// FirstHire: no agents yet, so the hiring form starts open.
 	FirstHire bool
 }
@@ -301,6 +309,9 @@ func (p *Platform) loadOrg(r *http.Request) (orgView, error) {
 	v.Tree = p.reportingTree(r, chart, s.Account)
 	if owner {
 		v.Checklist = p.checklist(r, chart)
+	}
+	if p.seesSettings(r) {
+		v.Notice = p.notice(r, networkOf(r))
 	}
 	return v, nil
 }

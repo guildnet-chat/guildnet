@@ -26,6 +26,8 @@ type house struct {
 	refuse        string // why a network can't be deleted yet
 	deleteErr     error
 	brokenSection bool
+	notice        string // atop the owner's org chart
+	brokenNotice  bool
 }
 
 func (h *house) hooks(c *platform.Core) platform.Hooks {
@@ -45,6 +47,12 @@ func (h *house) hooks(c *platform.Core) platform.Hooks {
 			routes.Handle("POST /settings/house", platform.SignedIn, func(w http.ResponseWriter, r *http.Request) {
 				io.WriteString(w, "house rules kept for "+c.NetworkOf(r).Name)
 			})
+		},
+		Notice: func(r *http.Request, n platform.Network) (template.HTML, error) {
+			if h.brokenNotice {
+				return "", errors.New("the house ledger is down")
+			}
+			return template.HTML(h.notice), nil
 		},
 		FormAction: []string{"https://pay.example.com"},
 		BeforeDelete: func(ctx context.Context, n platform.Network) (string, error) {
@@ -82,6 +90,32 @@ func TestAnExtensionAddsSectionsToSettings(t *testing.T) {
 	h.brokenSection = true
 	if page := console.Get("/settings"); page.Status != http.StatusOK || !strings.Contains(page.Text(), "House rules") || !strings.Contains(page.Text(), "Company timezone") {
 		t.Errorf("with a failing section: %d\n%s", page.Status, page.Text())
+	}
+}
+
+// A notice is something for the owner to act on (GuildNet's: desks out of
+// hours), atop the org chart, where they arrive.
+func TestAnExtensionPutsANoticeAtopTheOwnersOrgChart(t *testing.T) {
+	h := &house{notice: `<p class="banner" id="house-notice">The house is closed.</p>`}
+	w := houseWorld(t, h)
+	_, console := w.Created("ada@example.com", "initech")
+
+	if page := console.Get("/"); page.Status != http.StatusOK || !strings.Contains(page.Body, h.notice) {
+		t.Errorf("the owner's org chart: %d, want the house's notice as it wrote it:\n%s", page.Status, page.Body)
+	}
+	if page := console.Get("/teams"); strings.Contains(page.Body, "house-notice") {
+		t.Error("the notice is on every page, not only the org chart")
+	}
+	// Only for whoever owns the network: a network the host doesn't run has
+	// nobody to tell.
+	if page := w.Browser("acme").SignedIn("ada").Get("/"); strings.Contains(page.Body, "house-notice") {
+		t.Error("acme, which nobody owns here, shows the notice")
+	}
+
+	// A notice that fails is left out; the org chart still shows.
+	h.brokenNotice = true
+	if page := console.Get("/"); page.Status != http.StatusOK || strings.Contains(page.Body, "house-notice") || !strings.Contains(page.Text(), "Org chart") {
+		t.Errorf("with a failing notice: %d\n%s", page.Status, page.Text())
 	}
 }
 

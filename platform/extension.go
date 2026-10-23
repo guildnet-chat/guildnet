@@ -38,6 +38,10 @@ type Hooks struct {
 	// Settings are sections of a network's Settings, for its owner, after
 	// the company's timezone, in this order.
 	Settings []SettingsSection
+	// Notice is something for a network's owner to act on (its desks out of
+	// hours), atop its org chart, for whoever sees its Settings; "" for
+	// none. A notice that fails is left out.
+	Notice func(r *http.Request, n Network) (template.HTML, error)
 	// Console adds pages to every network's console.
 	Console func(Routes)
 	// FormAction are other places the console's forms may send people (a
@@ -387,6 +391,19 @@ func (p *Platform) mayDelete(ctx context.Context, n Network) (refusal string, er
 		return "", nil
 	}
 	return p.hooks.BeforeDelete(ctx, n)
+}
+
+// notice is the extension's notice for n's owner, or "".
+func (p *Platform) notice(r *http.Request, n Network) template.HTML {
+	if p.hooks.Notice == nil {
+		return ""
+	}
+	html, err := p.hooks.Notice(r, n)
+	if err != nil {
+		monitor.Problem(p.opts.Logger, "the notice for %s's owner: %v", n.Name, err)
+		return ""
+	}
+	return html
 }
 
 // sections are the extension's sections of n's Settings.
