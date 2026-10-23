@@ -560,12 +560,17 @@ func TestBuildsDontTakeTheInstallsSecretsOrBackups(t *testing.T) {
 	}
 }
 
-// docker runs docker, failing the test if it fails.
+// docker runs docker, failing the test if it fails, and returns what it
+// printed: on stdout only, so an image it pulled first (whose progress is on
+// stderr) doesn't come back as part of a container's ID.
 func docker(t *testing.T, args ...string) string {
 	t.Helper()
-	out, err := exec.Command("docker", args...).CombinedOutput()
+	var stderr strings.Builder
+	cmd := exec.Command("docker", args...)
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
 	if err != nil {
-		t.Fatalf("docker %s: %v\n%s", strings.Join(args, " "), err, out)
+		t.Fatalf("docker %s: %v\n%s%s", strings.Join(args, " "), err, out, stderr.String())
 	}
 	return strings.TrimSpace(string(out))
 }
