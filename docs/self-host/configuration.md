@@ -151,6 +151,8 @@ Defaults are the programs' own.
 | `GUILDNET_BROKER_NAMES` | the names and IP addresses the broker's certificate is for (default `platform`) |
 | `GUILDNET_IRC_PORT` | the port IRC apps connect to, as the console tells people (6697) |
 | `GUILDNET_IRC_HINT_LISTEN` | where the edge sends IRC apps that forgot TLS, to be told so |
+| `GUILDNET_STOP_DRAIN` | once told to stop, how long the console goes on serving while `/healthz` says it's stopping (503), for a load balancer to move off it (default `0s`) |
+| `GUILDNET_STOP_GRACE` | then how long requests in flight get to finish, and after them a network it's setting up (default `4s` each: within Docker's 10 seconds) |
 
 ### The edge (Caddy)
 

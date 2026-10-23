@@ -381,6 +381,15 @@ by `goose.Up` when `OpenPostgres` runs. Files are named
 never edit one that has shipped. The console also runs one-off upgrades
 in Go after migrating, recorded in its `upgrades` table.
 
+A migration adds; it takes away only what a release already out stopped
+using. A deploy that hands the console over to a new copy (guildnet.chat
+does) runs the old copy for a while on the new schema, so a column or
+table the old code reads must outlast it. Stop using it in one release,
+then drop or rename it in a migration of a later one, saying which:
+`-- After release 26.10.2, which stopped using it.` in its Up section.
+`pgtest.ExpandOnly` checks this for every new migration (a drop or rename
+without it, or naming a release not out yet, fails the tests).
+
 ### Errors and logging
 
 Log with the `*log.Logger` passed in. Report a fault in GuildNet's own

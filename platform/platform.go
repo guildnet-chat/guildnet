@@ -205,6 +205,35 @@ type Platform struct {
 	connecting    pendingConnects // connectors being connected, by state
 	connectorHTTP *http.Client    // reaches services: public HTTPS only
 	gitHTTP       *http.Client    // reaches git hosts: connectors', and private ones named
+	// working: what was begun in the background (setting networks up and
+	// removing them), which Finish waits for.
+	working sync.WaitGroup
+}
+
+// background does work after the request that began it, counted for Finish.
+func (p *Platform) background(work func()) {
+	p.working.Add(1)
+	go func() {
+		defer p.working.Done()
+		work()
+	}()
+}
+
+// Finish waits until what the platform began in the background is done, or
+// ctx ends: when it's told to stop (the old copy, at a deploy), a network
+// it's setting up isn't left stuck.
+func (p *Platform) Finish(ctx context.Context) error {
+	done := make(chan struct{})
+	go func() {
+		p.working.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return errors.Join(errors.New("stopping with work still going"), ctx.Err())
+	}
 }
 
 // sessionTTL is how long a sign-in lasts; sessionIdle how long it lasts

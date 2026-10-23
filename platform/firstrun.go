@@ -346,7 +346,7 @@ func (p *Platform) firstRunSetUp(w http.ResponseWriter, r *http.Request) {
 	if email != "" && p.opts.Mail != nil && p.opts.Alerts != nil {
 		p.askToConfirm(r, n, f.nick, email, origin)
 	}
-	go p.setUp(n.Name, f.password, origin)
+	p.background(func() { p.setUp(n.Name, f.password, origin) })
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 

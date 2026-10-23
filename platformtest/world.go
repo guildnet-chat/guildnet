@@ -109,6 +109,17 @@ func (w *World) RunJobs(every time.Duration) {
 	}
 }
 
+// Finish is the platform being told to stop: it waits, up to within, for
+// what it began in the background, as a deploy's old copy does.
+func (w *World) Finish(within time.Duration) error {
+	w.mu.Lock()
+	p := w.plat
+	w.mu.Unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), within)
+	defer cancel()
+	return p.Finish(ctx)
+}
+
 // RestartPlatform starts a new platform on the same store, as a deploy does.
 func (w *World) RestartPlatform() {
 	h := w.newPlat()

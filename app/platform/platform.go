@@ -72,6 +72,25 @@ func Run(cfg Config) {
 			os.Exit(1)
 		}
 	}()
+	// healthz: whether this copy is serving, for Docker's health check (the
+	// image has no shell or curl), every few seconds; nothing is served, and
+	// nothing else is started.
+	if len(os.Args) > 1 && os.Args[1] == "healthz" {
+		listen := os.Getenv("GUILDNET_PLATFORM_LISTEN")
+		if listen == "" {
+			listen = ":8080"
+		}
+		_, port, _ := net.SplitHostPort(listen)
+		c := &http.Client{Timeout: 3 * time.Second}
+		resp, err := c.Get("http://127.0.0.1:" + port + "/healthz")
+		if err != nil {
+			failed = true
+			return
+		}
+		resp.Body.Close()
+		failed = resp.StatusCode != http.StatusOK
+		return
+	}
 	// Faults in GuildNet itself go to GuildNet's Sentry, when it's set.
 	defer monitor.Start(monitor.FromEnv("platform"))()
 	defer monitor.Recover()
@@ -83,6 +102,20 @@ func Run(cfg Config) {
 	}
 	listen := env("GUILDNET_PLATFORM_LISTEN", ":8080")
 	base := env("GUILDNET_BASE_DOMAIN", "guildnet.localhost")
+
+	// Once told to stop, how long it goes on serving (saying it's stopping,
+	// at /healthz) for whatever's in front to move off it, and how long
+	// requests in flight, then what it began in the background, get to
+	// finish. Within Docker's time before it kills it (10 seconds unless the
+	// stack says).
+	drain, err := time.ParseDuration(env("GUILDNET_STOP_DRAIN", "0s"))
+	if err != nil {
+		logger.Fatalf("GUILDNET_STOP_DRAIN: %v", err)
+	}
+	grace, err := time.ParseDuration(env("GUILDNET_STOP_GRACE", "4s"))
+	if err != nil {
+		logger.Fatalf("GUILDNET_STOP_GRACE: %v", err)
+	}
 
 	// sandbox-cert: sandboxd's certificate for a desks host of its own, from
 	// its request on stdin (sandboxd tls-request there), signed with the
@@ -418,21 +451,33 @@ func Run(cfg Config) {
 		}
 		servers = append(servers, serve.HTTP{Server: srv})
 	}
-	srv := &http.Server{Addr: listen, Handler: monitor.Handler(p.Handler()), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 2 * time.Minute}
+	// /healthz, on any host: whether this copy is serving (Caddy checks it,
+	// and moves to another copy when it says it's stopping).
+	health := &serve.Health{}
+	console := monitor.Handler(p.Handler())
+	srv := &http.Server{Addr: listen, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/healthz" {
+			health.ServeHTTP(w, r)
+			return
+		}
+		console.ServeHTTP(w, r)
+	}), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 2 * time.Minute}
 	// Listening before saying so: what waits for this line can connect.
 	l, err := net.Listen("tcp", listen)
 	if err != nil {
 		logger.Fatal(err)
 	}
 	logger.Printf("platform listening on %s (landing page: http://%s%s)", listen, base, listen)
-	if err := serve.Until(ctx, shutdownGrace, append(servers, serve.HTTP{Server: srv, Listener: l})...); err != nil {
+	servers = append(servers, serve.HTTP{Server: srv, Listener: l})
+	if err := serve.Until(serve.Draining(ctx, health, drain, servers...), grace, servers...); err != nil {
 		monitor.Problem(logger, "serving: %v", err)
 		failed = true
 		return
 	}
+	finishing, cancel := context.WithTimeout(context.Background(), grace)
+	defer cancel()
+	if err := p.Finish(finishing); err != nil {
+		monitor.Problem(logger, "%v", err)
+	}
 	logger.Print("stopped")
 }
-
-// shutdownGrace is how long requests in flight get to finish once the
-// console is told to stop: within Docker's 10 seconds before it kills it.
-const shutdownGrace = 8 * time.Second

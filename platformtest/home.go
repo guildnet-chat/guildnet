@@ -135,6 +135,7 @@ type FakeHost struct {
 	Removed []string
 	Fail    error
 	held    chan struct{} // while set, Remove waits for it to close
+	puts    chan struct{} // while set, Put waits for it to close
 	// refreshes counts each network's runner being asked to fetch its model
 	// keys again.
 	refreshes map[string]int
@@ -215,8 +216,28 @@ func (h *FakeHost) Release() {
 
 var envMu sync.Mutex // templates are filled in from the environment
 
+// HoldStarts makes starting networks wait until ReleaseStarts.
+func (h *FakeHost) HoldStarts() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.puts = make(chan struct{})
+}
+
+// ReleaseStarts lets starts held by HoldStarts go on.
+func (h *FakeHost) ReleaseStarts() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	close(h.puts)
+	h.puts = nil
+}
+
 func (h *FakeHost) Put(_ context.Context, name string, s netspec.Spec) (netspec.Addresses, error) {
 	h.mu.Lock()
+	if wait := h.puts; wait != nil {
+		h.mu.Unlock()
+		<-wait
+		h.mu.Lock()
+	}
 	defer h.mu.Unlock()
 	if h.Fail != nil {
 		return netspec.Addresses{}, h.Fail

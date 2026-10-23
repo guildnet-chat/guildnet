@@ -235,7 +235,7 @@ func (p *Platform) startRemoving(ctx context.Context, n Network) error {
 		monitor.Problem(p.opts.Logger, "deleting %s: %v", n.Name, err)
 		return err
 	}
-	go p.finishRemoving(n)
+	p.background(func() { p.finishRemoving(n) })
 	return nil
 }
 

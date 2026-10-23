@@ -583,7 +583,8 @@ func (p *Platform) createNetwork(w http.ResponseWriter, r *http.Request) {
 		again(http.StatusInternalServerError, "Couldn't create it. Try again in a moment.")
 		return
 	}
-	go p.setUp(n.Name, f.password, p.networkOrigin(r, n.Name))
+	origin := p.networkOrigin(r, n.Name)
+	p.background(func() { p.setUp(n.Name, f.password, origin) })
 	http.Redirect(w, r, "/networks/"+n.Name, http.StatusSeeOther)
 }
 
@@ -719,7 +720,8 @@ func (p *Platform) retryNetwork(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Something went wrong. Try again in a moment.", http.StatusInternalServerError)
 		return
 	}
-	go p.setUp(n.Name, password, p.networkOrigin(r, n.Name))
+	origin := p.networkOrigin(r, n.Name)
+	p.background(func() { p.setUp(n.Name, password, origin) })
 	http.Redirect(w, r, "/networks/"+n.Name, http.StatusSeeOther)
 }
 

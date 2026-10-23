@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -109,16 +110,56 @@ func Until(ctx context.Context, grace time.Duration, servers ...Server) error {
 	return why
 }
 
-// Every runs work every d until ctx ends, with ctx for it to stop by too.
+// Every runs work now, then every d, until ctx ends, with ctx for it to stop
+// by too: work done daily isn't put off for ever by restarts more often.
 func Every(ctx context.Context, d time.Duration, work func(ctx context.Context)) {
 	t := time.NewTicker(d)
 	defer t.Stop()
 	for {
+		if ctx.Err() != nil {
+			return
+		}
+		work(ctx)
 		select {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			work(ctx)
 		}
 	}
+}
+
+// Health is a health check: 200 while the program serves, 503 once it's
+// been told to stop (Draining), so a load balancer (Caddy) sends its work to
+// another copy before this one stops taking any.
+type Health struct{ draining atomic.Bool }
+
+func (h *Health) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	if h.draining.Load() {
+		http.Error(w, "stopping", http.StatusServiceUnavailable)
+		return
+	}
+	w.Write([]byte("ok\n"))
+}
+
+// Draining is a context that ends wait after told does: when told ends
+// (SIGTERM), h starts saying the program is stopping, and serving goes on
+// for wait, for the load balancer to notice, before it stops (Until).
+// Meanwhile the HTTP servers among servers close each connection after
+// answering, so what's in front opens new ones, which go to another copy
+// once this one stops listening.
+func Draining(told context.Context, h *Health, wait time.Duration, servers ...Server) context.Context {
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		<-told.Done()
+		h.draining.Store(true)
+		for _, s := range servers {
+			if web, ok := s.(HTTP); ok {
+				web.SetKeepAlivesEnabled(false)
+			}
+		}
+		time.Sleep(wait)
+		cancel()
+	}()
+	return ctx
 }
