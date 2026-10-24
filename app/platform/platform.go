@@ -296,6 +296,13 @@ func Run(cfg Config) {
 			opts.GitPrivateHosts = append(opts.GitPrivateHosts, h)
 		}
 	}
+	// MCP servers on this install's own network that networks may add as
+	// connectors of their own; everywhere else, they must be on the internet.
+	for _, h := range strings.Split(os.Getenv("GUILDNET_CONNECTOR_PRIVATE_HOSTS"), ",") {
+		if h = strings.TrimSpace(h); h != "" {
+			opts.ConnectorEgress.PrivateHosts = append(opts.ConnectorEgress.PrivateHosts, h)
+		}
+	}
 	// Hosts no network's desks reach, whatever its owner's list says, beside
 	// GuildNet's own.
 	for _, h := range strings.Split(os.Getenv("GUILDNET_DESK_BLOCKED"), ",") {

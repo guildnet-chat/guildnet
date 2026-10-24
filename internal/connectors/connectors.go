@@ -30,6 +30,9 @@ type Connector struct {
 	// "arguments". By default a call runs when the tool it names only
 	// reads, and asks first otherwise.
 	Runs map[string]string
+	// Custom: the network's owner added it, not GuildNet's catalogue, so it
+	// has no Reads or Runs.
+	Custom bool
 }
 
 // ReadOnly says whether tool only reads, as the catalogue says.
@@ -50,7 +53,12 @@ var Catalogue = []Connector{
 	// and the rest change things.
 	{ID: "linear", Title: "Linear", About: "Issues, projects and cycles", URL: "https://mcp.linear.app/mcp",
 		Reads: []string{"get_*", "list_*", "search_documentation", "extract_images"}},
-	{ID: "notion", Title: "Notion", About: "Pages and databases", URL: "https://mcp.notion.com/mcp"},
+	// Notion's, as its docs listed them in October 2026: notion-search,
+	// notion-fetch and notion-get-* only read; notion-create-*,
+	// notion-update-*, notion-move-pages and notion-duplicate-page change
+	// things. To check against its tools/list once connected.
+	{ID: "notion", Title: "Notion", About: "Pages and databases", URL: "https://mcp.notion.com/mcp",
+		Reads: []string{"notion-search", "notion-fetch", "notion-get-*"}},
 	// Sentry's, as listed on 2026-09-30: find_*, search_*, get_* and whoami
 	// only read; update_*, create_*, analyze_issue_with_seer (starts Seer's
 	// paid analysis) and the rest change things. Most of its tools sit

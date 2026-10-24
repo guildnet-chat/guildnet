@@ -49,6 +49,18 @@ type Connected struct {
 	Title     string `json:"title"`
 	URL       string `json:"url"`
 	Reconnect bool   `json:"reconnect"`
+	// Custom: the network's owner added it (any MCP server), so none of
+	// the catalogue's word on its tools applies: every one asks first.
+	Custom bool `json:"custom,omitempty"`
+}
+
+// catalogued is what the catalogue says of c: nothing, for a custom one.
+func (t *Toolbox) catalogued(c Connected) Connector {
+	if c.Custom {
+		return Connector{}
+	}
+	k, _ := Find(t.o.Catalogue, c.ID)
+	return k
 }
 
 // ErrReconnect means the connection needs the network's owner to connect it
@@ -297,7 +309,7 @@ func (t *Toolbox) Services() []Service {
 	defer t.mu.Unlock()
 	out := []Service{}
 	for _, s := range t.services {
-		k, _ := Find(t.o.Catalogue, s.ID)
+		k := t.catalogued(s.Connected)
 		v := Service{ID: s.ID, Title: s.Title, Reconnect: s.Reconnect, Tools: []ToolState{}}
 		for _, l := range s.tools {
 			set := t.settings[s.ID][l.name]
@@ -412,7 +424,7 @@ func (t *Toolbox) offered(p config.Persona) []offered {
 		if s == nil || s.Reconnect {
 			continue
 		}
-		k, _ := Find(t.o.Catalogue, s.ID)
+		k := t.catalogued(s.Connected)
 		for _, l := range s.tools {
 			set := t.settings[s.ID][l.name]
 			if set.Approved == "" || set.Approved != l.hash {
@@ -536,7 +548,7 @@ func (t *Toolbox) Step(name string, input map[string]any) string {
 	defer t.mu.Unlock()
 	for _, s := range t.services {
 		if tool, ok := strings.CutPrefix(name, s.ID+"_"); ok && slices.ContainsFunc(s.tools, func(l listed) bool { return toolName(s.ID, l.name) == name }) {
-			k, _ := Find(t.o.Catalogue, s.ID)
+			k := t.catalogued(s.Connected)
 			args := input
 			if arg := k.Runs[tool]; arg != "" {
 				if inner, _ := input[arg].(string); inner != "" {
@@ -681,14 +693,39 @@ func (t *Toolbox) connect(ctx context.Context, c Connected) (*mcp.ClientSession,
 	if err != nil {
 		return nil, fmt.Errorf("getting access to %s: %w", c.Title, err)
 	}
-	client := mcp.NewClient(&mcp.Implementation{Name: "GuildNet", Version: "1"}, nil)
-	transport := &mcp.StreamableClientTransport{Endpoint: c.URL, MaxRetries: -1, DisableStandaloneSSE: true,
-		HTTPClient: &http.Client{Transport: bearer{t.http.Transport, tok}, Timeout: t.http.Timeout, CheckRedirect: t.http.CheckRedirect}}
-	session, err := client.Connect(ctx, transport, nil)
+	session, err := open(ctx, t.http, c.URL, tok)
 	if err != nil {
 		return nil, fmt.Errorf("connecting to %s: %w", c.Title, err)
 	}
 	return session, nil
+}
+
+// open opens an MCP session with the server at url, through hc, with tok.
+func open(ctx context.Context, hc *http.Client, url, tok string) (*mcp.ClientSession, error) {
+	client := mcp.NewClient(&mcp.Implementation{Name: "GuildNet", Version: "1"}, nil)
+	transport := &mcp.StreamableClientTransport{Endpoint: url, MaxRetries: -1, DisableStandaloneSSE: true,
+		HTTPClient: &http.Client{Transport: bearer{hc.Transport, tok}, Timeout: hc.Timeout, CheckRedirect: hc.CheckRedirect}}
+	return client.Connect(ctx, transport, nil)
+}
+
+// ListTools is the names of the tools the MCP server at url lists, asked
+// through hc with the access token tok: for trying a token before it's
+// kept.
+func ListTools(ctx context.Context, hc *http.Client, url, tok string) ([]string, error) {
+	session, err := open(ctx, hc, url, tok)
+	if err != nil {
+		return nil, err
+	}
+	defer session.Close()
+	var out []string
+	for tool, err := range session.Tools(ctx, nil) {
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, tool.Name)
+	}
+	slices.Sort(out)
+	return out, nil
 }
 
 // token is an access token for connector id: the last one, until it has

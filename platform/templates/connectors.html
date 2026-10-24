@@ -141,6 +141,19 @@
     {{end}}
   </table>
   </div>
+  {{if $.Data.View.Owner}}
+  <form method="post" action="/connectors/custom" class="fields" hx-boost="false">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <h3 class="wide">Add a server of your own</h3>
+    <p class="wide muted small">Any MCP server: your company's, or a service's not listed here. Every one of its tools asks a person first until someone who approves says it may run without asking.</p>
+    <label>Name <input name="title" required maxlength="40" placeholder="Company wiki" autocomplete="off"></label>
+    <label>Address <input name="url" type="url" required placeholder="https://mcp.example.com/mcp" autocomplete="off" spellcheck="false"></label>
+    <label class="wide">Token
+      <input name="token" type="text" class="secret" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other">
+      <span class="hint muted small">an API key for it, if it takes one; leave it empty for a server with its own sign-in, which you're sent to next</span></label>
+    <button>Add server</button>
+  </form>
+  {{end}}
 </section>
 {{end}}
 {{range $s := .Services}}

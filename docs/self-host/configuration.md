@@ -61,6 +61,7 @@ console.
 
 | Setting | |
 |---|---|
+| `GUILDNET_CONNECTOR_PRIVATE_HOSTS` | console and runner: MCP servers on your own network rather than the internet that networks may add as connectors of their own: host names (or addresses), comma-separated ([connectors.md](connectors.md#private-servers)). Unset, every MCP server must be on the internet |
 | `GUILDNET_GIT_PRIVATE_HOSTS` | git servers on your own network rather than the internet that agents' repositories may be on: host names (or addresses), comma-separated. The console tries repositories there, the runner pushes to them, and desks reach them. Unset, every git host must be on the internet |
 
 ### Branding

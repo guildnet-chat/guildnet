@@ -488,6 +488,7 @@ func (p *Platform) Handler() http.Handler {
 	// The owner connects GitHub and services here; each comes back by way of
 	// the home page.
 	console.HandleFunc("POST /connectors/{connector}/connect", p.ownerOnly(p.connectHere))
+	console.HandleFunc("POST /connectors/custom", p.ownerOnly(p.addCustomConnector))
 	console.HandleFunc("POST /connectors/{connector}/disconnect", p.ownerOnly(p.disconnectHere))
 	console.HandleFunc("GET /oauth/callback", p.ownerOnly(p.connectedHere))
 	console.HandleFunc("POST /github/connect", p.ownerOnly(p.connectGitHubHere))

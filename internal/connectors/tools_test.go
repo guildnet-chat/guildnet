@@ -226,6 +226,16 @@ func TestTheCatalogueNamesReadsByPrefix(t *testing.T) {
 		if c.ID == "linear" && (!c.ReadOnly("list_issues") || c.ReadOnly("save_issue")) {
 			t.Error("Linear's list_issues should read and save_issue shouldn't")
 		}
+		// Notion's, as its docs listed them in October 2026.
+		if c.ID == "notion" {
+			for tool, read := range map[string]bool{"notion-search": true, "notion-fetch": true, "notion-get-comments": true, "notion-get-users": true,
+				"notion-get-self": true, "notion-create-pages": false, "notion-update-page": false, "notion-move-pages": false,
+				"notion-duplicate-page": false, "notion-create-comment": false, "notion-create-file-upload": false} {
+				if c.ReadOnly(tool) != read {
+					t.Errorf("Notion's %s reads: %v, want %v", tool, !read, read)
+				}
+			}
+		}
 		// Sentry's, as its server listed them on 2026-09-30; most sit behind
 		// execute_sentry_tool. Seer's analysis starts (paid) work at Sentry.
 		if c.ID == "sentry" {
@@ -240,6 +250,56 @@ func TestTheCatalogueNamesReadsByPrefix(t *testing.T) {
 				t.Errorf("Sentry's execute_sentry_tool runs %q, want the tool its name argument names", c.Runs["execute_sentry_tool"])
 			}
 		}
+	}
+}
+
+// A connector the network's owner added (any MCP server) isn't the
+// catalogue's, even with a name like one of its: GuildNet can't know which of
+// its tools only read, so every one asks first, until someone who approves
+// says one may run without asking.
+func TestEveryToolOfACustomConnectorAsksFirstUntilLoosened(t *testing.T) {
+	tb, _, broker, _ := setup(t)
+	broker.mu.Lock()
+	broker.connected[0]["custom"] = true // as "linear", whose catalogue entry says search_issues reads
+	broker.mu.Unlock()
+	if err := tb.Refresh(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	search, _ := find(tb.Tools(engineer), "linear_search_issues")
+	if !search.Ask {
+		t.Error("a custom connector's search runs without asking")
+	}
+	for _, s := range tb.Services() {
+		for _, tool := range s.Tools {
+			if tool.Default != "ask" {
+				t.Errorf("%s's default is %q, want ask", tool.Name, tool.Default)
+			}
+		}
+	}
+
+	if err := tb.SetPolicy(ctx, "linear", "search_issues", "allow"); err != nil {
+		t.Fatal(err)
+	}
+	if search, _ := find(tb.Tools(engineer), "linear_search_issues"); search.Ask {
+		t.Error("loosened, search_issues still asks")
+	}
+}
+
+// Before a token the owner pasted is kept, it's tried on the server: what
+// tools it lists.
+func TestATokenIsTriedOnTheServerFirst(t *testing.T) {
+	service := newFakeService(t)
+	pool := x509.NewCertPool()
+	pool.AddCert(service.srv.Certificate())
+	client := egress.Client(egress.Options{RootCAs: pool, AllowLoopback: true})
+
+	tools, err := connectors.ListTools(ctx, client, service.srv.URL+"/mcp", "at-1")
+	if err != nil || !slices.Equal(tools, []string{"create_issue", "search_issues"}) {
+		t.Errorf("with the right token: %v, %v", tools, err)
+	}
+	if _, err := connectors.ListTools(ctx, client, service.srv.URL+"/mcp", "wrong"); err == nil {
+		t.Error("a token the server refuses was taken")
 	}
 }
 

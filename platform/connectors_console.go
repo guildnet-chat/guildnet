@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/guildnet-chat/guildnet/internal/connectors"
 	"github.com/guildnet-chat/guildnet/monitor"
 )
 
@@ -136,12 +135,12 @@ func (p *Platform) onHome(email string) string {
 
 // connectHere starts connecting a service, from the console.
 func (p *Platform) connectHere(w http.ResponseWriter, r *http.Request) {
-	c, ok := connectors.Find(p.catalogue(), r.PathValue("connector"))
+	n := networkOf(r)
+	c, ok := p.connectorOf(r.Context(), n.Name, r.PathValue("connector"))
 	if !ok || p.opts.Connections == nil {
 		http.NotFound(w, r)
 		return
 	}
-	n := networkOf(r)
 	authorize, err := p.startConnect(w, r, n, c, byAccount(r), true)
 	if err != nil {
 		p.showConnectors(w, r, http.StatusBadGateway, "Couldn't reach "+c.Title+" to connect it. Try again in a moment.")

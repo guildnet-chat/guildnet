@@ -143,7 +143,7 @@ func (s *Postgres) resealConnections(ctx context.Context, tx pgx.Tx, legacy lega
 		if err := json.Unmarshal(c.server, &server); err != nil {
 			return err
 		}
-		secretAAD, accessAAD, refreshAAD, err := connectionSecrets(c.network, c.connector, server, connectors.Client{ID: c.clientID, Method: c.method})
+		secretAAD, accessAAD, refreshAAD, err := connectionSecrets(c.network, c.connector, server, connectors.Client{ID: c.clientID, Method: c.method}, nil) // from before connectors of networks' own
 		if err != nil {
 			return err
 		}

@@ -40,6 +40,9 @@ type Connection struct {
 	Reconnect bool
 	By        string // who connected it (a Person's ID)
 	At        time.Time
+	// Custom is the connector itself, for one the network's owner added
+	// (connectors_custom.go); nil for the catalogue's.
+	Custom *connectors.Connector
 }
 
 // Connections keeps networks' connections, and GuildNet's registrations
@@ -69,6 +72,8 @@ type pendingConnect struct {
 	server                     connectors.Server
 	client                     connectors.Client
 	expires                    time.Time
+	// custom is the connector, for one of the network's own.
+	custom *connectors.Connector
 }
 
 type pendingConnects struct {
@@ -151,6 +156,12 @@ func (p *Platform) connectorViews(ctx context.Context, network string) []connect
 		}
 		out = append(out, v)
 	}
+	// Then those of the network's own.
+	for _, h := range have {
+		if h.Custom != nil {
+			out = append(out, connectorView{Connector: *h.Custom, Connected: true, Reconnect: h.Reconnect, At: h.At})
+		}
+	}
 	return out
 }
 
@@ -167,7 +178,7 @@ func (p *Platform) connectService(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	c, ok := connectors.Find(p.catalogue(), r.PathValue("connector"))
+	c, ok := p.connectorOf(r.Context(), n.Name, r.PathValue("connector"))
 	if !ok {
 		http.NotFound(w, r)
 		return
@@ -196,8 +207,12 @@ func (p *Platform) startConnect(w http.ResponseWriter, r *http.Request, n Networ
 		if client, err = p.oauthClient(ctx, o, server); err == nil {
 			state := newToken()
 			verifier, challenge := connectors.NewVerifier()
-			p.connecting.add(state, pendingConnect{network: n.Name, connector: c.ID, person: person, console: console, verifier: verifier,
-				redirect: redirect, server: server, client: client, expires: p.opts.Now().Add(connectWindow)})
+			pc := pendingConnect{network: n.Name, connector: c.ID, person: person, console: console, verifier: verifier,
+				redirect: redirect, server: server, client: client, expires: p.opts.Now().Add(connectWindow)}
+			if c.Custom {
+				pc.custom = &c
+			}
+			p.connecting.add(state, pc)
 			http.SetCookie(w, &http.Cookie{Name: p.connectCookie(), Value: state, Path: "/", MaxAge: int(connectWindow.Seconds()),
 				HttpOnly: true, Secure: p.opts.SecureCookies, SameSite: http.SameSiteLaxMode})
 			return o.AuthorizeURL(server, client, state, challenge), nil
@@ -263,6 +278,9 @@ func (p *Platform) oauthCallback(w http.ResponseWriter, r *http.Request) {
 // what's said is why, with its status.
 func (p *Platform) finishConnect(ctx context.Context, n Network, pc pendingConnect, q url.Values, by string) (title string, status int, problem string) {
 	c, _ := connectors.Find(p.catalogue(), pc.connector)
+	if pc.custom != nil {
+		c = *pc.custom
+	}
 	if q.Get("error") != "" {
 		return c.Title, http.StatusOK, c.Title + " wasn't connected: " + c.Title + " said " + oneLine(q.Get("error"), 60) + "."
 	}
@@ -279,7 +297,7 @@ func (p *Platform) finishConnect(ctx context.Context, n Network, pc pendingConne
 		monitor.Problem(p.opts.Logger, "connecting %s to %s: %v", n.Name, c.ID, err)
 		return c.Title, http.StatusBadGateway, c.Title + " wasn't connected: it didn't give " + p.brand().Name + " access. Try again."
 	}
-	err = p.opts.Connections.SaveConnection(ctx, n.Name, Connection{Connector: c.ID, Server: pc.server, Client: pc.client, Tokens: tokens, By: by, At: p.opts.Now()})
+	err = p.opts.Connections.SaveConnection(ctx, n.Name, Connection{Connector: c.ID, Server: pc.server, Client: pc.client, Tokens: tokens, By: by, At: p.opts.Now(), Custom: pc.custom})
 	if err != nil {
 		monitor.Problem(p.opts.Logger, "connecting %s to %s: saving: %v", n.Name, c.ID, err)
 		return c.Title, http.StatusInternalServerError, "Couldn't save the connection. Try again."
@@ -333,11 +351,18 @@ func (p *Platform) forgetConnection(ctx context.Context, n Network, connector st
 	if err := p.oauth("").Revoke(ctx, c.Server, c.Client, token, hint); err != nil {
 		monitor.Problem(p.opts.Logger, "disconnecting %s from %s: revoking: %v", n.Name, c.Connector, err)
 	}
-	title := c.Connector
-	if k, ok := connectors.Find(p.catalogue(), c.Connector); ok {
-		title = k.Title
+	return c.title(p.catalogue()), nil
+}
+
+// title is what c's connector is called.
+func (c Connection) title(catalogue []connectors.Connector) string {
+	if c.Custom != nil {
+		return c.Custom.Title
 	}
-	return title, nil
+	if k, ok := connectors.Find(catalogue, c.Connector); ok {
+		return k.Title
+	}
+	return c.Connector
 }
 
 // The broker's part: runners' access tokens.
@@ -360,6 +385,10 @@ func (p *Platform) brokerConnectors(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		for _, c := range have {
+			if c.Custom != nil {
+				list = append(list, map[string]any{"id": c.Custom.ID, "title": c.Custom.Title, "url": c.Custom.URL, "reconnect": c.Reconnect, "custom": true})
+				continue
+			}
 			k, ok := connectors.Find(p.catalogue(), c.Connector)
 			if !ok {
 				continue
@@ -413,10 +442,7 @@ func (p *Platform) brokerConnectorToken(w http.ResponseWriter, r *http.Request) 
 		brokerError(w, http.StatusBadGateway, "couldn't refresh the token; try again in a moment")
 		return
 	}
-	title := c.Connector
-	if k, ok := connectors.Find(p.catalogue(), c.Connector); ok {
-		title = k.Title
-	}
+	title := c.title(p.catalogue())
 	if refused {
 		p.opts.Logger.Printf("%s's %s connection was refused: it needs reconnecting", n.Name, c.Connector)
 		p.tellOwner(r.Context(), n, reconnectEmail(n, p.scheme()+"://"+p.opts.BaseDomain, title))
@@ -603,15 +629,22 @@ func (s *Postgres) openString(sealed, aad []byte) (string, error) {
 // bound: the network and the service, and the server and client they're
 // sent to (so changing where the token endpoint is, in the database,
 // doesn't send them elsewhere).
-func connectionSecrets(network, connector string, server connectors.Server, client connectors.Client) (secret, access, refresh []byte, err error) {
+func connectionSecrets(network, connector string, server connectors.Server, client connectors.Client, custom *connectors.Connector) (secret, access, refresh []byte, err error) {
 	srv, err := json.Marshal(server)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 	network, connector = strings.ToLower(network), strings.ToLower(connector)
-	return aad("connections", "client_secret", network, connector, string(srv), client.ID, client.Method),
-		aad("connections", "access_token", network, connector, string(srv), client.ID),
-		aad("connections", "refresh_token", network, connector, string(srv), client.ID, client.Method), nil
+	parts := []string{network, connector, string(srv), client.ID}
+	// One of the network's own: bound to its server's address too, where a
+	// pasted token is sent.
+	if custom != nil {
+		parts = append(parts, "custom", custom.URL)
+	}
+	of := func(which string, more ...string) []byte {
+		return aad(append(append([]string{"connections", which}, parts...), more...)...)
+	}
+	return of("client_secret", client.Method), of("access_token"), of("refresh_token", client.Method), nil
 }
 
 // oauthClientSecret is where a service's client secret for GuildNet is kept.
@@ -619,14 +652,14 @@ func oauthClientSecret(issuer, redirect string, c connectors.Client) []byte {
 	return aad("oauth_clients", "client_secret", issuer, redirect, c.ID, c.Method)
 }
 
-const connectionColumns = `connector, server, client_id, client_secret, auth_method, access_token, refresh_token, expires_at, scope, reconnect, connected_by, connected_at`
+const connectionColumns = `connector, server, client_id, client_secret, auth_method, access_token, refresh_token, expires_at, scope, reconnect, connected_by, connected_at, custom`
 
 func (s *Postgres) scanConnection(network string, row pgx.Row) (Connection, error) {
 	var c Connection
-	var server []byte
+	var server, custom []byte
 	var secret, access, refresh []byte
 	var expires *time.Time
-	if err := row.Scan(&c.Connector, &server, &c.Client.ID, &secret, &c.Client.Method, &access, &refresh, &expires, &c.Tokens.Scope, &c.Reconnect, &c.By, &c.At); err != nil {
+	if err := row.Scan(&c.Connector, &server, &c.Client.ID, &secret, &c.Client.Method, &access, &refresh, &expires, &c.Tokens.Scope, &c.Reconnect, &c.By, &c.At, &custom); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return c, ErrNotFound
 		}
@@ -635,10 +668,16 @@ func (s *Postgres) scanConnection(network string, row pgx.Row) (Connection, erro
 	if err := json.Unmarshal(server, &c.Server); err != nil {
 		return c, err
 	}
+	if custom != nil {
+		c.Custom = &connectors.Connector{}
+		if err := json.Unmarshal(custom, c.Custom); err != nil {
+			return c, err
+		}
+	}
 	if expires != nil {
 		c.Tokens.Expires = *expires
 	}
-	secretAAD, accessAAD, refreshAAD, err := connectionSecrets(network, c.Connector, c.Server, c.Client)
+	secretAAD, accessAAD, refreshAAD, err := connectionSecrets(network, c.Connector, c.Server, c.Client, c.Custom)
 	if err != nil {
 		return c, err
 	}
@@ -710,9 +749,15 @@ func (s *Postgres) saveConnection(ctx context.Context, db execer, network string
 	if err != nil {
 		return err
 	}
-	secretAAD, accessAAD, refreshAAD, err := connectionSecrets(network, c.Connector, c.Server, c.Client)
+	secretAAD, accessAAD, refreshAAD, err := connectionSecrets(network, c.Connector, c.Server, c.Client, c.Custom)
 	if err != nil {
 		return err
+	}
+	var custom []byte
+	if c.Custom != nil {
+		if custom, err = json.Marshal(c.Custom); err != nil {
+			return err
+		}
 	}
 	var sealed [3][]byte
 	for i, f := range []struct {
@@ -728,11 +773,11 @@ func (s *Postgres) saveConnection(ctx context.Context, db execer, network string
 		expires = &c.Tokens.Expires
 	}
 	_, err = db.Exec(ctx, `insert into connections (network, `+connectionColumns+`)
-		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		on conflict (network, connector) do update set server = $3, client_id = $4, client_secret = $5, auth_method = $6,
-			access_token = $7, refresh_token = $8, expires_at = $9, scope = $10, reconnect = $11, connected_by = $12, connected_at = $13`,
+			access_token = $7, refresh_token = $8, expires_at = $9, scope = $10, reconnect = $11, connected_by = $12, connected_at = $13, custom = $14`,
 		strings.ToLower(network), strings.ToLower(c.Connector), server, c.Client.ID, sealed[0], c.Client.Method, sealed[1], sealed[2],
-		expires, c.Tokens.Scope, c.Reconnect, c.By, c.At)
+		expires, c.Tokens.Scope, c.Reconnect, c.By, c.At, custom)
 	return err
 }
 

@@ -217,6 +217,9 @@ func Run(build Config) {
 			Broker: connectors.Broker{URL: url, Network: os.Getenv("GUILDNET_NETWORK"), Secret: cfg.API.Token, HTTP: brokerHTTP},
 			Store:  store, Teams: func(team string) []string { return org.ConnectorsFor(context.Background(), store, team) },
 			Logger: logger,
+			// MCP servers of networks' own on this install's private network,
+			// where it names them.
+			Egress: egress.Options{PrivateHosts: listFrom(os.Getenv("GUILDNET_CONNECTOR_PRIVATE_HOSTS"))},
 			// Writes that ran without asking a person go in the org log.
 			Wrote: func(p config.Persona, connector, tool, detail string) {
 				e := org.LogEntry{At: time.Now(), Actor: p.Nick, Action: "used connector tool", Target: connector + " " + tool, Team: p.Team, Detail: detail}

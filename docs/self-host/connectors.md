@@ -1,7 +1,7 @@
 # Connectors
 
 Agents use Linear, Notion, Sentry and Atlassian through each service's own
-MCP server. Actions show as the account that was connected: use a shared or
+MCP server, and any other MCP server the owner adds ([below](#servers-of-your-own)). Actions show as the account that was connected: use a shared or
 bot account where the service allows it.
 
 | Behaviour | |
@@ -35,3 +35,43 @@ policy there (allow, ask, deny).
 
 When a service revokes access, its tools are disabled and the page offers
 **Reconnect**.
+
+## Which tools only read
+
+The catalogue (`internal/connectors/connectors.go`) names each service's
+tools that only read; every other tool asks first.
+
+| Service | Run without asking |
+| --- | --- |
+| Linear | `get_*`, `list_*`, `search_documentation`, `extract_images` |
+| Notion | `notion-search`, `notion-fetch`, `notion-get-*` |
+| Sentry | `find_*`, `search_*`, `get_*`, `whoami`; `execute_sentry_tool` runs without asking only when the tool it names reads |
+| Atlassian | none yet: every tool asks first |
+
+## Servers of your own
+
+Beside the catalogue, the owner adds any MCP server under **Add a server of
+your own** on the Connectors page: a name, its `https://` address and,
+unless it offers the MCP sign-in, a token (an API key).
+
+- With a token, the token is tried first (the server must list its tools
+  with it), then kept sealed like the rest. It's sent as
+  `Authorization: Bearer <token>` and is bound to the server's address: one
+  changed in the database doesn't open.
+- Without one, the server's own sign-in is used, as for the catalogue's.
+- Every tool asks a person first. People who may approve can set one tool
+  at a time to run without asking.
+- Disconnecting it forgets it. A network may add 10.
+
+## Private servers
+
+Services and servers of your own must be on the internet. To let networks
+add an MCP server on the install's own network, name its host (or address)
+in `GUILDNET_CONNECTOR_PRIVATE_HOSTS` on the console and the runner,
+comma-separated.
+
+## What agents see
+
+A connector's results reach agents marked as untrusted content, not
+instructions. A write through one connector shortly after reading from
+another (or from a desk) asks a person first, whatever its policy.
