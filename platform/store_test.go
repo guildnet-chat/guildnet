@@ -52,6 +52,44 @@ func eachStore(t *testing.T, test func(t *testing.T, s store)) {
 	})
 }
 
+// unused is n without when it was last used, which the store keeps itself.
+func unused(n platform.Network) platform.Network {
+	n.Used = time.Time{}
+	return n
+}
+
+// When a network was last used is kept apart from the rest of it: noting
+// never takes it back, and changing the network leaves it alone.
+func TestWhenANetworkWasLastUsedIsKeptApart(t *testing.T) {
+	eachStore(t, func(t *testing.T, s store) {
+		ctx := context.Background()
+		if err := s.AddNetwork(ctx, acmeNet); err != nil {
+			t.Fatal(err)
+		}
+		n, _ := s.Network(ctx, "acme")
+		if time.Since(n.Used) > time.Minute {
+			t.Errorf("a new network's use: %s", n.Used)
+		}
+		later := time.Now().Add(time.Hour).UTC().Truncate(time.Microsecond)
+		s.NoteUsed(ctx, "acme", later)
+		s.NoteUsed(ctx, "acme", later.Add(-30*time.Minute))
+		n, _ = s.Network(ctx, "acme")
+		if !n.Used.Equal(later) {
+			t.Errorf("used at %s, want %s: never taken back", n.Used, later)
+		}
+		n.Used, n.Timezone = time.Time{}, "Europe/Paris"
+		if err := s.UpdateNetwork(ctx, n); err != nil {
+			t.Fatal(err)
+		}
+		if n, _ := s.Network(ctx, "acme"); !n.Used.Equal(later) || n.Timezone != "Europe/Paris" {
+			t.Errorf("after a change: used %s, timezone %q", n.Used, n.Timezone)
+		}
+		if err := s.NoteUsed(ctx, "nowhere", later); !errors.Is(err, platform.ErrNotFound) {
+			t.Errorf("an unknown network: %v", err)
+		}
+	})
+}
+
 // IRC app passwords are kept per person, found by id, noted when used, and
 // go with the person's password when they leave the org.
 func TestAppPasswordsAreKeptPerPerson(t *testing.T) {
@@ -106,6 +144,7 @@ func TestANetworkIsFoundByName(t *testing.T) {
 		}
 
 		got, err := s.Network(ctx, "ACME")
+		got.Used = time.Time{} // the store's own (TestWhenANetworkWasLastUsedIsKeptApart)
 
 		if err != nil || got != acmeNet {
 			t.Errorf("got %+v, %v; want %+v", got, err, acmeNet)
@@ -493,7 +532,7 @@ func TestANetworkBelongsToItsOwnerAndGoesWithItsSignIns(t *testing.T) {
 		if err := s.AddNetwork(ctx, n); err != nil {
 			t.Fatal(err)
 		}
-		if owned, _ := s.NetworksOwnedBy(ctx, ada.ID); len(owned) != 1 || owned[0] != n {
+		if owned, _ := s.NetworksOwnedBy(ctx, ada.ID); len(owned) != 1 || unused(owned[0]) != n {
 			t.Errorf("ada's networks: %+v", owned)
 		}
 		if owned, _ := s.NetworksOwnedBy(ctx, bob.ID); len(owned) != 0 {
@@ -504,7 +543,7 @@ func TestANetworkBelongsToItsOwnerAndGoesWithItsSignIns(t *testing.T) {
 		if err := s.UpdateNetwork(ctx, n); err != nil {
 			t.Fatal(err)
 		}
-		if got, _ := s.Network(ctx, "acme"); got != n {
+		if got, _ := s.Network(ctx, "acme"); unused(got) != n {
 			t.Errorf("after updating: %+v, want %+v", got, n)
 		}
 		if err := s.UpdateNetwork(ctx, platform.Network{Name: "globex", RunnerToken: "x", ErgoToken: "y"}); !errors.Is(err, platform.ErrNotFound) {

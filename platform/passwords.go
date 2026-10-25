@@ -333,6 +333,7 @@ func (p *Platform) ircLogin(w http.ResponseWriter, r *http.Request) {
 		switch res {
 		case signInRight:
 			answer = "yes"
+			p.noteUsed(r.Context(), n) // a person, in an IRC app
 		case signInNotAPerson:
 			answer = "not-mine"
 		}

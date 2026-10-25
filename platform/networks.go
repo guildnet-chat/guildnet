@@ -55,6 +55,9 @@ type Network struct {
 	Timezone  string
 	Keys      ModelKeys
 	Updated   time.Time
+	// Used is when a person last used it (its console, web chat, an IRC
+	// app): written only by Networks.NoteUsed, never by UpdateNetwork.
+	Used time.Time
 }
 
 // ModelKeys are a network's keys for each model provider, "" for none.
@@ -110,6 +113,9 @@ const (
 	Deleting = "deleting"
 	// Suspended by GuildNet's admins: stopped, with everything kept.
 	Suspended = "suspended"
+	// Asleep: stopped while nobody uses it, with everything kept; the next
+	// visit to its console wakes it (sleep.go).
+	Asleep = "asleep"
 )
 
 // Person is someone signed in on the home page, with Google or by email.
@@ -140,6 +146,9 @@ type Networks interface {
 	GitHubOf(ctx context.Context, network string) (GitHubLink, error)
 	BindGitHub(ctx context.Context, network string, link GitHubLink) error
 	UnbindGitHub(ctx context.Context, network string) error
+	// NoteUsed notes a person used network at at (Network.Used): never back
+	// to an earlier time.
+	NoteUsed(ctx context.Context, network string, at time.Time) error
 }
 
 // People keeps who has signed in on the home page, and who may create
@@ -471,10 +480,27 @@ func (s *MemoryStore) UpdateNetwork(_ context.Context, n Network) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	key := strings.ToLower(n.Name)
-	if _, ok := s.networks[key]; !ok {
+	old, ok := s.networks[key]
+	if !ok {
 		return ErrNotFound
 	}
+	n.Used = old.Used // NoteUsed's alone
 	s.networks[key] = n
+	return nil
+}
+
+func (s *MemoryStore) NoteUsed(_ context.Context, network string, at time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := strings.ToLower(network)
+	n, ok := s.networks[key]
+	if !ok {
+		return ErrNotFound
+	}
+	if at.After(n.Used) {
+		n.Used = at
+		s.networks[key] = n
+	}
 	return nil
 }
 
@@ -585,6 +611,9 @@ func (s *MemoryStore) AddNetwork(_ context.Context, n Network) error {
 	key := strings.ToLower(n.Name)
 	if _, taken := s.networks[key]; taken {
 		return ErrTaken
+	}
+	if n.Used.IsZero() {
+		n.Used = time.Now() // made now, as Postgres's default
 	}
 	s.networks[key] = n
 	return nil

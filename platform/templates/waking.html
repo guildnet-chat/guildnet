@@ -1,0 +1,12 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{define "title"}}Waking {{.Data.View.Name}} up · {{brand}}{{end}}
+{{define "head"}}<meta http-equiv="refresh" content="3">{{end}}
+{{define "main"}}
+{{with .Data.View}}
+<div class="card signin">
+  <h1>Waking <span class="hash">#</span>{{.Name}} up…</h1>
+  {{if .Failed}}<p>It didn't wake just now. This page tries again in a moment.</p>
+  {{else}}<p>Nobody had used it for a while, so it was asleep: its chat and agents were stopped, and nothing in it was deleted. It's starting again now, which takes a few seconds. This page carries on by itself.</p>{{end}}
+</div>
+{{end}}
+{{end}}

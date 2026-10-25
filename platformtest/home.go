@@ -185,7 +185,7 @@ func (h *FakeHost) Stats(context.Context) (netspec.Stats, error) {
 	return s, nil
 }
 
-// IsStopped says whether the network is suspended.
+// IsStopped says whether the network is stopped: suspended, or asleep.
 func (h *FakeHost) IsStopped(name string) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()

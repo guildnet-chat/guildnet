@@ -776,7 +776,8 @@ func (p *Platform) openNetwork(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if n.Status != Ready {
+	// Asleep, it's woken on arriving.
+	if n.Status != Ready && n.Status != Asleep {
 		http.Redirect(w, r, "/networks/"+n.Name, http.StatusSeeOther)
 		return
 	}

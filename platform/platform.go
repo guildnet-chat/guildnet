@@ -178,6 +178,7 @@ type Platform struct {
 	signIns      signIns  // people's IRC passwords, for a store that keeps none
 	signInLocks  sync.Map // network|account -> *sync.Mutex: one sign-in at a time
 	repos        reposByInstallation
+	sleep        sleeper // networks' use, and those waking (sleep.go)
 	// githubConnects: connecting GitHub from networks' consoles.
 	githubConnects consoleGitHubConnects
 	ceremonies     ceremonies // passkeys being added
@@ -311,7 +312,7 @@ func New(opts Options) *Platform {
 		"people", "account", "join", "reset", "link-gone", "spend", "server", "person", "team", "company", "access", "log", "roles", "agent-token", "agent-webhook", "connectors", "connect-onward", "two-step", "signin-two-step"} {
 		p.pages[page] = framed(template.Must(template.New("layout.html").Funcs(funcs).ParseFS(templateFiles, "templates/layout.html", "templates/parts.html", "templates/"+page+".html")))
 	}
-	for _, page := range []string{"home-setup", "home-signin", "home-signin-email", "home-signin-two-step", "home-two-step", "home-networks", "home-new", "home-network", "home-onward", "suspended", "home-not-found"} {
+	for _, page := range []string{"home-setup", "home-signin", "home-signin-email", "home-signin-two-step", "home-two-step", "home-networks", "home-new", "home-network", "home-onward", "suspended", "waking", "home-not-found"} {
 		p.pages[page] = framed(template.Must(template.New("home.html").Funcs(funcs).ParseFS(templateFiles, "templates/home.html", "templates/parts.html", "templates/"+page+".html")))
 	}
 	p.email = template.Must(template.New("email.html").Funcs(funcs).ParseFS(templateFiles, "templates/email.html"))
@@ -626,10 +627,15 @@ func (p *Platform) Handler() http.Handler {
 		}
 		// A network's console is never for search engines.
 		w.Header().Set("X-Robots-Tag", noindex)
+		if n.Status == Asleep && p.opts.Host != nil {
+			p.waking(w, r, n)
+			return
+		}
 		ctx := context.WithValue(r.Context(), networkKey, n)
 		if s, ok := p.loadSession(r, n); ok {
 			ctx = context.WithValue(ctx, sessionKey, s)
 			ctx = context.WithValue(ctx, meKey, &meMemo{})
+			p.noteUsed(r.Context(), n)
 		}
 		console.ServeHTTP(p.markDone(w, r), r.WithContext(ctx))
 	}))

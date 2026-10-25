@@ -157,6 +157,11 @@ func (p *Platform) agentAPI(w http.ResponseWriter, r *http.Request, n Network) {
 		agentError(w, http.StatusServiceUnavailable, "this network is suspended")
 		return
 	}
+	// Agents don't wake it: a person opening its console does.
+	if n.Status == Asleep {
+		agentError(w, http.StatusServiceUnavailable, "this network is asleep, as nobody has used it for a while: someone opening its console wakes it")
+		return
+	}
 	sum := sha256.Sum256([]byte(n.Name + "\x00" + token))
 	counted := hex.EncodeToString(sum[:])
 	now := p.opts.Now()

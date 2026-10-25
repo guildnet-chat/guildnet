@@ -104,6 +104,10 @@ func (s *Postgres) seal(n Network) (sealed, error) {
 const networkColumns = `name, region, runner_url, runner_token, ergo_url, ergo_token, chat_url, chat_key,
 	status, problem, owner, owner_nick, template, timezone, anthropic_key, updated_at, model_keys`
 
+// networkRead are those and when a person last used it, which only NoteUsed
+// writes.
+const networkRead = networkColumns + `, used_at`
+
 func (s *Postgres) networkValues(n Network) ([]any, error) {
 	sec, err := s.seal(n)
 	if err != nil {
@@ -170,6 +174,14 @@ func (s *Postgres) UpdateNetwork(ctx context.Context, n Network) error {
 	return err
 }
 
+func (s *Postgres) NoteUsed(ctx context.Context, network string, at time.Time) error {
+	tag, err := s.pool.Exec(ctx, `update networks set used_at = greatest(used_at, $2) where name = $1`, strings.ToLower(network), at)
+	if err == nil && tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return err
+}
+
 // RemoveNetwork forgets a network; its sign-ins go with it.
 func (s *Postgres) RemoveNetwork(ctx context.Context, name string) error {
 	_, err := s.pool.Exec(ctx, `delete from networks where name = $1`, strings.ToLower(name))
@@ -177,7 +189,7 @@ func (s *Postgres) RemoveNetwork(ctx context.Context, name string) error {
 }
 
 func (s *Postgres) Network(ctx context.Context, name string) (Network, error) {
-	n, err := s.scanNetwork(s.pool.QueryRow(ctx, `select `+networkColumns+` from networks where name = $1`, strings.ToLower(name)))
+	n, err := s.scanNetwork(s.pool.QueryRow(ctx, `select `+networkRead+` from networks where name = $1`, strings.ToLower(name)))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Network{}, ErrNotFound
 	}
@@ -185,7 +197,7 @@ func (s *Postgres) Network(ctx context.Context, name string) (Network, error) {
 }
 
 func (s *Postgres) NetworksOwnedBy(ctx context.Context, person string) ([]Network, error) {
-	rows, err := s.pool.Query(ctx, `select `+networkColumns+` from networks where owner = $1 order by name`, person)
+	rows, err := s.pool.Query(ctx, `select `+networkRead+` from networks where owner = $1 order by name`, person)
 	if err != nil {
 		return nil, err
 	}
@@ -207,14 +219,14 @@ func (s *Postgres) scanNetwork(row pgx.Row) (Network, error) {
 	var owner *string
 	var anthropicKey []byte // not read: from before model_keys (the upgrade moved it)
 	err := row.Scan(&n.Name, &n.Region, &n.RunnerURL, &sec.runnerToken, &n.ErgoURL, &sec.ergoToken, &n.ChatURL, &sec.chatKey,
-		&n.Status, &n.Problem, &owner, &n.OwnerNick, &n.Template, &n.Timezone, &anthropicKey, &n.Updated, &sec.modelKeys)
+		&n.Status, &n.Problem, &owner, &n.OwnerNick, &n.Template, &n.Timezone, &anthropicKey, &n.Updated, &sec.modelKeys, &n.Used)
 	if err != nil {
 		return Network{}, err
 	}
 	if owner != nil {
 		n.Owner = *owner
 	}
-	n.Updated = n.Updated.UTC()
+	n.Updated, n.Used = n.Updated.UTC(), n.Used.UTC()
 	runner, ergo, chat, sealedKeys := networkSecrets(n.Name, n.RunnerURL, n.ErgoURL, n.ChatURL)
 	var keys string
 	for _, f := range []struct {
@@ -328,7 +340,7 @@ func (s *Postgres) Seen(ctx context.Context, id string, at time.Time) error {
 }
 
 func (s *Postgres) AllNetworks(ctx context.Context) ([]Network, error) {
-	rows, err := s.pool.Query(ctx, `select `+networkColumns+` from networks order by name`)
+	rows, err := s.pool.Query(ctx, `select `+networkRead+` from networks order by name`)
 	if err != nil {
 		return nil, err
 	}
