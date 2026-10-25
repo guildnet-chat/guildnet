@@ -354,6 +354,10 @@ func (c *Core) RenderSection(name string, data any) (template.HTML, error) {
 // HasDesks says whether there are desks of the console's own (a sandbox).
 func (c *Core) HasDesks() bool { return c.p.opts.Sandbox.URL != "" }
 
+// SandboxUp says whether sandboxd answers now (the sandbox VM is on); false
+// with no sandbox. Asking doesn't count as desk use.
+func (c *Core) SandboxUp(ctx context.Context) bool { return c.p.sandboxUp(ctx) }
+
 // DesksWorking is how many of network's desks are working now.
 func (c *Core) DesksWorking(network string) int { return c.p.desksWorking(network) }
 

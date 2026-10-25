@@ -8,8 +8,10 @@ import (
 	"html/template"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/guildnet-chat/guildnet/platform"
@@ -28,9 +30,11 @@ type house struct {
 	brokenSection bool
 	notice        string // atop the owner's org chart
 	brokenNotice  bool
+	core          *platform.Core
 }
 
 func (h *house) hooks(c *platform.Core) platform.Hooks {
+	h.core = c
 	return platform.Hooks{
 		Settings: []platform.SettingsSection{
 			{Render: func(r *http.Request, n platform.Network) (template.HTML, error) {
@@ -116,6 +120,34 @@ func TestAnExtensionPutsANoticeAtopTheOwnersOrgChart(t *testing.T) {
 	h.brokenNotice = true
 	if page := console.Get("/"); page.Status != http.StatusOK || strings.Contains(page.Body, "house-notice") || !strings.Contains(page.Text(), "Org chart") {
 		t.Errorf("with a failing notice: %d\n%s", page.Status, page.Text())
+	}
+}
+
+// An extension can ask whether sandboxd answers (its VM is on), as the VM's
+// own power-off timer does: not desk use, so it doesn't keep the VM up.
+func TestAnExtensionAsksWhetherTheSandboxIsUp(t *testing.T) {
+	var asked atomic.Value
+	sb := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked.Store(r.Method + " " + r.URL.Path)
+		io.WriteString(w, `{"idle_seconds":42}`)
+	}))
+	h := &house{}
+	NewWorldWith(t, func() Store { return platform.NewMemoryStore() }, withHouse(h), func(o *Setup) {
+		o.Sandbox = platform.Sandbox{URL: sb.URL, Key: SandboxKey}
+	})
+
+	if !h.core.SandboxUp(context.Background()) || asked.Load() != "GET /v1/idle" {
+		t.Errorf("with sandboxd answering: down, having asked %v", asked.Load())
+	}
+	sb.Close()
+	if h.core.SandboxUp(context.Background()) {
+		t.Error("with sandboxd gone: up")
+	}
+
+	without := &house{}
+	houseWorld(t, without)
+	if without.core.SandboxUp(context.Background()) {
+		t.Error("with no sandbox at all: up")
 	}
 }
 

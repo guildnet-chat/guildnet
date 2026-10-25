@@ -93,6 +93,27 @@ func (p *Platform) brokerSandbox(w http.ResponseWriter, r *http.Request) {
 	writeJSONResponse(w, http.StatusOK, out)
 }
 
+// sandboxUp says whether sandboxd answers (the sandbox VM is on): asked as
+// the VM's power-off timer asks, which isn't desk use.
+func (p *Platform) sandboxUp(ctx context.Context) bool {
+	s := p.opts.Sandbox
+	if s.URL == "" {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", strings.TrimRight(s.URL, "/")+"/v1/idle", nil)
+	if err != nil {
+		return false
+	}
+	resp, err := (&http.Client{Transport: s.Through}).Do(req)
+	if err != nil {
+		return false
+	}
+	resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
+}
+
 // maxPassHosts is the most hosts a network's pass opens: its git hosts and
 // its owner's list (50 at most) together.
 const maxPassHosts = 100
