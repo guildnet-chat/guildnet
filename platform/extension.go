@@ -373,7 +373,7 @@ func (p *Platform) extend() Hooks {
 // networks' desks, and the extension's jobs.
 func (p *Platform) Jobs() []Job {
 	return append([]Job{{Every: 5 * time.Minute, Run: p.SweepDesks}, {Every: 24 * time.Hour, Run: p.checkSandboxdCertificate},
-		{Every: time.Minute, Run: p.closeEndedChats}}, p.hooks.Jobs...)
+		{Every: time.Minute, Run: p.closeEndedChats}, {Every: storageCheckEvery, Run: p.watchDeskStorage}}, p.hooks.Jobs...)
 }
 
 // agentDocs is where the docs for outside agents are, in full, or "".

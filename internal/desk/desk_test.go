@@ -152,6 +152,30 @@ func TestBashRunsACommandInTheWorkspace(t *testing.T) {
 	}
 }
 
+// Out of space, the agent is told why, by GuildNet (outside what its desk
+// said), and what to do: the network's desks' storage is full.
+func TestADeskOutOfSpaceIsToldTheStorageIsFull(t *testing.T) {
+	for _, said := range []string{"cp: error writing 'big.bin': No space left on device", "write error: Disk quota exceeded"} {
+		sb := newSandbox()
+		sb.answer = func(desk.Command) desk.Output { return desk.Output{Text: said + "\n", Exit: 1} }
+		w := desk.New(sb, nil)
+
+		out, err := w.Run(context.Background(), kai, "bash", map[string]any{"command": "cp big.bin copy.bin"})
+
+		if err != nil || !strings.HasPrefix(out, fromDesk(said+"\n\n[exit status 1]")) {
+			t.Fatalf("got %q, %v", out, err)
+		}
+		if note := strings.TrimPrefix(out, fromDesk(said+"\n\n[exit status 1]")); !strings.Contains(note, "storage is full") || !strings.Contains(note, "owner") {
+			t.Errorf("after %q, the agent isn't told the storage is full and to tell the owner: %q", said, note)
+		}
+	}
+	sb := newSandbox()
+	sb.answer = func(desk.Command) desk.Output { return desk.Output{Text: "FAIL\n", Exit: 1} }
+	if out, _ := desk.New(sb, nil).Run(context.Background(), kai, "bash", map[string]any{"command": "go test ./..."}); strings.Contains(out, "storage is full") {
+		t.Errorf("an ordinary failure says the storage is full: %q", out)
+	}
+}
+
 func TestACommandThatFailsSaysSo(t *testing.T) {
 	sb := newSandbox()
 	sb.answer = func(desk.Command) desk.Output { return desk.Output{Text: "FAIL\n", Exit: 1} }

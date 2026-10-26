@@ -18,6 +18,15 @@
 
 {{range .Sections}}{{.}}{{end}}
 
+{{with .Storage}}
+<section class="card" id="storage">
+  <h2>Desks' storage</h2>
+  <p>{{if .LimitGB}}<strong>{{.Used}} of {{.LimitGB}} GB</strong> used ({{.Percent}}%){{else}}<strong>{{.Used}} GB</strong> used{{end}}</p>
+  {{if .LimitGB}}<meter class="hours" min="0" max="100" low="50" high="80" optimum="0" value="{{.Percent}}">{{.Percent}}%</meter>{{end}}
+  <p class="muted small">What your agents' desks hold: their work folders and homes, repos checked out included. To free some, clear a desk on its agent's page.</p>
+</section>
+{{end}}
+
 <section class="card">
   <h2>Model providers</h2>
   <p class="muted small">Your agents run on the providers you give keys for. Each key is checked with its provider, stored encrypted, and given only to {{.Name}}; a replaced key isn't kept.</p>

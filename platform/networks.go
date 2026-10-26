@@ -58,6 +58,10 @@ type Network struct {
 	// Used is when a person last used it (its console, web chat, an IRC
 	// app): written only by Networks.NoteUsed, never by UpdateNetwork.
 	Used time.Time
+	// StorageTold is how full its desks' storage was, in percent (80 or
+	// 100), when its owner was last told; 0 since it dropped back. Written
+	// only by Networks.NoteStorageTold.
+	StorageTold int
 }
 
 // ModelKeys are a network's keys for each model provider, "" for none.
@@ -149,6 +153,9 @@ type Networks interface {
 	// NoteUsed notes a person used network at at (Network.Used): never back
 	// to an earlier time.
 	NoteUsed(ctx context.Context, network string, at time.Time) error
+	// NoteStorageTold keeps how full network's desks were when its owner was
+	// told (Network.StorageTold).
+	NoteStorageTold(ctx context.Context, network string, percent int) error
 }
 
 // People keeps who has signed in on the home page, and who may create
@@ -484,7 +491,21 @@ func (s *MemoryStore) UpdateNetwork(_ context.Context, n Network) error {
 	if !ok {
 		return ErrNotFound
 	}
-	n.Used = old.Used // NoteUsed's alone
+	n.Used = old.Used               // NoteUsed's alone
+	n.StorageTold = old.StorageTold // NoteStorageTold's
+	s.networks[key] = n
+	return nil
+}
+
+func (s *MemoryStore) NoteStorageTold(_ context.Context, network string, percent int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := strings.ToLower(network)
+	n, ok := s.networks[key]
+	if !ok {
+		return ErrNotFound
+	}
+	n.StorageTold = percent
 	s.networks[key] = n
 	return nil
 }

@@ -122,9 +122,17 @@ mounted with `prjquota`, and set these in `.env`, then apply them with
 
 sandboxd sets each limit as an XFS project quota, from a short-lived
 privileged container of the desk image. A desk at its network's limit gets
-"No space left on device"; other networks' desks aren't affected. sandboxd
-reports when the folder's disk is 80% full (the limits can add up to more
-than the disk), and when the disk Docker keeps images and containers on is.
+"No space left on device", and its agent is told the network's desks'
+storage is full; other networks' desks aren't affected. sandboxd reports
+when the folder's disk is 80% full (the limits can add up to more than the
+disk), and when the disk Docker keeps images and containers on is.
+
+The owner sees how much of the limit is used in Settings, and each agent's
+page says what its desk holds. The owner is emailed once as use passes 80%,
+and once as it fills. Whoever may change an agent can clear its desk from
+its page: its work folder and home are deleted, and its repos are checked
+out again at its next wake-up. The console asks sandboxd only while it's
+up (asking never wakes the sandbox), and shows what it last said meanwhile.
 
 An XFS filesystem in a file on an existing disk (here 30 GB, allocated in
 full so it can't fill the host's disk; `-K` keeps `mkfs.xfs` from

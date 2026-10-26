@@ -194,6 +194,8 @@ type Platform struct {
 	agentLimits agentLimits
 	// sandboxWakes: when the sandbox VM was last asked to start.
 	sandboxWakes sandboxWakes
+	// storage: networks' desks' storage, as sandboxd last said (desk_storage.go).
+	storage deskStorage
 	// desks: desks at work now, for plans' desks at once.
 	desks desksAtWork
 	hooks Hooks // the extension's
@@ -458,6 +460,7 @@ func (p *Platform) Handler() http.Handler {
 	console.HandleFunc("POST /staff/{nick}/fire", p.signedIn(p.fire))
 	console.HandleFunc("POST /staff/{nick}/token", p.signedIn(p.newAgentToken))
 	console.HandleFunc("POST /staff/{nick}/webhook", p.signedIn(p.setAgentWebhook))
+	console.HandleFunc("POST /staff/{nick}/desk/clear", p.signedIn(p.clearDesk))
 	console.HandleFunc("GET /teams", p.signedIn(p.teamsPageHandler))
 	console.HandleFunc("POST /teams", p.signedIn(p.makeTeam))
 	console.HandleFunc("GET /teams/{name}", p.signedIn(p.teamPageHandler))

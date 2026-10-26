@@ -29,6 +29,8 @@ type settingsView struct {
 	CanDelete bool
 	// Sections are the extension's (GuildNet's plan and desk hours).
 	Sections []template.HTML
+	// Storage is its desks' files against its storage, if it has desks.
+	Storage *storageView
 }
 
 // providerKey is a model provider as settings show it: never the key, only
@@ -76,6 +78,7 @@ func (p *Platform) renderSettings(w http.ResponseWriter, r *http.Request, status
 		v.Providers = append(v.Providers, providerKey{Provider: string(prov), Title: prov.Title(), KeyEnd: keyEnd(n.Keys.Get(prov))})
 	}
 	v.Sections = p.sections(r, n)
+	v.Storage = p.storageViewOf(r.Context(), n)
 	p.render(w, r, status, "settings", withError{Err: problem, View: v})
 }
 

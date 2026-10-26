@@ -494,6 +494,10 @@ type staffView struct {
 	GatewayOn bool
 	// Work is its recent wake-ups, when the person looking may see them.
 	Work []workDone
+	// DeskFiles is what its desk holds, in GB ("1.5"), if it has one here;
+	// whoever may change it may clear it.
+	DeskFiles string
+	HasDesk   bool
 }
 
 // workDone is one of an agent's wake-ups, as its page shows it.
@@ -617,6 +621,7 @@ func (p *Platform) loadAgent(r *http.Request, nick string) (staffView, error) {
 	if err := p.runner(r).call(r.Context(), "GET", "/v1/staff/"+url.PathEscape(nick)+"/work", nil, &work); err == nil {
 		v.Work = work.Work
 	}
+	v.DeskFiles, v.HasDesk = p.deskOf(r.Context(), networkOf(r), a.Nick)
 	if !v.CanEdit {
 		return v, nil
 	}

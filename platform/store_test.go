@@ -90,6 +90,33 @@ func TestWhenANetworkWasLastUsedIsKeptApart(t *testing.T) {
 	})
 }
 
+// How full its desks were when its owner was last told is kept apart too.
+func TestHowFullANetworksDesksWereWhenToldIsKeptApart(t *testing.T) {
+	eachStore(t, func(t *testing.T, s store) {
+		ctx := context.Background()
+		if err := s.AddNetwork(ctx, acmeNet); err != nil {
+			t.Fatal(err)
+		}
+		if n, _ := s.Network(ctx, "acme"); n.StorageTold != 0 {
+			t.Errorf("a new network was told at %d%%", n.StorageTold)
+		}
+		if err := s.NoteStorageTold(ctx, "acme", 80); err != nil {
+			t.Fatal(err)
+		}
+		n, _ := s.Network(ctx, "acme")
+		n.StorageTold, n.Timezone = 0, "Europe/Paris"
+		if err := s.UpdateNetwork(ctx, n); err != nil {
+			t.Fatal(err)
+		}
+		if n, _ := s.Network(ctx, "acme"); n.StorageTold != 80 || n.Timezone != "Europe/Paris" {
+			t.Errorf("after a change: told at %d%%, timezone %q", n.StorageTold, n.Timezone)
+		}
+		if err := s.NoteStorageTold(ctx, "nowhere", 80); !errors.Is(err, platform.ErrNotFound) {
+			t.Errorf("an unknown network: %v", err)
+		}
+	})
+}
+
 // IRC app passwords are kept per person, found by id, noted when used, and
 // go with the person's password when they leave the org.
 func TestAppPasswordsAreKeptPerPerson(t *testing.T) {

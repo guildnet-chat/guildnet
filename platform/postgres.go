@@ -104,9 +104,10 @@ func (s *Postgres) seal(n Network) (sealed, error) {
 const networkColumns = `name, region, runner_url, runner_token, ergo_url, ergo_token, chat_url, chat_key,
 	status, problem, owner, owner_nick, template, timezone, anthropic_key, updated_at, model_keys`
 
-// networkRead are those and when a person last used it, which only NoteUsed
-// writes.
-const networkRead = networkColumns + `, used_at`
+// networkRead are those, when a person last used it, which only NoteUsed
+// writes, and how full its desks were when its owner was told
+// (NoteStorageTold's).
+const networkRead = networkColumns + `, used_at, storage_told`
 
 func (s *Postgres) networkValues(n Network) ([]any, error) {
 	sec, err := s.seal(n)
@@ -182,6 +183,14 @@ func (s *Postgres) NoteUsed(ctx context.Context, network string, at time.Time) e
 	return err
 }
 
+func (s *Postgres) NoteStorageTold(ctx context.Context, network string, percent int) error {
+	tag, err := s.pool.Exec(ctx, `update networks set storage_told = $2 where name = $1`, strings.ToLower(network), percent)
+	if err == nil && tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return err
+}
+
 // RemoveNetwork forgets a network; its sign-ins go with it.
 func (s *Postgres) RemoveNetwork(ctx context.Context, name string) error {
 	_, err := s.pool.Exec(ctx, `delete from networks where name = $1`, strings.ToLower(name))
@@ -219,7 +228,7 @@ func (s *Postgres) scanNetwork(row pgx.Row) (Network, error) {
 	var owner *string
 	var anthropicKey []byte // not read: from before model_keys (the upgrade moved it)
 	err := row.Scan(&n.Name, &n.Region, &n.RunnerURL, &sec.runnerToken, &n.ErgoURL, &sec.ergoToken, &n.ChatURL, &sec.chatKey,
-		&n.Status, &n.Problem, &owner, &n.OwnerNick, &n.Template, &n.Timezone, &anthropicKey, &n.Updated, &sec.modelKeys, &n.Used)
+		&n.Status, &n.Problem, &owner, &n.OwnerNick, &n.Template, &n.Timezone, &anthropicKey, &n.Updated, &sec.modelKeys, &n.Used, &n.StorageTold)
 	if err != nil {
 		return Network{}, err
 	}

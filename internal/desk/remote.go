@@ -12,6 +12,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/guildnet-chat/guildnet/internal/sandbox"
 )
 
 // Remote is the Sandbox in sandboxd, reached over HTTP with the network's
@@ -63,6 +65,15 @@ func (r *Remote) call(ctx context.Context, method, nick, op string, body, out an
 	if op != "" {
 		u += "/" + op
 	}
+	return r.send(ctx, method, u, raw, out)
+}
+
+// get is a GET of sandboxd's path, decoded into out.
+func (r *Remote) get(ctx context.Context, path string, out any) error {
+	return r.send(ctx, "GET", r.url+path, nil, out)
+}
+
+func (r *Remote) send(ctx context.Context, method, u string, raw []byte, out any) error {
 	var resp *http.Response
 	for fresh := false; ; fresh = true {
 		token, err := r.tokens(ctx, fresh)
@@ -164,4 +175,12 @@ func (r *Remote) Remove(ctx context.Context, nick string) error {
 // the network has been deleted.
 func (r *Remote) RemoveAll(ctx context.Context) error {
 	return r.call(ctx, "DELETE", "", "", nil, nil)
+}
+
+// Storage is how much the token's network's desks' files take, and its
+// limit (the platform's token only).
+func (r *Remote) Storage(ctx context.Context) (sandbox.Storage, error) {
+	var out sandbox.Storage
+	err := r.get(ctx, "/v1/storage", &out)
+	return out, err
 }

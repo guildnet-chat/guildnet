@@ -84,6 +84,28 @@ type Sized interface {
 	SetStorage(ctx context.Context, network string, gb int) error
 }
 
+// Measured is a backend that can say how much each of a network's desks'
+// files take, in bytes, by nick.
+type Measured interface {
+	Used(ctx context.Context, network string) (map[string]int64, error)
+}
+
+// Storage is a network's desks' files against its limit, as sandboxd says
+// (GET /v1/storage).
+type Storage struct {
+	LimitGB int              `json:"limit_gb"` // 0: no limit
+	Desks   map[string]int64 `json:"desks"`    // bytes, by nick
+}
+
+// Used is all its desks' files, in bytes.
+func (s Storage) Used() int64 {
+	var n int64
+	for _, b := range s.Desks {
+		n += b
+	}
+	return n
+}
+
 // NewKeys is a key pair for networks' tokens: the platform keeps the
 // private key and signs with it; sandboxd has only the public one, so the
 // sandbox VM holds nothing that could make a token.

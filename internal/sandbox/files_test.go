@@ -87,6 +87,30 @@ func TestADesksFilesAreInItsNetworksFolder(t *testing.T) {
 	}
 }
 
+// How much each desk's files take, for its network's owner to see.
+func TestADesksFilesAreMeasured(t *testing.T) {
+	dk, d := filesRig(t, testFiles)
+	ctx := context.Background()
+	if err := dk.Ensure(ctx, d); err != nil {
+		t.Fatal(err)
+	}
+	if err := dk.WriteFile(ctx, d, "/workspace/big.bin", make([]byte, 2<<20)); err != nil {
+		t.Fatal(err)
+	}
+
+	used, err := dk.Used(ctx, d.Network)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := used[d.Nick]; n < 2<<20 || n > 4<<20 {
+		t.Errorf("%s's desk takes %d bytes, want about 2 MiB; all: %v", d.Nick, n, used)
+	}
+	if none, err := dk.Used(ctx, "nobody-here"); err != nil || len(none) != 0 {
+		t.Errorf("a network with no desks: %v %v", none, err)
+	}
+}
+
 func TestADesksFilesOutliveItsContainerBeingMadeAgain(t *testing.T) {
 	dk, d := filesRig(t, testFiles)
 	ctx := context.Background()

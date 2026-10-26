@@ -54,6 +54,15 @@
   </ul>
 </section>
 {{end}}
+{{if .HasDesk}}
+<section class="card" id="desk">
+  <h2>Its desk</h2>
+  <p>{{$a.Nick}}'s desk holds <strong>{{.DeskFiles}} GB</strong>: its work folder and home, repos checked out included. It counts against {{$.Network}}'s desks' storage.</p>
+  {{if .CanEdit}}<form method="post" action="/staff/{{$a.Nick}}/desk/clear" hx-confirm="Clear {{$a.Nick}}'s desk? Its work folder and home are deleted, files it hasn't pushed included; it starts afresh next time.">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="outline">Clear this desk's files</button>
+    <span class="muted small">Its work and home folders go; its repos are checked out again next time.</span></form>{{end}}
+</section>
+{{end}}
 {{if .CanEdit}}
 <form method="post" action="/staff/{{$a.Nick}}" class="card fields">
   <input type="hidden" name="csrf" value="{{$.CSRF}}">

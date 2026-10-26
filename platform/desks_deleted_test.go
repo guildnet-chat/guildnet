@@ -29,15 +29,24 @@ type desksVM struct {
 	mu   sync.Mutex
 	down bool
 	gone []string // networks whose desks were all removed
+	// use is each network's desks' files, in bytes, by nick; clears are the
+	// desks removed one at a time ("network/nick").
+	use    map[string]map[string]int64
+	clears []string
+	asked  int // storage asked for, answered or not
 }
 
 func newDesksVM(t *testing.T) *desksVM {
 	t.Helper()
-	vm := &desksVM{}
-	s := sandbox.NewServer(sandbox.Options{Backend: vmBackend{vm}, PublicKeys: []ed25519.PublicKey{SandboxKey.Public().(ed25519.PublicKey)}})
+	vm := &desksVM{use: map[string]map[string]int64{}}
+	s := sandbox.NewServer(sandbox.Options{Backend: vmBackend{vm}, PublicKeys: []ed25519.PublicKey{SandboxKey.Public().(ed25519.PublicKey)},
+		DefaultStorageGB: 5})
 	vm.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		vm.mu.Lock()
 		down := vm.down
+		if r.URL.Path == "/v1/storage" {
+			vm.asked++
+		}
 		vm.mu.Unlock()
 		if down {
 			// Asleep: the connection is dropped, as by a VM that's off.
@@ -66,6 +75,25 @@ func (vm *desksVM) removed(network string) bool {
 	return slices.Contains(vm.gone, network)
 }
 
+func (vm *desksVM) setUse(network string, desks map[string]int64) {
+	vm.mu.Lock()
+	defer vm.mu.Unlock()
+	vm.use[network] = desks
+}
+
+func (vm *desksVM) storageAsked() int {
+	vm.mu.Lock()
+	defer vm.mu.Unlock()
+	return vm.asked
+}
+
+// cleared says whether network's desk nick was removed.
+func (vm *desksVM) cleared(network, nick string) bool {
+	vm.mu.Lock()
+	defer vm.mu.Unlock()
+	return slices.Contains(vm.clears, network+"/"+nick)
+}
+
 // vmBackend is Docker on the VM, as far as removing goes.
 type vmBackend struct{ vm *desksVM }
 
@@ -78,7 +106,23 @@ func (b vmBackend) ReadFile(context.Context, sandbox.Desk, string, int64) ([]byt
 }
 func (b vmBackend) WriteFile(context.Context, sandbox.Desk, string, []byte) error { return nil }
 func (b vmBackend) Stop(context.Context, sandbox.Desk) error                      { return nil }
-func (b vmBackend) Remove(context.Context, sandbox.Desk) error                    { return nil }
+func (b vmBackend) SetStorage(context.Context, string, int) error                 { return nil }
+func (b vmBackend) Remove(_ context.Context, d sandbox.Desk) error {
+	b.vm.mu.Lock()
+	defer b.vm.mu.Unlock()
+	b.vm.clears = append(b.vm.clears, d.Network+"/"+d.Nick)
+	delete(b.vm.use[d.Network], d.Nick)
+	return nil
+}
+func (b vmBackend) Used(_ context.Context, network string) (map[string]int64, error) {
+	b.vm.mu.Lock()
+	defer b.vm.mu.Unlock()
+	out := map[string]int64{}
+	for nick, n := range b.vm.use[network] {
+		out[nick] = n
+	}
+	return out, nil
+}
 func (b vmBackend) RemoveNetwork(_ context.Context, network string) error {
 	b.vm.mu.Lock()
 	defer b.vm.mu.Unlock()

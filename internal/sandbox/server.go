@@ -113,6 +113,7 @@ func NewServer(o Options) *Server {
 	s.mux.HandleFunc("POST /v1/desks/{nick}/write", s.desk(s.write))
 	s.mux.HandleFunc("DELETE /v1/desks/{nick}", s.desk(s.remove))
 	s.mux.HandleFunc("DELETE /v1/desks", s.removeNetwork)
+	s.mux.HandleFunc("GET /v1/storage", s.storageUse)
 	// For the VM's power-off timer, on the VM: says nothing of any desk.
 	s.mux.HandleFunc("GET /v1/idle", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, map[string]int{"idle_seconds": int(s.Idle() / time.Second)})
@@ -476,6 +477,38 @@ func (s *Server) removeNetwork(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 	s.logf("%s: every desk removed", network)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// storageUse says how much the token's network's desks' files take, and its
+// limit: for the platform, which shows it to the network's owner.
+func (s *Server) storageUse(w http.ResponseWriter, r *http.Request) {
+	c, ok := s.claims(r, Admin)
+	if !ok {
+		jsonError(w, http.StatusUnauthorized, "only the platform asks a network's storage, with a token for that")
+		return
+	}
+	out := Storage{Desks: map[string]int64{}}
+	if _, sized := s.opts.Backend.(Sized); sized {
+		s.mu.Lock()
+		gb, set := s.storage[c.Network]
+		s.mu.Unlock()
+		if !set {
+			gb = s.opts.DefaultStorageGB
+		}
+		out.LimitGB = gb
+	}
+	if m, ok := s.opts.Backend.(Measured); ok {
+		desks, err := m.Used(r.Context(), c.Network)
+		if err != nil {
+			monitor.Problem(s.opts.Logger, "%s: measuring its desks' files: %v", c.Network, err)
+			jsonError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		for nick, n := range desks {
+			out.Desks[nick] = n
+		}
+	}
+	writeJSON(w, out)
 }
 
 // StopIdle stops the desks nobody has used for a while, and isn't using now.

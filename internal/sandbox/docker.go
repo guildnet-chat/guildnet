@@ -342,6 +342,12 @@ func (dk *Docker) RemoveNetwork(ctx context.Context, network string) error {
 // container of the desk image, with Files at /files and the volumes given,
 // and no network: privileged to set limits.
 func (dk *Docker) files(ctx context.Context, privileged bool, volumes []string, script string, args ...string) error {
+	_, err := dk.filesSaying(ctx, privileged, volumes, script, args...)
+	return err
+}
+
+// filesSaying is files, with what the script printed.
+func (dk *Docker) filesSaying(ctx context.Context, privileged bool, volumes []string, script string, args ...string) (string, error) {
 	run := []string{"run", "--rm", "--network", "none", "--user", "0", "--entrypoint", "/bin/sh", "--volume", dk.Files + ":/files"}
 	if privileged {
 		run = append(run, "--privileged")
@@ -350,8 +356,39 @@ func (dk *Docker) files(ctx context.Context, privileged bool, volumes []string, 
 		run = append(run, "--volume", v)
 	}
 	run = append(append(run, dk.Image, "-c", script, "files"), args...)
-	_, err := dk.docker(ctx, run...)
-	return err
+	return dk.docker(ctx, run...)
+}
+
+// measureFiles prints each desk's folder in network $1's, and its size in
+// KiB: "kai 1234".
+const measureFiles = `cd "/files/$1" 2>/dev/null || exit 0
+for d in */; do
+  [ -d "$d" ] || continue
+  printf '%s %s\n' "${d%/}" "$(du -sk "$d" | cut -f1)"
+done`
+
+// Used is how much each of network's desks' files take, in bytes (as the
+// disk holds them, in blocks, which its limit counts).
+func (dk *Docker) Used(ctx context.Context, network string) (map[string]int64, error) {
+	out := map[string]int64{}
+	if dk.Files == "" {
+		return out, nil
+	}
+	if !validName.MatchString(network) {
+		return nil, fmt.Errorf("%q isn't a network's name", network)
+	}
+	said, err := dk.filesSaying(ctx, false, nil, measureFiles, network)
+	if err != nil {
+		return nil, fmt.Errorf("measuring %s's desks' files: %w", network, err)
+	}
+	for _, line := range strings.Split(said, "\n") {
+		nick, kb, ok := strings.Cut(strings.TrimSpace(line), " ")
+		n, err := strconv.ParseInt(kb, 10, 64)
+		if ok && err == nil && validName.MatchString(nick) {
+			out[nick] = n << 10
+		}
+	}
+	return out, nil
 }
 
 // readyFiles makes a desk's folders the first time: its home as the

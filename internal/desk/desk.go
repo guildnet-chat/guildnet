@@ -214,11 +214,25 @@ func (w *Workspace) Run(ctx context.Context, p config.Persona, name string, in m
 	case "bash", "read", "glob", "grep":
 		out, err := w.look(ctx, p, name, in)
 		if err != nil {
-			return "", errors.New(w.blank(p.Nick, err.Error()))
+			return "", errors.New(w.blank(p.Nick, err.Error()) + outOfSpace(err.Error()))
 		}
-		return agent.Untrusted("desk", w.blank(p.Nick, out)), nil
+		return agent.Untrusted("desk", w.blank(p.Nick, out)) + outOfSpace(out), nil
 	}
-	return w.change(ctx, p, name, in)
+	out, err := w.change(ctx, p, name, in)
+	if err != nil {
+		return "", errors.New(err.Error() + outOfSpace(err.Error()))
+	}
+	return out, nil
+}
+
+// outOfSpace is what the agent is told, after what its desk said, if that
+// says it ran out of space: the network's desks' storage is full (on XFS a
+// network's quota says either).
+func outOfSpace(said string) string {
+	if !strings.Contains(said, "No space left on device") && !strings.Contains(said, "Disk quota exceeded") {
+		return ""
+	}
+	return "\n[Your network's desks' storage is full: nothing more can be saved at any desk until some is freed. Delete files you've finished with (du -sh * shows what's big), and tell the network's owner, who can clear a desk that isn't needed from its agent's page in the console.]"
 }
 
 // blank is s without the secrets p's desk was handed.

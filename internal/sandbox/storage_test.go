@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -33,6 +34,21 @@ func (b *sizedBackend) SetStorage(_ context.Context, network string, gb int) err
 	defer b.mu.Unlock()
 	b.set = append(b.set, fmt.Sprintf("%s %d", network, gb))
 	return nil
+}
+
+// Used is each of network's desks' files, as the fake has them: a byte a
+// byte of content.
+func (b *sizedBackend) Used(_ context.Context, network string) (map[string]int64, error) {
+	b.fakeBackend.mu.Lock()
+	defer b.fakeBackend.mu.Unlock()
+	out := map[string]int64{}
+	for k, content := range b.fakeBackend.files {
+		if desk, ok := strings.CutPrefix(k, network+"/"); ok {
+			nick, _, _ := strings.Cut(desk, " ")
+			out[nick] += int64(len(content))
+		}
+	}
+	return out, nil
 }
 
 func (b *sizedBackend) limits() []string {
@@ -92,6 +108,39 @@ func TestWithNoDefaultATokenWithoutStorageSetsNoLimit(t *testing.T) {
 
 	if got := b.limits(); len(got) != 0 {
 		t.Errorf("limits set %q, want none", got)
+	}
+}
+
+// The platform asks how much of its storage a network's desks use, and
+// each desk's share; only the platform: a runner's token doesn't say.
+func TestThePlatformSeesANetworksStorageUse(t *testing.T) {
+	r, _ := startSized(t, 5)
+	ctx := context.Background()
+	r.clientWith("acme", 20).Write(ctx, "kai", "/workspace/a.txt", []byte("12345"))
+	r.clientWith("acme", 20).Write(ctx, "vera", "/workspace/b.txt", []byte("123"))
+	r.clientWith("globex", 20).Write(ctx, "hal", "/workspace/c.txt", []byte("1234567"))
+
+	got, err := r.admin("acme").Storage(ctx)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.LimitGB != 20 || got.Used() != 8 || got.Desks["kai"] != 5 || got.Desks["vera"] != 3 || len(got.Desks) != 2 {
+		t.Errorf("acme's storage = %+v (used %d), want 20 GB, kai 5 and vera 3", got, got.Used())
+	}
+	if _, err := r.clientWith("acme", 20).Storage(ctx); err == nil {
+		t.Error("a runner's token was told its network's storage")
+	}
+}
+
+// Before a network's desks are first used, its limit is sandboxd's default.
+func TestAnUnusedNetworksStorageIsTheDefault(t *testing.T) {
+	r, _ := startSized(t, 5)
+
+	got, err := r.admin("acme").Storage(context.Background())
+
+	if err != nil || got.LimitGB != 5 || got.Used() != 0 {
+		t.Errorf("acme's storage = %+v %v, want 5 GB, none used", got, err)
 	}
 }
 
