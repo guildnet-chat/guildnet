@@ -273,6 +273,43 @@ func TestYouCantMakePeopleReportToYouWithoutHoldingWhatManagersDo(t *testing.T) 
 	expectStatus(t, n, "dana", http.StatusOK, "PATCH", "/v1/members/eve", map[string]any{"reports_to": "eli"})
 }
 
+// A guest isn't shown the company's directory through the API either: only
+// who they are, their channels and the agents in them, and GuildServ (which
+// gives guests only HELP and CATCHUP).
+func TestTheAPIShowsAGuestOnlyTheirChannelsAndTheAgentsInThem(t *testing.T) {
+	n := salesOrg(t)
+	expectStatus(t, n, "method", http.StatusCreated, "POST", "/v1/members", map[string]any{"account": "gus", "team": "Sales", "guest": true})
+
+	for _, path := range []string{"/v1/org", "/v1/staff/kai", "/v1/staff/kai/work", "/v1/teams/Sales/budget", "/v1/teams/Sales/stats",
+		"/v1/members/dana", "/v1/company", "/v1/access", "/v1/log", "/v1/approvals", "/v1/spend", "/v1/roles", "/v1/models",
+		"/v1/connectors", "/v1/desk-hosts", "/v1/github"} {
+		expectStatus(t, n, "gus", http.StatusForbidden, "GET", path, nil)
+	}
+	expectStatus(t, n, "gus", http.StatusForbidden, "POST", "/v1/goals", map[string]any{"text": "Ours now"})
+
+	if me := expectStatus(t, n, "gus", http.StatusOK, "GET", "/v1/me", nil); me["guest"] != true {
+		t.Errorf("/v1/me for a guest = %v, want guest: true", me)
+	}
+	mine := expectStatus(t, n, "gus", http.StatusOK, "GET", "/v1/me/channels", nil)
+	var agents []string
+	for _, x := range mine["agents"].([]any) {
+		a := x.(map[string]any)
+		agents = append(agents, a["nick"].(string))
+		if a["role"] == "" {
+			t.Errorf("agent %v has no role", a)
+		}
+		for _, ch := range strs(a["channels"]) {
+			if !slices.Contains(strs(mine["channels"]), ch) {
+				t.Errorf("%s is shown in %s, which isn't one of gus's channels %v", a["nick"], ch, mine["channels"])
+			}
+		}
+	}
+	if !slices.Equal(agents, []string{"kai", "vera"}) {
+		t.Errorf("agents in gus's channels = %v, want kai and vera (in #general)", agents)
+	}
+	expectStatus(t, n, "method", http.StatusOK, "GET", "/v1/org", nil)
+}
+
 func TestGuestsCantBeGivenAccessOrLead(t *testing.T) {
 	n := salesOrg(t)
 	expectStatus(t, n, "method", http.StatusCreated, "POST", "/v1/members", map[string]any{"account": "gus", "team": "Sales", "guest": true})

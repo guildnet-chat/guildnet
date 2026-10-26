@@ -52,6 +52,7 @@ known limits. Mechanisms are described in
 | Control | |
 | --- | --- |
 | Who agents work for | an agent works with its team's repositories and the company's connected services for whoever asks it, so only people in the org wake agents. A private team's agents (and those of teams inside it) take asks only from people in the team's channel: its members, the leads above it, and the owner. Guests wake no agents until the owner allows it (on the People page, or `COMPANY GUESTS on`) |
+| What guests see | their channels and the agents in them: the runner's API and GuildServ refuse guests the org chart, people, teams, goals, budgets, spend and the log, and the console doesn't link to them |
 | Private teams' tools | a repository or connected service a private team uses can be given to another team only by someone in the private team, or the owner |
 | Approvals | merging a pull request requires a person's approval; connector writes too, unless their policy allows them |
 | Agents' own pull requests | an agent pushes only to branches named for it (`kai/…`), and closes only pull requests the GitHub App's bot opened, from the repository itself, on its branch: nothing anyone writes into a pull request makes it the agent's |

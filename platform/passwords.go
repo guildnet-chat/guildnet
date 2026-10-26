@@ -229,7 +229,7 @@ func (p *Platform) passwordIsRight(ctx context.Context, n Network, account, pass
 
 // isPerson says whether account is a person in n's org, as its runner says.
 func (p *Platform) isPerson(ctx context.Context, n Network, account string) (bool, error) {
-	err := (runner{n: n, actor: account}).call(ctx, "GET", "/v1/org", nil, nil)
+	err := (runner{n: n, actor: account}).call(ctx, "GET", "/v1/me", nil, nil)
 	switch {
 	case err == nil:
 		return true, nil

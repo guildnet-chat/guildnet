@@ -1284,6 +1284,32 @@ func (r *Runner) channelsFor(p config.Persona) []string {
 	return chans
 }
 
+// channelAgent is an agent as shown to someone in some of its channels: who
+// it is, and which of their channels it's in. Nothing else of the org.
+type channelAgent struct {
+	Nick     string   `json:"nick"`
+	Name     string   `json:"name"`
+	Role     string   `json:"role"`
+	Channels []string `json:"channels"`
+}
+
+// agentsIn are the agents in any of channels, by nick.
+func (r *Runner) agentsIn(channels []string) []channelAgent {
+	out := []channelAgent{}
+	for _, p := range r.staff() {
+		var in []string
+		for _, ch := range channels {
+			if r.inChannel(p, ch) {
+				in = append(in, ch)
+			}
+		}
+		if len(in) > 0 {
+			out = append(out, channelAgent{Nick: p.Nick, Name: p.Name, Role: p.Role, Channels: in})
+		}
+	}
+	return out
+}
+
 // inChannel reports whether agent p belongs in channel.
 func (r *Runner) inChannel(p config.Persona, channel string) bool {
 	return containsChannel(r.channelsFor(p), channel)

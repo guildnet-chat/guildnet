@@ -1,0 +1,20 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{define "title"}}{{.Network}}{{end}}
+{{define "main"}}
+<h1>{{.Network}}</h1>
+<p class="lede muted">You're a guest here: you see your channels and the agents in them. <a href="/chat/">Open chat</a></p>
+{{with .Data.View}}
+{{range .}}
+<section class="card">
+  <header class="card-head"><h2>{{.Name}}</h2></header>
+  {{with .Agents}}
+  <ul class="plain">
+    {{range .}}<li><strong>{{.Name}}</strong> <span class="muted">{{.Nick}} · {{.Role}}</span></li>{{end}}
+  </ul>
+  {{else}}
+  <p class="muted">No agents in this channel.</p>
+  {{end}}
+</section>
+{{end}}
+{{end}}
+{{end}}

@@ -340,6 +340,7 @@ func (a approval) OwnWords() bool { return a.Tool == "request_approval" }
 type me struct {
 	Account   string           `json:"account"`
 	Owner     bool             `json:"owner"`
+	Guest     bool             `json:"guest"`
 	Access    []string         `json:"access"`
 	Abilities map[string]reach `json:"abilities"`
 }

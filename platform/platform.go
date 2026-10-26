@@ -309,7 +309,7 @@ func New(opts Options) *Platform {
 		return t
 	}
 	for _, page := range []string{"signin", "welcome", "org", "staff", "teams", "approvals", "chat", "settings", "deleted", "connect", "not-found",
-		"people", "account", "join", "reset", "link-gone", "spend", "server", "person", "team", "company", "access", "log", "roles", "agent-token", "agent-webhook", "connectors", "connect-onward", "two-step", "signin-two-step"} {
+		"people", "account", "join", "reset", "link-gone", "spend", "server", "person", "team", "company", "access", "log", "roles", "agent-token", "agent-webhook", "connectors", "connect-onward", "two-step", "signin-two-step", "guest"} {
 		p.pages[page] = framed(template.Must(template.New("layout.html").Funcs(funcs).ParseFS(templateFiles, "templates/layout.html", "templates/parts.html", "templates/"+page+".html")))
 	}
 	for _, page := range []string{"home-setup", "home-signin", "home-signin-email", "home-signin-two-step", "home-two-step", "home-networks", "home-new", "home-network", "home-onward", "suspended", "waking", "home-not-found"} {

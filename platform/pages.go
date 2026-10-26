@@ -49,6 +49,8 @@ type chrome struct {
 	CanLog   bool // may see some of the org's log
 	CanSpend bool // may see some of what agents spend
 	Owner    bool
+	// Guest: sees only their channels and the agents in them.
+	Guest bool
 	// Settings: the owner of a network the host runs (ownedHere).
 	Settings bool
 	// Server: may see a self-hosted install's Server page.
@@ -57,8 +59,11 @@ type chrome struct {
 
 func (p *Platform) loadChrome(r *http.Request) chrome {
 	var c chrome
-	c.Waiting, _ = p.loadApprovals(r)
 	if m, err := p.loadMe(r); err == nil {
+		if m.Guest {
+			return chrome{Guest: true}
+		}
+		c.Waiting, _ = p.loadApprovals(r)
 		c.Owner = m.Owner
 		c.Settings = p.seesSettings(r)
 		c.Server, _ = p.serverAccess(r)
@@ -189,7 +194,7 @@ func (p *Platform) signin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// A password isn't enough: they must be a person in this org.
-	if err := (runner{n: n, actor: account}).call(r.Context(), "GET", "/v1/org", nil, nil); err != nil {
+	if err := (runner{n: n, actor: account}).call(r.Context(), "GET", "/v1/me", nil, nil); err != nil {
 		if statusOf(err) == http.StatusForbidden {
 			fail(http.StatusForbidden, fmt.Sprintf("%s isn't in %s's org. Ask the owner to add you.", account, n.Name))
 			return
@@ -316,7 +321,48 @@ func (p *Platform) loadOrg(r *http.Request) (orgView, error) {
 	return v, nil
 }
 
+// guestChannel is one of a guest's channels, with the agents in it.
+type guestChannel struct {
+	Name   string
+	Agents []channelAgent
+}
+
+type channelAgent struct {
+	Nick     string   `json:"nick"`
+	Name     string   `json:"name"`
+	Role     string   `json:"role"`
+	Channels []string `json:"channels"`
+}
+
+// guestHome is a guest's home: their channels and the agents in them, and
+// nothing else of the org.
+func (p *Platform) guestHome(w http.ResponseWriter, r *http.Request) {
+	var mine struct {
+		Channels []string       `json:"channels"`
+		Agents   []channelAgent `json:"agents"`
+	}
+	if err := p.runner(r).call(r.Context(), "GET", "/v1/me/channels", nil, &mine); err != nil {
+		p.render(w, r, statusOf(err), "guest", withError{Err: messageOf(err)})
+		return
+	}
+	var v []guestChannel
+	for _, ch := range mine.Channels {
+		c := guestChannel{Name: ch}
+		for _, a := range mine.Agents {
+			if slices.ContainsFunc(a.Channels, func(x string) bool { return strings.EqualFold(x, ch) }) {
+				c.Agents = append(c.Agents, a)
+			}
+		}
+		v = append(v, c)
+	}
+	p.render(w, r, http.StatusOK, "guest", withError{View: v})
+}
+
 func (p *Platform) orgPage(w http.ResponseWriter, r *http.Request) {
+	if m, err := p.loadMe(r); err == nil && m.Guest {
+		p.guestHome(w, r)
+		return
+	}
 	v, err := p.loadOrg(r)
 	if err != nil {
 		p.render(w, r, statusOf(err), "org", withError{Err: messageOf(err)})
@@ -870,5 +916,10 @@ func roleGroups() []roleGroup {
 }
 
 func (p *Platform) rolesPage(w http.ResponseWriter, r *http.Request) {
+	// For hiring, which guests don't.
+	if m, err := p.loadMe(r); err != nil || m.Guest {
+		p.render(w, r, http.StatusForbidden, "roles", withError{Err: "Guests see only their own channels and the agents in them."})
+		return
+	}
 	p.render(w, r, http.StatusOK, "roles", withError{View: roleGroups()})
 }

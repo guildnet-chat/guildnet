@@ -102,7 +102,7 @@ func (r *Runner) startAPI() error {
 	})
 	mux.HandleFunc("GET /v1/me/channels", func(w http.ResponseWriter, req *http.Request) {
 		channels := r.personsChannels(actorOf(req))
-		apiJSON(w, http.StatusOK, map[string]any{"channels": channels, "repos": r.channelsRepos(channels)})
+		apiJSON(w, http.StatusOK, map[string]any{"channels": channels, "repos": r.channelsRepos(channels), "agents": r.agentsIn(channels)})
 	})
 	mux.HandleFunc("GET /v1/staff/{nick}", r.apiAgent)
 	mux.HandleFunc("POST /v1/staff", r.apiHire)
@@ -208,9 +208,25 @@ func (r *Runner) apiAuth(next http.Handler) http.Handler {
 			apiError(w, http.StatusForbidden, actor+" isn't a person in this org")
 			return
 		}
+		if r.isGuest(actor) && !guestMay(req, actor) {
+			apiError(w, http.StatusForbidden, "guests see only their own channels and the agents in them")
+			return
+		}
 		req.Body = http.MaxBytesReader(w, req.Body, 1<<20)
 		next.ServeHTTP(w, req.WithContext(context.WithValue(req.Context(), actorKey{}, actor)))
 	})
+}
+
+// guestMay reports whether a guest may make the call: nothing of the
+// company's directory (its staff, teams, budgets, goals), only who they are,
+// their channels and the agents in them, GuildServ (which gives guests only
+// HELP and CATCHUP), and disconnecting their own IRC apps.
+func guestMay(req *http.Request, actor string) bool {
+	switch req.Method + " " + req.URL.Path {
+	case "GET /v1/me", "GET /v1/me/channels", "POST /v1/guildserv":
+		return true
+	}
+	return req.Method == "POST" && strings.EqualFold(req.URL.Path, "/v1/people/"+actor+"/disconnect")
 }
 
 func actorOf(req *http.Request) string {
@@ -832,7 +848,7 @@ func (r *Runner) apiMe(w http.ResponseWriter, req *http.Request) {
 	if r.isOwner(actor) {
 		access = []string{"Owner"} // everything, whatever the levels say
 	}
-	apiJSON(w, http.StatusOK, map[string]any{"account": actor, "owner": r.isOwner(actor), "access": access, "abilities": out})
+	apiJSON(w, http.StatusOK, map[string]any{"account": actor, "owner": r.isOwner(actor), "guest": r.isGuest(actor), "access": access, "abilities": out})
 }
 
 // accessJSON is an access level as the API shows it.
