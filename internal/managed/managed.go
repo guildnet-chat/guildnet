@@ -324,7 +324,7 @@ func (b *Brain) work(ctx context.Context, p config.Persona, d org.Desk, events [
 			if err != nil {
 				return res, err
 			}
-			res.Approval = &agent.ApprovalRequest{Tool: pend.Tool, Summary: summary, Resume: string(token)}
+			res.Approval = &agent.ApprovalRequest{Tool: pend.Tool, Summary: summary, Resume: string(token), Input: pend.Input}
 			return res, nil
 		}
 		if len(answers) == 0 {

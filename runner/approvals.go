@@ -4,6 +4,7 @@ package runner
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strconv"
@@ -101,6 +102,12 @@ func (r *Runner) raiseApproval(p config.Persona, channel, asker string, req *age
 		Agent: p.Nick, Approver: route[0], Route: route, Tool: req.Tool, Summary: req.Summary,
 		Channel: channel, Asker: asker, Resume: req.Resume,
 		RaisedAt: now, ExpiresAt: workweek.After(now, approvalWindow, r.loc()),
+	}
+	if req.Input != nil {
+		// As the summary's hash names it: compact, keys in order.
+		if b, err := json.Marshal(req.Input); err == nil {
+			a.Input = string(b)
+		}
 	}
 	if after := r.moveAfter(); after > 0 && len(route) > 1 {
 		a.MovesAt = workweek.After(now, after, r.loc())

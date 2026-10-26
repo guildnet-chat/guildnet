@@ -5,7 +5,8 @@
 {{with .Data.View}}
 {{range .Approvals}}
 <section class="banner">
-  <p><strong>{{.Agent}}</strong> <span class="badge ai">AI</span> {{if .OwnWords}}asks, in its own words, to “{{.Summary}}”{{else}}wants to {{.Summary}}{{end}}</p>
+  <p><strong>{{.Agent}}</strong> <span class="badge ai">AI</span> {{if .OwnWords}}asks, in its own words, to “{{.Summary}}”{{else}}wants to {{.Brief}}{{end}}</p>
+  {{$a := .}}{{with .InFull}}<details class="in-full"><summary>What runs, in full (sha256 {{$a.InFullSum}})</summary><pre class="code">{{.}}</pre></details>{{end}}
   <p class="small">#{{.ID}}, asked of {{.Approver}}{{if .Channel}} in {{.Channel}}{{end}}.{{if .Next}} If nobody decides, it goes to {{.Next}} at {{.MovesAt.Format "Mon 15:04 MST"}}.{{end}} Expires {{.ExpiresAt.Format "Mon Jan 2 15:04 MST"}}.</p>
   <div class="actions">
     <form method="post" action="/approvals/{{.ID}}/approve"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button>Approve</button></form>

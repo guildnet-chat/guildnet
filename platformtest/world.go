@@ -445,6 +445,18 @@ func (n *Network) RaiseApproval(t *testing.T, agentNick, approver, summary strin
 	return a.ID
 }
 
+// RaiseApprovalWithInput is RaiseApproval for a call with this input (JSON).
+func (n *Network) RaiseApprovalWithInput(t *testing.T, agentNick, approver, summary, input string) int64 {
+	t.Helper()
+	now := time.Now()
+	a, err := n.Store.RaiseApproval(context.Background(), org.Approval{Agent: agentNick, Approver: approver, Tool: "notion_create_page",
+		Summary: summary, Input: input, Channel: "#engineering", Asker: approver, Resume: "token", Status: org.Pending, RaisedAt: now, ExpiresAt: now.Add(24 * time.Hour)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return a.ID
+}
+
 // RaiseOwnWordsApproval puts an outside agent's approval in its own words
 // (request_approval: nothing pinned to it) in front of an approver.
 func (n *Network) RaiseOwnWordsApproval(t *testing.T, agentNick, approver, summary string) int64 {

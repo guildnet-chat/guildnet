@@ -91,7 +91,7 @@
   <ul>
   {{range $i, $a := .}}{{if lt $i 3}}
     <li>
-      <p><strong>{{.Agent}}</strong> {{if .OwnWords}}asks, in its own words, to “{{.Summary}}”{{else}}wants to {{.Summary}}{{end}} <span class="small">#{{.ID}}{{if .Channel}} in {{.Channel}}{{end}} · expires {{.ExpiresAt.Format "Mon 15:04 MST"}}</span></p>
+      <p><strong>{{.Agent}}</strong> {{if .OwnWords}}asks, in its own words, to “{{.Summary}}”{{else}}wants to {{.Brief}}{{if .InFull}} (<a href="/approvals">what runs, in full</a>){{end}}{{end}} <span class="small">#{{.ID}}{{if .Channel}} in {{.Channel}}{{end}} · expires {{.ExpiresAt.Format "Mon 15:04 MST"}}</span></p>
       <div class="actions">
         <form method="post" action="/approvals/{{.ID}}/approve"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="back" value="/"><button class="small-button">Approve</button></form>
         <form method="post" action="/approvals/{{.ID}}/deny"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="back" value="/"><button class="small-button outline">Deny</button></form>

@@ -537,7 +537,7 @@ func inFull(input map[string]any) string {
 	sum := sha256.Sum256(b)
 	s := string(b)
 	if len(s) > maxInFull {
-		s = s[:maxInFull] + fmt.Sprintf("… (%d bytes in all)", len(b))
+		s = s[:maxInFull] + fmt.Sprintf("… (%d bytes in all: all of it on the console's Approvals page)", len(b))
 	}
 	return fmt.Sprintf("In full (sha256 %x): %s", sum[:6], s)
 }

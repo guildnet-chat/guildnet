@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"html"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -174,6 +175,32 @@ func TestTheOrgChartShowsWhatsWaitingOnYou(t *testing.T) {
 	}
 	if a, _ := w.Networks["acme"].Store.Approval(context.Background(), id); a.Status != "approved" {
 		t.Errorf("approval = %+v", a)
+	}
+}
+
+// A call's whole input is on the Approvals page, however long, folded away
+// so the buttons stay in reach; the summary isn't repeated beside it.
+func TestTheApprovalsPageShowsACallsWholeInputFolded(t *testing.T) {
+	w := NewWorld(t)
+	body := strings.Repeat("a line of the page. ", 1000)
+	w.Networks["acme"].RaiseApprovalWithInput(t, "kai", "ada",
+		`use Notion: create_page (title "Launch"); In full (sha256 0a1b2c3d4e5f): {"body":"a line of the… (20040 bytes in all: all of it on the console's Approvals page)`,
+		`{"title":"Launch","body":"`+body+`"}`)
+
+	page := w.Browser("acme").SignedIn("ada").Get("/approvals")
+
+	details := html.UnescapeString(regexp.MustCompile(`(?s)<details[^>]*>.*?</details>`).FindString(page.Body))
+	if !strings.Contains(details, body) || !strings.Contains(details, "\n  \"title\": \"Launch\"") {
+		t.Fatalf("no folded, pretty-printed whole input:\n%.2000s", page.Body)
+	}
+	if !regexp.MustCompile(`sha256 [0-9a-f]{12}`).MatchString(details) {
+		t.Error("the whole input isn't named by its hash")
+	}
+	if strings.Contains(page.Body, "bytes in all") {
+		t.Error("the page repeats IRC's cut-short copy of the input")
+	}
+	if !strings.Contains(page.Text(), `create_page (title "Launch")`) {
+		t.Errorf("the summary is missing:\n%s", page.Text())
 	}
 }
 

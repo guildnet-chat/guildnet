@@ -102,6 +102,33 @@ func TestFiringAnAgentDeniesWhatItWasWaitingOn(t *testing.T) {
 	}
 }
 
+// What runs is what's approved, however long: the call's whole input is kept
+// with the approval, for the console to show.
+func TestAnApprovalKeepsTheCallsWholeInput(t *testing.T) {
+	long := strings.Repeat("a line of the page. ", 1000)
+	brain := wantsToMerge()
+	brain.approval = func(req agent.Request) *agent.ApprovalRequest {
+		if req.Persona.Nick != "kai" || !strings.Contains(req.Trigger.Text, "ship it") {
+			return nil
+		}
+		return &agent.ApprovalRequest{Tool: "notion_create_page", Summary: "use Notion: create_page", Resume: "kai-desk/page",
+			Input: map[string]any{"title": "Launch", "body": long}}
+	}
+	n := startNetwork(t, brain, withAPI())
+	n.human.say("#engineering", "kai: ship it")
+	n.human.expect("an approval request", askedToApprove("method"))
+
+	_, out := n.api("method").call("GET", "/v1/approvals", nil)
+	list, _ := out["approvals"].([]any)
+	if len(list) != 1 {
+		t.Fatalf("approvals: %v", out)
+	}
+	in, _ := list[0].(map[string]any)["input"].(map[string]any)
+	if in["body"] != long || in["title"] != "Launch" {
+		t.Errorf("the approval's input = %.200v, want the whole call", in)
+	}
+}
+
 func TestTheApproverIsTheAgentsHumanManagerNotAlwaysTheOwner(t *testing.T) {
 	n := startNetwork(t, wantsToMerge())
 	n.human.say("GuildServ", `MEMBER ADD dana ROLE "Engineering manager" TEAM Engineering`)

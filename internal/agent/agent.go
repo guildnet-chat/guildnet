@@ -55,6 +55,9 @@ type ApprovalRequest struct {
 	Tool    string // the tool it wants to use
 	Summary string // what it wants to do, in words, e.g. "merge PR #17 into main"
 	Resume  string // the platform's token for carrying on once decided
+	// Input is the call's whole input, exactly what runs once approved (nil
+	// for an approval in the agent's own words).
+	Input map[string]any
 }
 
 // ErrNoTools means this brain can't pause for approval, so there's nothing

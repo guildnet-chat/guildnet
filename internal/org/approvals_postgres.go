@@ -10,19 +10,19 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const approvalColumns = `id, agent, approver, tool, summary, channel, asker, resume, status,
+const approvalColumns = `id, agent, approver, tool, summary, input, channel, asker, resume, status,
 	decided_by, reason, raised_at, expires_at, decided_at, route, moves_at`
 
 // listColumns are approvalColumns for lists: without what the agent needs
 // to carry on (its whole conversation, which can be large), read only for
 // the approval it's carrying on from.
-const listColumns = `id, agent, approver, tool, summary, channel, asker, '' AS resume, status,
+const listColumns = `id, agent, approver, tool, summary, input, channel, asker, '' AS resume, status,
 	decided_by, reason, raised_at, expires_at, decided_at, route, moves_at`
 
 func scanApproval(row pgx.Row) (Approval, error) {
 	var a Approval
 	var decided, moves *time.Time
-	err := row.Scan(&a.ID, &a.Agent, &a.Approver, &a.Tool, &a.Summary, &a.Channel, &a.Asker, &a.Resume,
+	err := row.Scan(&a.ID, &a.Agent, &a.Approver, &a.Tool, &a.Summary, &a.Input, &a.Channel, &a.Asker, &a.Resume,
 		&a.Status, &a.DecidedBy, &a.Reason, &a.RaisedAt, &a.ExpiresAt, &decided, &a.Route, &moves)
 	a.Route = none(a.Route)
 	if moves != nil {
@@ -39,9 +39,9 @@ func scanApproval(row pgx.Row) (Approval, error) {
 
 func (p *Postgres) RaiseApproval(ctx context.Context, a Approval) (Approval, error) {
 	return scanApproval(p.pool.QueryRow(ctx, `INSERT INTO approvals
-		(agent, approver, tool, summary, channel, asker, resume, raised_at, expires_at, route, moves_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING `+approvalColumns,
-		a.Agent, a.Approver, a.Tool, a.Summary, a.Channel, a.Asker, a.Resume, a.RaisedAt, a.ExpiresAt, list(a.Route), orNull(a.MovesAt)))
+		(agent, approver, tool, summary, input, channel, asker, resume, raised_at, expires_at, route, moves_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING `+approvalColumns,
+		a.Agent, a.Approver, a.Tool, a.Summary, a.Input, a.Channel, a.Asker, a.Resume, a.RaisedAt, a.ExpiresAt, list(a.Route), orNull(a.MovesAt)))
 }
 
 func (p *Postgres) Approval(ctx context.Context, id int64) (Approval, error) {

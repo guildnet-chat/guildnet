@@ -9,6 +9,7 @@ import (
 	"os"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -571,6 +572,25 @@ func TestAnApprovalWaitsUntilSomeoneDecides(t *testing.T) {
 
 // What an agent needs to carry on (its whole conversation) is read for the
 // one approval it carries on from, not with every list of them.
+// The call's whole input is kept with its approval, however long, and shown
+// in lists: it's what the approver decides on.
+func TestAnApprovalKeepsTheCallsWholeInput(t *testing.T) {
+	eachStore(t, org.Seed{}, func(t *testing.T, s org.Store) {
+		req := mergeRequest()
+		req.Input = `{"body":"` + strings.Repeat("x", 20<<10) + `"}`
+		a, err := s.RaiseApproval(ctx, req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, _ := s.Approval(ctx, a.ID); got.Input != req.Input {
+			t.Errorf("the approval's input: %d bytes, want %d", len(got.Input), len(req.Input))
+		}
+		if pending, _ := s.PendingApprovals(ctx); len(pending) != 1 || pending[0].Input != req.Input {
+			t.Errorf("pending approvals lost the input")
+		}
+	})
+}
+
 func TestListsOfApprovalsLeaveOutWhatTheAgentCarriesOnFrom(t *testing.T) {
 	eachStore(t, org.Seed{}, func(t *testing.T, s org.Store) {
 		a, _ := s.RaiseApproval(ctx, mergeRequest())

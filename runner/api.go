@@ -473,27 +473,34 @@ func (r *Runner) apiFire(w http.ResponseWriter, req *http.Request) {
 
 // approvalJSON is an approval as the API shows it.
 type approvalJSON struct {
-	ID        int64     `json:"id"`
-	Agent     string    `json:"agent"`
-	Approver  string    `json:"approver"`
-	Tool      string    `json:"tool"`
-	Summary   string    `json:"summary"`
-	Channel   string    `json:"channel"`
-	Asker     string    `json:"asker"`
-	Status    string    `json:"status"`
-	DecidedBy string    `json:"decided_by,omitempty"`
-	Reason    string    `json:"reason,omitempty"`
-	RaisedAt  time.Time `json:"raised_at"`
-	ExpiresAt time.Time `json:"expires_at"`
-	Route     []string  `json:"route,omitempty"`
-	Next      string    `json:"next,omitempty"`    // who it moves to, if nobody decides
-	MovesAt   time.Time `json:"moves_at,omitzero"` // and when
+	ID       int64  `json:"id"`
+	Agent    string `json:"agent"`
+	Approver string `json:"approver"`
+	Tool     string `json:"tool"`
+	Summary  string `json:"summary"`
+	// Input is the call's whole input, as JSON (none for an approval in the
+	// agent's own words).
+	Input     json.RawMessage `json:"input,omitempty"`
+	Channel   string          `json:"channel"`
+	Asker     string          `json:"asker"`
+	Status    string          `json:"status"`
+	DecidedBy string          `json:"decided_by,omitempty"`
+	Reason    string          `json:"reason,omitempty"`
+	RaisedAt  time.Time       `json:"raised_at"`
+	ExpiresAt time.Time       `json:"expires_at"`
+	Route     []string        `json:"route,omitempty"`
+	Next      string          `json:"next,omitempty"`    // who it moves to, if nobody decides
+	MovesAt   time.Time       `json:"moves_at,omitzero"` // and when
 }
 
 func showApproval(a org.Approval) approvalJSON {
-	return approvalJSON{ID: a.ID, Agent: a.Agent, Approver: a.Approver, Tool: a.Tool, Summary: a.Summary, Channel: a.Channel,
+	j := approvalJSON{ID: a.ID, Agent: a.Agent, Approver: a.Approver, Tool: a.Tool, Summary: a.Summary, Channel: a.Channel,
 		Asker: a.Asker, Status: string(a.Status), DecidedBy: a.DecidedBy, Reason: a.Reason, RaisedAt: a.RaisedAt, ExpiresAt: a.ExpiresAt,
 		Route: a.Route}
+	if json.Valid([]byte(a.Input)) {
+		j.Input = json.RawMessage(a.Input)
+	}
+	return j
 }
 
 func (r *Runner) apiApprovals(w http.ResponseWriter, req *http.Request) {

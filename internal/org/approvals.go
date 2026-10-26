@@ -28,6 +28,7 @@ type Approval struct {
 	Approver  string // the account asked to decide
 	Tool      string // the tool the agent wants to use
 	Summary   string // what it wants to do, in words
+	Input     string // the call's whole input, as JSON ("" for none)
 	Channel   string // where the agent was working; "" for a DM
 	Asker     string // who the agent was working for
 	Resume    string // the agent platform's token for carrying on

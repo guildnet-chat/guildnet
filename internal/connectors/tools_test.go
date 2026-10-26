@@ -360,6 +360,22 @@ func TestTheApproverSeesAllOfWhatRuns(t *testing.T) {
 	}
 }
 
+// Past 8 KB, IRC gets the start, and says where the rest is.
+func TestALongCallsApprovalSaysWhereTheRestIs(t *testing.T) {
+	tb, _, _, _ := setup(t)
+	in := map[string]any{"title": "Weekly notes", "team": "ENG", "description": strings.Repeat("a line of notes. ", 1000)}
+
+	summary, _, err := tb.Prepare(ctx, engineer, "linear_create_issue", in)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(summary) > 9<<10 || !strings.Contains(summary, "bytes in all") || !strings.Contains(summary, "Approvals page") {
+		t.Errorf("a long call's summary (%d bytes) should be its start, saying the console's Approvals page has it all:\n%.300s...%s",
+			len(summary), summary, summary[max(0, len(summary)-200):])
+	}
+}
+
 func TestAnAskingToolIsDescribedForTheApprover(t *testing.T) {
 	tb, _, _, _ := setup(t)
 

@@ -6,6 +6,8 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -317,21 +319,47 @@ type teamBudget struct {
 }
 
 type approval struct {
-	ID        int64     `json:"id"`
-	Agent     string    `json:"agent"`
-	Approver  string    `json:"approver"`
-	Tool      string    `json:"tool"`
-	Summary   string    `json:"summary"`
-	Channel   string    `json:"channel"`
-	Status    string    `json:"status"`
-	ExpiresAt time.Time `json:"expires_at"`
-	Next      string    `json:"next"`     // who it moves to if nobody decides
-	MovesAt   time.Time `json:"moves_at"` // and when
+	ID        int64           `json:"id"`
+	Agent     string          `json:"agent"`
+	Approver  string          `json:"approver"`
+	Tool      string          `json:"tool"`
+	Summary   string          `json:"summary"`
+	Input     json.RawMessage `json:"input"` // the call's whole input, compact
+	Channel   string          `json:"channel"`
+	Status    string          `json:"status"`
+	ExpiresAt time.Time       `json:"expires_at"`
+	Next      string          `json:"next"`     // who it moves to if nobody decides
+	MovesAt   time.Time       `json:"moves_at"` // and when
 }
 
 // OwnWords says the approval is an outside agent's request in its own words
 // (request_approval): nothing GuildNet checked is pinned to it.
 func (a approval) OwnWords() bool { return a.Tool == "request_approval" }
+
+// Brief is its summary without the start of the call's input that IRC gets
+// (the page shows all of it).
+func (a approval) Brief() string {
+	if len(a.Input) == 0 {
+		return a.Summary
+	}
+	brief, _, _ := strings.Cut(a.Summary, "; In full (sha256 ")
+	return brief
+}
+
+// InFull is the call's whole input, pretty-printed; "" for none.
+func (a approval) InFull() string {
+	var b bytes.Buffer
+	if len(a.Input) == 0 || json.Indent(&b, a.Input, "", "  ") != nil {
+		return ""
+	}
+	return b.String()
+}
+
+// InFullSum is the start of the input's SHA-256, as the summary names it.
+func (a approval) InFullSum() string {
+	s := sha256.Sum256(a.Input)
+	return hex.EncodeToString(s[:6])
+}
 
 // me is what the signed-in person may do, as the runner says (GET /v1/me):
 // for each ability, whether across the whole org, and in which teams and

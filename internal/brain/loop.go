@@ -158,7 +158,7 @@ func (l loop) work(ctx context.Context, p config.Persona, turns []turn, onStep f
 				return res, err
 			}
 			res.Reply = a.text
-			res.Approval = &agent.ApprovalRequest{Tool: pending.Name, Summary: summary, Resume: string(token)}
+			res.Approval = &agent.ApprovalRequest{Tool: pending.Name, Summary: summary, Resume: string(token), Input: pending.Input}
 			return res, nil
 		}
 		turns = append(turns, results...)

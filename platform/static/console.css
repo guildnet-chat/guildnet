@@ -290,6 +290,8 @@ table.data :is(input, select) { height: var(--control-sm); font-size: var(--text
 form.inline { display: inline-flex; gap: 8px; align-items: center; margin: 0; }
 .status-suspended { background: var(--danger-soft); color: var(--on-danger-soft); }
 .status-deleting, .status-creating { background: var(--selected); }
+details.in-full summary { cursor: pointer; font-size: var(--text-sm); }
+details.in-full pre.code { max-height: 24rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 details.delete summary { cursor: pointer; color: var(--danger); font-size: var(--text-ui); }
 details.delete form { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; min-width: 180px; }
 details.delete input { height: var(--control-sm); }

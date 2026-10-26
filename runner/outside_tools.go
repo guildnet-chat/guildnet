@@ -269,7 +269,7 @@ func (r *Runner) agentAsk(p config.Persona, summary, where, tool string, pinned 
 	if name == "" {
 		name = ownWords
 	}
-	a, ok := r.raiseApproval(p, channel, asker, &agent.ApprovalRequest{Tool: name, Summary: summary, Resume: string(token)})
+	a, ok := r.raiseApproval(p, channel, asker, &agent.ApprovalRequest{Tool: name, Summary: summary, Resume: string(token), Input: pinned})
 	if !ok {
 		return org.Approval{}, refuse(failed, "the approval couldn't be recorded; try again.")
 	}
