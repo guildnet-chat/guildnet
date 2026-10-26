@@ -366,6 +366,35 @@ func (m me) inTeam(ability, team string) bool {
 	return team != "" && slices.ContainsFunc(x.Teams, func(t string) bool { return strings.EqualFold(t, team) })
 }
 
+// lacks are the abilities them holds somewhere m doesn't, sorted.
+func (m me) lacks(them me) []string {
+	if m.Owner {
+		return nil
+	}
+	var out []string
+	for ability, theirs := range them.Abilities {
+		mine := m.Abilities[ability]
+		if mine.Org {
+			continue
+		}
+		if theirs.Org || !within(theirs.Teams, mine.Teams) || !within(theirs.People, mine.People) {
+			out = append(out, ability)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// within reports whether every name in some is in all, ignoring case.
+func within(some, all []string) bool {
+	for _, s := range some {
+		if !slices.ContainsFunc(all, func(a string) bool { return strings.EqualFold(a, s) }) {
+			return false
+		}
+	}
+	return true
+}
+
 // forPerson reports whether they may use ability for person.
 func (m me) forPerson(ability, person string) bool {
 	return slices.ContainsFunc(m.Abilities[ability].People, func(p string) bool { return strings.EqualFold(p, person) })

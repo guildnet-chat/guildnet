@@ -294,7 +294,7 @@ func (p *Platform) cancelInvite(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Platform) makeResetLink(w http.ResponseWriter, r *http.Request) {
-	_, chart, ok := p.mayHere(w, r, func(m me, _ orgChart) bool { return m.mayReset() },
+	m, chart, ok := p.mayHere(w, r, func(m me, _ orgChart) bool { return m.mayReset() },
 		"Only the owner and admins make reset links: a reset link lets whoever has it sign in as that person.")
 	if !ok {
 		return
@@ -312,6 +312,18 @@ func (p *Platform) makeResetLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	account = chart.People[i].Name
+	// Nor anyone who may do more than the maker may: with the link, they
+	// could.
+	var theirs me
+	if err := (runner{n: networkOf(r), actor: account}).call(r.Context(), "GET", "/v1/me", nil, &theirs); err != nil {
+		p.renderOrgPeople(w, r, statusOf(err), messageOf(err), func(*peopleView) {})
+		return
+	}
+	if more := m.lacks(theirs); len(more) > 0 {
+		p.renderOrgPeople(w, r, http.StatusForbidden, account+" may do more than you may ("+strings.Join(more, ", ")+
+			"): only someone who may do all they may makes their reset link.", func(*peopleView) {})
+		return
+	}
 	link, err := p.newLink(r, &Link{Kind: Reset, Account: account}, resetTTL, "/reset/")
 	if err != nil {
 		p.renderOrgPeople(w, r, http.StatusInternalServerError, "Couldn't make the link. Try again in a moment.", func(*peopleView) {})

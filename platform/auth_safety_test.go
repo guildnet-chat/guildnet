@@ -3,6 +3,7 @@
 package platform_test
 
 import (
+	"context"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/guildnet-chat/guildnet/internal/org"
 	. "github.com/guildnet-chat/guildnet/platformtest"
 )
 
@@ -35,6 +37,49 @@ func TestNobodyMakesTheOwnerAResetLink(t *testing.T) {
 	ada.Get("/people")
 	if r := ada.Post("/people/ada/reset", nil); ResetLink.MatchString(r.Body) {
 		t.Errorf("the owner making themselves one: %d", r.Status)
+	}
+}
+
+// Whoever has a reset link signs in as that person, and can do what they
+// can: nobody makes one for someone who may do more than they may.
+func TestNobodyMakesAResetLinkForSomeoneWhoMayDoMore(t *testing.T) {
+	w := NewWorld(t)
+	ada := w.Browser("acme").SignedIn("ada")
+	w.Networks["acme"].Store.AddMember(context.Background(), org.Member{Account: "eli", Team: "Sales", ReportsTo: "bo"})
+	for _, l := range []struct{ name, ability string }{{"Admin", "invite"}, {"Finance", "spend"}} {
+		ada.Get("/access")
+		if r := ada.Post("/access/"+l.name, url.Values{"abilities": {l.ability}, "scope": {"org"}}); r.Status != http.StatusSeeOther {
+			t.Fatalf("setting %s: %d %s", l.name, r.Status, r.Text())
+		}
+	}
+	give := func(person, level string) {
+		t.Helper()
+		ada.Get("/people/" + person)
+		if r := ada.Post("/people/"+person+"/access", url.Values{"level": {level}, "give": {"1"}}); r.Status != http.StatusSeeOther {
+			t.Fatalf("giving %s %s: %d %s", person, level, r.Status, r.Text())
+		}
+	}
+	give("cy", "Admin")
+	give("eli", "Finance")
+
+	cy := w.Browser("acme").SignedIn("cy")
+	cy.Get("/people")
+	r := cy.Post("/people/eli/reset", nil)
+	if r.Status != http.StatusForbidden || ResetLink.MatchString(r.Body) {
+		t.Fatalf("cy, an admin who can't see spend, resetting eli, who can: %d, want 403 and no link", r.Status)
+	}
+	if !strings.Contains(r.Text(), "spend") {
+		t.Errorf("should say what eli may do that cy may not:\n%s", r.Text())
+	}
+	cy.Get("/people")
+	if r := cy.Post("/people/bo/reset", nil); r.Status != http.StatusForbidden || ResetLink.MatchString(r.Body) {
+		t.Errorf("cy resetting bo, who leads Sales: %d, want 403 and no link", r.Status)
+	}
+
+	give("cy", "Finance")
+	cy.Get("/people")
+	if r := cy.Post("/people/eli/reset", nil); r.Status != http.StatusOK || !ResetLink.MatchString(r.Body) {
+		t.Errorf("cy, now in Finance too, resetting eli: %d %s", r.Status, r.Text())
 	}
 }
 
