@@ -14,6 +14,7 @@ import (
 
 	"github.com/guildnet-chat/guildnet/config"
 	"github.com/guildnet-chat/guildnet/internal/agent"
+	"github.com/guildnet-chat/guildnet/models"
 )
 
 // SDKDesks is Desks backed by the Managed Agents API.
@@ -148,6 +149,10 @@ func (d *SDKDesks) EnsureAgent(ctx context.Context, p config.Persona, system str
 	hash := Hash(p, system, tools)
 	meta := map[string]string{"guildnet_network": d.network, "guildnet_nick": strings.ToLower(p.Nick), "guildnet_hash": hash}
 	model := anthropic.BetaManagedAgentsModelConfigParams{ID: anthropic.BetaManagedAgentsModel(p.Model)}
+	// Only models that take an effort setting get one; the others refuse it.
+	if m, ok := models.Find(p.Model); ok && m.Effort && p.Effort != "" {
+		model.Effort.OfBetaManagedAgentsModelConfigsEffortBetaManagedAgentsEffortLevel = anthropic.String(p.Effort)
+	}
 	name := fmt.Sprintf("%s (%s) - %s", p.Name, p.Nick, d.network)
 
 	iter := d.api().Beta.Agents.ListAutoPaging(ctx, anthropic.BetaAgentListParams{})
