@@ -104,6 +104,7 @@
 </details>
 {{end}}
 {{end}}
+{{if ne .Status "suspended"}}
 <form method="post" action="/networks/{{.Name}}/remove" class="card danger-zone">
   <input type="hidden" name="csrf" value="{{$.CSRF}}">
   <h2>Delete {{.Name}}</h2>
@@ -112,6 +113,7 @@
   <button class="danger">Delete network</button>
   <p class="muted small">This removes its chat history, org chart, agents and accounts for good.</p>
 </form>
+{{end}}
 <p><a href="/networks">Your networks</a></p>
 {{end}}
 {{end}}

@@ -3,6 +3,7 @@
 package platform_test
 
 import (
+	"context"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/guildnet-chat/guildnet/models"
+	"github.com/guildnet-chat/guildnet/platform"
 	. "github.com/guildnet-chat/guildnet/platformtest"
 )
 
@@ -147,6 +149,34 @@ func TestANetworkBeingDeletedServesNothing(t *testing.T) {
 	}
 	w.Host.Release()
 	w.Host.WaitRemoved(t, "initech")
+}
+
+// A network the server's admins suspended (for abuse, say) is left as it is
+// for them: its owner can't delete it, or set it up again, from the home
+// page. Its page still says what's happened.
+func TestASuspendedNetworkIsntChangedFromTheHomePage(t *testing.T) {
+	w := NewWorld(t)
+	home, _ := w.Created("ada@example.com", "initech")
+	n, _ := w.Store.Network(context.Background(), "initech")
+	n.Status = platform.Suspended
+	w.Store.UpdateNetwork(context.Background(), n)
+
+	page := home.Get("/networks/initech")
+	if page.Status != http.StatusOK || !strings.Contains(page.Text(), "initech is suspended") || strings.Contains(page.Body, `action="/networks/initech/remove"`) {
+		t.Errorf("the suspended network's page: %d\n%s", page.Status, page.Text())
+	}
+	for path, form := range map[string]url.Values{
+		"/networks/initech/remove": {"confirm": {"initech"}},
+		"/networks/initech/retry":  {"password": {"a-long-irc-password"}},
+	} {
+		home.Get("/networks/initech")
+		if r := home.Post(path, form); r.Status != http.StatusForbidden || !strings.Contains(r.Text(), "suspended") {
+			t.Errorf("%s: %d %s", path, r.Status, r.Text())
+		}
+	}
+	if len(w.Host.Removed) > 0 {
+		t.Error("the suspended network was removed")
+	}
 }
 
 func TestADeletionThatFailsCanBeTriedAgainFromHome(t *testing.T) {

@@ -171,7 +171,7 @@ func (p *Platform) connectorViews(ctx context.Context, network string) []connect
 // by itself: browsers hold a form's redirects to the page's form-action,
 // and services' sign-in pages are anywhere.
 func (p *Platform) connectService(w http.ResponseWriter, r *http.Request) {
-	n, ok := p.ownNetwork(w, r)
+	n, ok := p.ownNetworkToChange(w, r)
 	if !ok || p.opts.Connections == nil {
 		if ok {
 			http.NotFound(w, r)

@@ -131,7 +131,7 @@ func (p *Platform) connectGitHub(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	n, ok := p.ownNetwork(w, r)
+	n, ok := p.ownNetworkToChange(w, r)
 	if !ok {
 		return
 	}

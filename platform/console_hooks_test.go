@@ -179,6 +179,25 @@ func TestAnExtensionMayLetFormsGoElsewhere(t *testing.T) {
 	}
 }
 
+// From the home page too: if the extension can't say (its database is
+// down, say), the network isn't deleted, which could leave it billed with
+// nowhere to stop it.
+func TestDeletingFromTheHomePageWaitsIfTheExtensionCantSay(t *testing.T) {
+	h := &house{deleteErr: errors.New("the house ledger is down")}
+	w := houseWorld(t, h)
+	home, _ := w.Created("ada@example.com", "initech")
+
+	home.Get("/networks/initech")
+	r := home.Post("/networks/initech/remove", url.Values{"confirm": {"initech"}})
+
+	if r.Status < 500 || !strings.Contains(r.Text(), "Couldn't delete it") {
+		t.Errorf("when the house can't say: %d %s", r.Status, r.Text())
+	}
+	if len(w.Host.Removed) > 0 {
+		t.Error("removed while the house couldn't say")
+	}
+}
+
 func TestAnExtensionCanHoldOffDeletingANetwork(t *testing.T) {
 	h := &house{refuse: "initech still owes the house"}
 	w := houseWorld(t, h)

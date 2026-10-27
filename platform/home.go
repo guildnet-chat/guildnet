@@ -679,6 +679,19 @@ func (p *Platform) ownNetwork(w http.ResponseWriter, r *http.Request) (Network, 
 	return n, true
 }
 
+// ownNetworkToChange is ownNetwork for deleting it, setting it up again or
+// connecting it to more: one the server's admins suspended is left as it is,
+// for them.
+func (p *Platform) ownNetworkToChange(w http.ResponseWriter, r *http.Request) (Network, bool) {
+	n, ok := p.ownNetwork(w, r)
+	if ok && n.Status == Suspended {
+		p.letFormsReach(w, r, n)
+		p.renderHome(w, r, http.StatusForbidden, "home-network", withError{Err: n.Name + " is suspended, so it can't be changed from here.", View: p.view(r, n)})
+		return Network{}, false
+	}
+	return n, ok
+}
+
 func (p *Platform) networkPage(w http.ResponseWriter, r *http.Request) {
 	n, ok := p.ownNetwork(w, r)
 	if !ok {
@@ -699,7 +712,7 @@ func (p *Platform) letFormsReach(w http.ResponseWriter, r *http.Request, n Netwo
 }
 
 func (p *Platform) retryNetwork(w http.ResponseWriter, r *http.Request) {
-	n, ok := p.ownNetwork(w, r)
+	n, ok := p.ownNetworkToChange(w, r)
 	if !ok {
 		return
 	}

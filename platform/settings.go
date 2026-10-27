@@ -267,7 +267,7 @@ func (p *Platform) finishRemoving(n Network) {
 // one whose setup or deletion failed, or whose owner can't get into its
 // console.
 func (p *Platform) removeFromHome(w http.ResponseWriter, r *http.Request) {
-	n, ok := p.ownNetwork(w, r)
+	n, ok := p.ownNetworkToChange(w, r)
 	if !ok {
 		return
 	}
@@ -276,7 +276,15 @@ func (p *Platform) removeFromHome(w http.ResponseWriter, r *http.Request) {
 		p.renderHome(w, r, http.StatusBadRequest, "home-network", withError{Err: "Type the network's name, " + n.Name + ", to delete it.", View: p.view(r, n)})
 		return
 	}
-	if refusal, err := p.mayDelete(r.Context(), n); err == nil && refusal != "" {
+	refusal, err := p.mayDelete(r.Context(), n)
+	if err != nil {
+		// Not told it may: held off (it may still be billed), not let through.
+		monitor.Problem(p.opts.Logger, "whether %s may be deleted: %v", n.Name, err)
+		p.letFormsReach(w, r, n)
+		p.renderHome(w, r, http.StatusServiceUnavailable, "home-network", withError{Err: "Couldn't delete it just now. Try again in a moment.", View: p.view(r, n)})
+		return
+	}
+	if refusal != "" {
 		p.letFormsReach(w, r, n)
 		p.renderHome(w, r, http.StatusBadRequest, "home-network", withError{Err: refusal, View: p.view(r, n)})
 		return
