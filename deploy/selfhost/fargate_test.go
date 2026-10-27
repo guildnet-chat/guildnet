@@ -153,6 +153,37 @@ func TestTheFargateTaskHasTheStacksSettings(t *testing.T) {
 
 // One task, never two: the service runs none (until the database is set up)
 // or one, and stops it before starting its replacement.
+// The task's role mounts the files only through the stack's access points
+// (any container can get its credentials: the runner, Ergo, Caddy), never
+// the file system's root; and db-init checks the database's certificate
+// before it sends the admin's password, as the console and runner do.
+func TestFargatesFilesAndDatabaseAreReachedOnlyAsTheyShouldBe(t *testing.T) {
+	b, err := os.ReadFile("../aws-fargate/guildnet.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(b)
+	role := text[strings.Index(text, "  TaskRole:"):strings.Index(text, "  Cluster:")]
+	for _, ap := range []string{"ErgoFiles", "WelcomeFiles", "RunnerFiles", "BrokerCA", "BrokerCAShared", "CaddyFiles"} {
+		if !strings.Contains(role, "elasticfilesystem:AccessPointArn") || !strings.Contains(role, "!GetAtt "+ap+".Arn") {
+			t.Errorf("the task's role may mount the files other than through %s's access point", ap)
+		}
+	}
+
+	tpl := readFargate(t)
+	dbInit := fargateContainers(t, tpl, "DatabaseInit")["db-init"]
+	env := map[string]string{}
+	for _, e := range dbInit.Environment {
+		env[e.Name] = e.Value
+	}
+	if env["PGSSLMODE"] != "verify-full" || env["PGSSLROOTCERT"] != "/rds-ca/global-bundle.pem" {
+		t.Errorf("db-init's TLS: PGSSLMODE %q, PGSSLROOTCERT %q; want verify-full against RDS's bundle", env["PGSSLMODE"], env["PGSSLROOTCERT"])
+	}
+	if _, ok := fargateContainers(t, tpl, "DatabaseInit")["rds-ca"]; !ok {
+		t.Error("db-init's task has no rds-ca to fetch the bundle")
+	}
+}
+
 func TestFargateNeverRunsTwoTasks(t *testing.T) {
 	var svc struct {
 		DesiredCount            string `yaml:"DesiredCount"`

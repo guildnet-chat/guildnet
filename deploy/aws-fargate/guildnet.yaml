@@ -281,6 +281,18 @@ Resources:
               - Effect: Allow
                 Action: [elasticfilesystem:ClientMount, elasticfilesystem:ClientWrite]
                 Resource: !GetAtt Files.Arn
+                # Only through the stack's access points, never the file
+                # system's root: any container in the task can get these
+                # credentials.
+                Condition:
+                  StringEquals:
+                    elasticfilesystem:AccessPointArn:
+                      - !GetAtt ErgoFiles.Arn
+                      - !GetAtt WelcomeFiles.Arn
+                      - !GetAtt RunnerFiles.Arn
+                      - !GetAtt BrokerCA.Arn
+                      - !GetAtt BrokerCAShared.Arn
+                      - !GetAtt CaddyFiles.Arn
         - !If
           - Exec
           - PolicyName: exec
@@ -520,16 +532,32 @@ Resources:
       Memory: "512"
       RuntimePlatform: {CpuArchitecture: X86_64, OperatingSystemFamily: LINUX}
       ExecutionRoleArn: !GetAtt ExecutionRole.Arn
+      Volumes:
+        - {Name: rds-ca}
       ContainerDefinitions:
+        - Name: rds-ca
+          # RDS's CA bundle, as in the stack's task: db-init checks the
+          # database's certificate before it sends the admin's password.
+          Image: !Sub "${Registry}/caddy:${Release}"
+          Essential: false
+          EntryPoint: [sh, -c]
+          Command: ["wget -qO /rds-ca/global-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem && grep -q 'BEGIN CERTIFICATE' /rds-ca/global-bundle.pem"]
+          ReadonlyRootFilesystem: true
+          LinuxParameters: {Capabilities: {Drop: [ALL]}}
+          MountPoints: [{SourceVolume: rds-ca, ContainerPath: /rds-ca}]
+          LogConfiguration: {LogDriver: awslogs, Options: {awslogs-group: !Ref Logs, awslogs-region: !Ref AWS::Region, awslogs-stream-prefix: guildnet}}
         - Name: db-init
           Image: !Sub "${Registry}/postgres:${Release}"
           Essential: true
           User: "70:70"
+          DependsOn: [{ContainerName: rds-ca, Condition: SUCCESS}]
           EntryPoint: [sh, -c]
           Command: ["sh /docker-entrypoint-initdb.d/10-platform.sh && sh /docker-entrypoint-initdb.d/20-runner.sh"]
+          MountPoints: [{SourceVolume: rds-ca, ContainerPath: /rds-ca, ReadOnly: true}]
           Environment:
             - {Name: PGHOST, Value: !GetAtt Database.Endpoint.Address}
-            - {Name: PGSSLMODE, Value: require}
+            - {Name: PGSSLMODE, Value: verify-full}
+            - {Name: PGSSLROOTCERT, Value: /rds-ca/global-bundle.pem}
             - {Name: POSTGRES_USER, Value: postgres}
             - {Name: POSTGRES_DB, Value: postgres}
           Secrets:
