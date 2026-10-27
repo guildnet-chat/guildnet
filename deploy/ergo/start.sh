@@ -44,8 +44,11 @@ put() {
   chmod 0644 "$tmp"
   mv -f "$tmp" "/welcome/$1"
 }
-sed -e "s|{{NETWORK}}|${network}|g" -e "s|{{WEB}}|${web}|g" /ircd-bin/guildnet.motd | put base.motd
-grep -v '^{{COMPANY}}$' /welcome/base.motd | put guildnet.motd
+# Both from what's made here, never read back from the shared directory
+# (which the runner could change in between).
+welcome=$(sed -e "s|{{NETWORK}}|${network}|g" -e "s|{{WEB}}|${web}|g" /ircd-bin/guildnet.motd)
+printf '%s\n' "$welcome" | put base.motd
+printf '%s\n' "$welcome" | grep -v '^{{COMPANY}}$' | put guildnet.motd
 # A self-hosted install gives GuildServ's operator password as the runner
 # has it (GUILDNET_OPER_PASSWORD), and its hash is made here; on
 # guildnet.chat the host gives the hash.
