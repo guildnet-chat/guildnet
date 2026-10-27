@@ -4,6 +4,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -118,22 +119,33 @@ type CallSourced interface {
 // Join is toolboxes as one (GitHub's and the connectors', say): each call
 // goes to the toolbox that has the tool. Nils are left out; none left is
 // nil, and one is itself. Joined toolboxes join as theirs, so reads are
-// kept track of across all of them.
+// kept track of across all of them (in the Reads one of them was given,
+// if any: KeepReads).
 func Join(boxes ...Toolbox) Toolbox {
-	j := &joined{read: map[string]map[string]time.Time{}}
+	j := &joined{}
 	for _, b := range boxes {
 		switch b := b.(type) {
 		case nil:
 		case *joined:
 			j.boxes = append(j.boxes, b.boxes...)
+			if j.reads == nil && b.reads.shared {
+				j.reads = b.reads
+			}
 		default:
 			j.boxes = append(j.boxes, b)
 		}
+	}
+	if j.reads == nil {
+		j.reads = NewReads(nil)
+		j.reads.shared = false
 	}
 	switch len(j.boxes) {
 	case 0:
 		return nil
 	case 1:
+		if j.reads.shared {
+			return j // its Reads stay with it
+		}
 		return j.boxes[0]
 	}
 	return j
@@ -141,9 +153,78 @@ func Join(boxes ...Toolbox) Toolbox {
 
 type joined struct {
 	boxes []Toolbox
+	reads *Reads
+}
 
-	mu   sync.Mutex
-	read map[string]map[string]time.Time // agent -> source -> when it last read there
+// ReadStore keeps settings (the runner's org store does): where Reads keeps
+// what agents read.
+type ReadStore interface {
+	Setting(ctx context.Context, key string) (string, error)
+	SetSetting(ctx context.Context, key, value string) error
+}
+
+// Reads is when each agent last read from each source. One is shared by an
+// agent's toolboxes (chat's, its desk's: KeepReads), and kept in a store,
+// when there's one, so a restart doesn't forget it.
+type Reads struct {
+	store  ReadStore // nil: in memory only
+	shared bool      // made by NewReads, for toolboxes to share
+	mu     sync.Mutex
+	read   map[string]map[string]time.Time // agent -> source -> when it last read there
+}
+
+// NewReads keeps what agents read in store (nil: in memory only).
+func NewReads(store ReadStore) *Reads {
+	return &Reads{store: store, shared: true, read: map[string]map[string]time.Time{}}
+}
+
+// KeepReads is tb keeping what its agents read in r, which other toolboxes
+// may share; nil stays nil.
+func KeepReads(tb Toolbox, r *Reads) Toolbox {
+	switch tb := tb.(type) {
+	case nil:
+		return nil
+	case *joined:
+		return &joined{boxes: tb.boxes, reads: r}
+	default:
+		return &joined{boxes: []Toolbox{tb}, reads: r}
+	}
+}
+
+func readsKey(nick string) string { return "reads/" + strings.ToLower(nick) }
+
+// of is what nick read within ReadWindow, by source. Callers hold mu.
+func (r *Reads) of(nick string) map[string]time.Time {
+	k := strings.ToLower(nick)
+	if _, ok := r.read[k]; !ok && r.store != nil {
+		// Not since this process started: as the store keeps it.
+		kept := map[string]time.Time{}
+		if v, err := r.store.Setting(context.Background(), readsKey(nick)); err == nil && v != "" {
+			json.Unmarshal([]byte(v), &kept)
+		}
+		r.read[k] = kept
+	}
+	if r.read[k] == nil {
+		r.read[k] = map[string]time.Time{}
+	}
+	for source, at := range r.read[k] {
+		if time.Since(at) >= ReadWindow {
+			delete(r.read[k], source)
+		}
+	}
+	return r.read[k]
+}
+
+func (r *Reads) readFrom(nick, source string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	read := r.of(nick)
+	read[source] = time.Now()
+	if r.store != nil {
+		if b, err := json.Marshal(read); err == nil {
+			r.store.SetSetting(context.Background(), readsKey(nick), string(b))
+		}
+	}
 }
 
 // Reader is a toolbox told when an agent read from somewhere its own tools
@@ -162,17 +243,14 @@ func Tracked(tb Toolbox) Toolbox {
 	case *joined:
 		return tb
 	default:
-		return &joined{boxes: []Toolbox{tb}, read: map[string]map[string]time.Time{}}
+		r := NewReads(nil)
+		r.shared = false
+		return &joined{boxes: []Toolbox{tb}, reads: r}
 	}
 }
 
 func (j *joined) ReadFrom(p config.Persona, source string) {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	if j.read[p.Nick] == nil {
-		j.read[p.Nick] = map[string]time.Time{}
-	}
-	j.read[p.Nick][source] = time.Now()
+	j.reads.readFrom(p.Nick, source)
 }
 
 func (j *joined) Tools(p config.Persona) []Tool {
@@ -252,11 +330,11 @@ func (j *joined) MustAsk(p config.Persona, name string, input map[string]any) (b
 	if tool.ReadOnly || tool.Ask || src == "" {
 		return false, ""
 	}
-	j.mu.Lock()
-	defer j.mu.Unlock()
+	j.reads.mu.Lock()
+	defer j.reads.mu.Unlock()
 	var elsewhere []string
-	for read, at := range j.read[p.Nick] {
-		if read != src && time.Since(at) < ReadWindow {
+	for read := range j.reads.of(p.Nick) {
+		if read != src {
 			elsewhere = append(elsewhere, read)
 		}
 	}

@@ -5,6 +5,7 @@ package agent_test
 import (
 	"context"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/guildnet-chat/guildnet/config"
@@ -149,6 +150,64 @@ func TestJoiningJoinedToolboxesKeepsTrackOfReads(t *testing.T) {
 	}
 	if agent.MustAsk(tb, sam, "github_comment", nil) {
 		t.Error("a GitHub comment after work at the desk asked")
+	}
+}
+
+// settings is a store's settings, as the runner's org store keeps them.
+type settings struct {
+	mu sync.Mutex
+	kv map[string]string
+}
+
+func (s *settings) Setting(_ context.Context, key string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.kv[key], nil
+}
+
+func (s *settings) SetSetting(_ context.Context, key, value string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.kv == nil {
+		s.kv = map[string]string{}
+	}
+	s.kv[key] = value
+	return nil
+}
+
+// What an agent read is kept in the runner's store: after a restart (or a
+// deploy), a write soon after reading elsewhere still asks first.
+func TestWhatAnAgentReadIsKeptAcrossARestart(t *testing.T) {
+	var ran []string
+	github := sourced{box{tools: []agent.Tool{{Name: "github_read_file", ReadOnly: true}}, ran: &ran}, "GitHub"}
+	linear := sourced{box{tools: []agent.Tool{{Name: "linear_save_issue"}}, ran: &ran}, "Linear"}
+	store := &settings{}
+	sam := config.Persona{Nick: "sam"}
+	agent.KeepReads(agent.Join(github, linear), agent.NewReads(store)).Run(context.Background(), sam, "github_read_file", nil)
+
+	restarted := agent.KeepReads(agent.Join(github, linear), agent.NewReads(store))
+
+	if !agent.MustAsk(restarted, sam, "linear_save_issue", nil) {
+		t.Error("after a restart, a Linear write soon after a GitHub read didn't ask")
+	}
+}
+
+// An agent's toolboxes (chat's, and its desk's) share what it read: reading
+// through one and writing through the other asks too.
+func TestAnAgentsToolboxesShareWhatItRead(t *testing.T) {
+	var ran []string
+	github := sourced{box{tools: []agent.Tool{{Name: "github_read_file", ReadOnly: true}}, ran: &ran}, "GitHub"}
+	desk := sourced{box{tools: []agent.Tool{{Name: "bash", ReadOnly: true}}, ran: &ran}, "your repos"}
+	linear := sourced{box{tools: []agent.Tool{{Name: "linear_save_issue"}}, ran: &ran}, "Linear"}
+	reads := agent.NewReads(nil)
+	chat := agent.KeepReads(agent.Join(github, linear), reads)
+	atDesk := agent.Join(desk, agent.KeepReads(agent.Join(linear), reads))
+	sam := config.Persona{Nick: "sam"}
+
+	chat.Run(context.Background(), sam, "github_read_file", nil)
+
+	if !agent.MustAsk(atDesk, sam, "linear_save_issue", nil) {
+		t.Error("a Linear write at the desk soon after a GitHub read in chat didn't ask")
 	}
 }
 

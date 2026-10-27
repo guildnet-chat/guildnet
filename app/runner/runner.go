@@ -247,9 +247,12 @@ func Run(build Config) {
 		}()
 		toolbox, chatTools = agent.Join(toolbox, conn), agent.Join(chatTools, conn)
 	}
-	// What agents read is kept track of even with GitHub's tools alone: its
-	// private and public repos are sources of their own.
-	chatTools = agent.Tracked(chatTools)
+	// What agents read is kept track of even with GitHub's tools alone (its
+	// private and public repos are sources of their own): in the org's store,
+	// so a restart doesn't forget it, and shared by an agent's toolboxes,
+	// chat's and its desk's.
+	reads := agent.NewReads(store)
+	chatTools, toolbox = agent.KeepReads(chatTools, reads), agent.KeepReads(toolbox, reads)
 
 	// Agents run on their own platform: plain chat, or a desk with tools on
 	// Managed Agents when GUILDNET_MANAGED=on (the beta's agent platform).
@@ -402,7 +405,7 @@ func Run(build Config) {
 					}
 				}}
 		}
-		router.WithDesks(chat.Desks(brain.DeskOptions{Toolbox: agent.Join(ws, toolbox, pusher, deskHosts), Ready: ws.Ready, Retire: ws.Clear}))
+		router.WithDesks(chat.Desks(brain.DeskOptions{Toolbox: agent.KeepReads(agent.Join(ws, toolbox, pusher, deskHosts), reads), Ready: ws.Ready, Retire: ws.Clear}))
 		// The platform counts desks' time against the network's plan (on a
 		// developer's machine, with the sandbox from the environment, it
 		// isn't counted).
