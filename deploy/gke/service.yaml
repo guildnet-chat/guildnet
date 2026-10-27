@@ -26,7 +26,12 @@ spec:
   selector: {app: guildnet}
 ---
 # Only the edge's ports come in; the pod's own listeners (the console's
-# broker, Ergo's API, the runner's) aren't reachable from other pods.
+# broker, Ergo's API, the runner's) aren't reachable from other pods. Out:
+# names (DNS, wherever the cluster answers them), the internet on any port
+# (model providers, Let's Encrypt, email, connectors, git hosts, webhooks),
+# and on the VPC only Cloud SQL (5432) and a desks host (8443): not the
+# metadata server, nor anything else there. A git server on your own
+# network (GUILDNET_GIT_PRIVATE_HOSTS) needs a rule of its own here.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -34,9 +39,24 @@ metadata:
 spec:
   podSelector:
     matchLabels: {app: guildnet}
-  policyTypes: [Ingress]
+  policyTypes: [Ingress, Egress]
   ingress:
     - ports:
         - {port: 80, protocol: TCP}
         - {port: 443, protocol: TCP}
         - {port: 6697, protocol: TCP}
+  egress:
+    - ports:
+        - {port: 53, protocol: UDP}
+        - {port: 53, protocol: TCP}
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10]
+    - to:
+        - ipBlock: {cidr: 10.0.0.0/8}
+        - ipBlock: {cidr: 172.16.0.0/12}
+        - ipBlock: {cidr: 192.168.0.0/16}
+      ports:
+        - {port: 5432, protocol: TCP}
+        - {port: 8443, protocol: TCP}

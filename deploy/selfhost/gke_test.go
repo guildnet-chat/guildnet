@@ -79,6 +79,18 @@ type k8sObject struct {
 				Port int `yaml:"port"`
 			} `yaml:"ports"`
 		} `yaml:"ingress"`
+		PolicyTypes []string `yaml:"policyTypes"`
+		Egress      []struct {
+			To []struct {
+				IPBlock *struct {
+					CIDR   string   `yaml:"cidr"`
+					Except []string `yaml:"except"`
+				} `yaml:"ipBlock"`
+			} `yaml:"to"`
+			Ports []struct {
+				Port int `yaml:"port"`
+			} `yaml:"ports"`
+		} `yaml:"egress"`
 	} `yaml:"spec"`
 }
 
@@ -246,6 +258,56 @@ func TestOnlyTheConsoleHasItsCAInThePod(t *testing.T) {
 
 // From outside, only the edge's ports: the load balancer has nothing else,
 // and the network policy lets nothing else into the pod.
+// Out of the pod: names (DNS), the internet, and on the VPC only Cloud
+// SQL's and a desks host's ports. Not the metadata server, nor whatever
+// else is on the VPC.
+func TestTheGKEPodReachesOnlyWhatItUses(t *testing.T) {
+	var found bool
+	private := []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "100.64.0.0/10"}
+	for _, o := range readGKE(t) {
+		if o.Kind != "NetworkPolicy" {
+			continue
+		}
+		found = true
+		if !slices.Contains(o.Spec.PolicyTypes, "Egress") {
+			t.Fatalf("the network policy doesn't hold what goes out (policyTypes %v)", o.Spec.PolicyTypes)
+		}
+		for _, out := range o.Spec.Egress {
+			var ports []int
+			for _, p := range out.Ports {
+				ports = append(ports, p.Port)
+			}
+			if len(out.To) == 0 {
+				if !slices.Equal(ports, []int{53, 53}) {
+					t.Errorf("anywhere on ports %v: only DNS may go anywhere", ports)
+				}
+				continue
+			}
+			for _, to := range out.To {
+				switch {
+				case to.IPBlock == nil:
+					t.Errorf("a rule to something other than addresses: %+v", to)
+				case to.IPBlock.CIDR == "0.0.0.0/0":
+					for _, p := range private {
+						if !slices.Contains(to.IPBlock.Except, p) {
+							t.Errorf("the internet's rule doesn't leave out %s", p)
+						}
+					}
+				case slices.Contains(private, to.IPBlock.CIDR):
+					if !slices.Equal(ports, []int{5432, 8443}) {
+						t.Errorf("%s on ports %v: only Cloud SQL's (5432) and a desks host's (8443)", to.IPBlock.CIDR, ports)
+					}
+				default:
+					t.Errorf("a rule to %s", to.IPBlock.CIDR)
+				}
+			}
+		}
+	}
+	if !found {
+		t.Fatal("no network policy")
+	}
+}
+
 func TestOnlyTheEdgeIsReachableOnGKE(t *testing.T) {
 	want := []int{80, 443, 6697}
 	for _, o := range readGKE(t) {

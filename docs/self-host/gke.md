@@ -14,7 +14,7 @@ unchanged.
 | Disk | one 10 GB persistent disk: Ergo's data, the runner's ledger, Caddy's certificates, the console's CA |
 | Database | Cloud SQL for PostgreSQL, private IP only, TLS required (checked against its server CA), automated backups with point-in-time recovery |
 | Edge | a passthrough load balancer on a reserved address, visitors' addresses kept (`externalTrafficPolicy: Local`); Caddy terminates TLS as in Compose |
-| Isolation | a network policy admitting only 80, 443 and 6697; namespace at the `baseline` pod security level |
+| Isolation | a network policy admitting only 80, 443 and 6697, and letting out only DNS, the internet, and on the VPC Cloud SQL (5432) and a desks host (8443): not the metadata server. A git server on your own network needs a rule of its own (`service.yaml`). Namespace at the `baseline` pod security level |
 | Desks | a Compute Engine VM ([desks-host.md](desks-host.md)) |
 
 About $85–100/month in `us-central1` (pod requests, Cloud SQL
