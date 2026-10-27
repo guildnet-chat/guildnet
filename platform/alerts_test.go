@@ -121,6 +121,13 @@ func TestAlertAddressesAreKeptInTheDatabase(t *testing.T) {
 	if r := w.Browser("initech").Get(link); r.Status != http.StatusGone {
 		t.Errorf("the link a second time: %d, want 410", r.Status)
 	}
+
+	// And forgotten when dee leaves.
+	news(t, w, "initech", secretOf(t, w, "initech"), `{"type":"member_removed","member":{"account":"dee"}}`)
+	news(t, w, "initech", secretOf(t, w, "initech"), strings.Replace(approvalFor("dee"), `"id":3`, `"id":4`, 1))
+	if !out.None(t, "dee@example.com", "#4") {
+		t.Error("dee left, but an approval still went to their address")
+	}
 }
 
 func TestAConfirmationLinkLastsADay(t *testing.T) {
@@ -228,6 +235,73 @@ func TestTheOwnerTurnsOnApprovalEmailsForTheirGoogleAddress(t *testing.T) {
 	news(t, w, "initech", secretOf(t, w, "initech"), approvalFor("ada"))
 
 	out.One(t, "ada@example.com", "approval", "merge PR #17 into main")
+}
+
+// deeWantsApprovals has dee join initech, confirm an address and turn
+// approval emails on.
+func deeWantsApprovals(t *testing.T, w *World, out *Outbox, console *Browser) *Browser {
+	t.Helper()
+	dee := deeJoins(t, w, console)
+	dee.Get("/account")
+	dee.Post("/account/alerts/email", url.Values{"email": {"dee@example.com"}})
+	w.Browser("initech").Get(confirmLink.FindString(out.One(t, "dee@example.com", "Confirm").Text))
+	dee.Get("/account")
+	dee.Post("/account/alerts", url.Values{"approvals": {"on"}})
+	return dee
+}
+
+// Someone taken out of the org (here over IRC, as the runner says) leaves
+// nothing behind for whoever's given the nick later: not where their alerts
+// went, nor their sign-ins.
+func TestSomeoneWhoLeavesTheOrgOverIRCLeavesNothingBehind(t *testing.T) {
+	w, out := MailWorld(t)
+	_, console := w.Created("ada@example.com", "initech")
+	dee := deeWantsApprovals(t, w, out, console)
+
+	if status := news(t, w, "initech", secretOf(t, w, "initech"), `{"type":"member_removed","member":{"account":"dee"}}`); status != http.StatusAccepted {
+		t.Fatalf("the event: %d", status)
+	}
+
+	news(t, w, "initech", secretOf(t, w, "initech"), approvalFor("dee"))
+	if !out.None(t, "dee@example.com", "approval") {
+		t.Error("an approval for whoever's dee now went to the old dee's address")
+	}
+	if r := dee.Get("/account"); r.Status == http.StatusOK {
+		t.Error("the old dee is still signed in to the console")
+	}
+}
+
+// The same when they're taken out from the console.
+func TestSomeoneTakenOutFromTheConsoleLeavesNoAlertAddress(t *testing.T) {
+	w, out := MailWorld(t)
+	_, console := w.Created("ada@example.com", "initech")
+	deeWantsApprovals(t, w, out, console)
+
+	console.Get("/people/dee")
+	if r := console.Post("/people/dee/remove", nil); r.Status != http.StatusSeeOther {
+		t.Fatalf("removing dee: %d %s", r.Status, r.Text())
+	}
+
+	news(t, w, "initech", secretOf(t, w, "initech"), approvalFor("dee"))
+	if !out.None(t, "dee@example.com", "approval") {
+		t.Error("an approval for whoever's dee now went to the old dee's address")
+	}
+}
+
+// The owner never leaves: news that they did changes nothing.
+func TestTheOwnerIsntForgotten(t *testing.T) {
+	w, out := MailWorld(t)
+	_, console := w.Created("ada@example.com", "initech")
+	console.Get("/account")
+	console.Post("/account/alerts", url.Values{"approvals": {"on"}})
+
+	news(t, w, "initech", secretOf(t, w, "initech"), `{"type":"member_removed","member":{"account":"ada"}}`)
+
+	news(t, w, "initech", secretOf(t, w, "initech"), approvalFor("ada"))
+	out.One(t, "ada@example.com", "approval", "merge PR #17 into main")
+	if r := console.Get("/account"); r.Status != http.StatusOK {
+		t.Errorf("the owner was signed out: %d", r.Status)
+	}
 }
 
 func TestTheOwnerHearsWhenTheSpendingCapIsReached(t *testing.T) {

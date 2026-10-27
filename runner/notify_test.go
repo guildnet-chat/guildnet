@@ -81,6 +81,23 @@ func TestNewsGoesToTheBrokerWithTheNetworksSecret(t *testing.T) {
 	}
 }
 
+// Someone taken out of the org, over IRC or through the console, is news:
+// the console forgets what it kept of theirs (passwords, two-step, where
+// their alerts went), so whoever's given the nick later starts afresh.
+func TestThePlatformIsToldWhenSomeoneLeavesTheOrg(t *testing.T) {
+	n := startNetwork(t, &fakeBrain{})
+	heard := &notices{}
+	n.runner.NotifyWith(heard)
+	n.human.say("GuildServ", `MEMBER ADD dana ROLE "Designer" TEAM Marketing`)
+	n.human.expect("dana added", guildServSaying("method", "added dana"))
+
+	n.human.say("GuildServ", "MEMBER REMOVE dana")
+
+	heard.wait(t, "that dana left", func(e runner.Event) bool {
+		return e.Type == "member_removed" && e.Member != nil && e.Member.Account == "dana"
+	})
+}
+
 func TestThePlatformIsToldWhoAnApprovalIsWaitingOn(t *testing.T) {
 	clock := &fakeClock{t: time.Date(2026, 9, 23, 10, 0, 0, 0, time.UTC)} // a Wednesday
 	n := startNetwork(t, wantsToMerge(), withClock(clock))

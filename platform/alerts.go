@@ -32,6 +32,9 @@ type Alerts interface {
 	// it expired.
 	Confirm(ctx context.Context, hash string, now time.Time) (network, account, email string, err error)
 	SetApprovalAlerts(ctx context.Context, network, account string, on bool) error
+	// ForgetAlerts forgets account's settings, for someone who left the org:
+	// whoever's given the account later starts with none.
+	ForgetAlerts(ctx context.Context, network, account string) error
 }
 
 type alertRow struct {
@@ -92,6 +95,13 @@ func (s *MemoryStore) SetApprovalAlerts(_ context.Context, network, account stri
 	return nil
 }
 
+func (s *MemoryStore) ForgetAlerts(_ context.Context, network, account string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.alerts, alertKey(network, account))
+	return nil
+}
+
 func (s *Postgres) AlertSettings(ctx context.Context, network, account string) (AlertSettings, error) {
 	var a AlertSettings
 	err := s.pool.QueryRow(ctx, `select email, pending, approvals from alerts where network = $1 and account = $2`,
@@ -132,6 +142,11 @@ func (s *Postgres) Confirm(ctx context.Context, hash string, now time.Time) (str
 		return "", "", "", ErrNotFound // used meanwhile
 	}
 	return network, account, email, nil
+}
+
+func (s *Postgres) ForgetAlerts(ctx context.Context, network, account string) error {
+	_, err := s.pool.Exec(ctx, `delete from alerts where network = $1 and account = $2`, strings.ToLower(network), strings.ToLower(account))
+	return err
 }
 
 func (s *Postgres) SetApprovalAlerts(ctx context.Context, network, account string, on bool) error {

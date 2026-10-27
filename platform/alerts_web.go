@@ -189,10 +189,13 @@ type newsEvent struct {
 		Asked  string `json:"asked"`
 		Why    string `json:"why"`
 	} `json:"desk_host"`
+	Member *struct {
+		Account string `json:"account"`
+	} `json:"member"`
 }
 
 // news takes what a network's runner says happened, and emails whoever
-// wants to hear it.
+// wants to hear it; someone who left the org is forgotten.
 func (p *Platform) news(w http.ResponseWriter, r *http.Request) {
 	n, ok := p.runnerCalling(w, r)
 	if !ok {
@@ -225,6 +228,8 @@ func (p *Platform) news(w http.ResponseWriter, r *http.Request) {
 				monitor.Problem(p.opts.Logger, "emailing %s approval #%d on %s: %v", a.Approver, a.ID, n.Name, err)
 			}
 		}
+	case e.Type == "member_removed" && e.Member != nil && config.ValidNick(e.Member.Account):
+		p.forgetPerson(context.WithoutCancel(r.Context()), n, e.Member.Account)
 	default:
 		brokerError(w, http.StatusBadRequest, "unknown event")
 		return

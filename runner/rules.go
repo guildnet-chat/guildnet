@@ -822,6 +822,8 @@ func (r *Runner) removeMember(actor, account string) error {
 		return r.storeRefusal(account, err)
 	}
 	r.lockOut(m.Account)
+	// The console forgets what it kept of theirs, however they were taken out.
+	r.tellNews(Event{Type: "member_removed", Member: &MemberEvent{Account: m.Account}})
 	r.requestSync()
 	r.logger.Printf("%s removed member %s", actor, account)
 	r.logChange(actor, "remove member", m.Account, m.Team, "")

@@ -3,6 +3,7 @@
 package platform
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -180,24 +181,38 @@ func (p *Platform) removePerson(w http.ResponseWriter, r *http.Request) {
 		p.showPerson(w, r, statusOf(err), messageOf(err))
 		return
 	}
-	// Someone given the nick later starts without it.
-	n := networkOf(r)
+	p.forgetPerson(r.Context(), networkOf(r), account)
+	http.Redirect(w, r, "/people", http.StatusSeeOther)
+}
+
+// forgetPerson forgets what the console kept of someone who left n's org,
+// from here or over IRC (the runner says, member_removed): someone given
+// the nick later starts without any of it. Never the owner, who can't leave.
+func (p *Platform) forgetPerson(ctx context.Context, n Network, account string) {
+	if strings.EqualFold(account, n.OwnerNick) {
+		return
+	}
 	if p.opts.TwoSteps != nil {
-		if err := p.opts.TwoSteps.RemoveTwoStep(r.Context(), n.Name, account); err != nil {
+		if err := p.opts.TwoSteps.RemoveTwoStep(ctx, n.Name, account); err != nil {
 			monitor.Problem(p.opts.Logger, "removing %s's two-step sign-in: %v", account, err)
 		}
 	}
 	// Out of the org is out of the network: their IRC password goes (the
-	// console's, and any left in Ergo, which nobody knows the new one of),
-	// and so do their sign-ins and open chats.
-	if err := p.passwords().RemoveIRCPassword(r.Context(), n.Name, account); err != nil {
+	// console's, with their app passwords, and any left in Ergo, which
+	// nobody knows the new one of), and so do their sign-ins, open chats and
+	// where their alerts went.
+	if err := p.passwords().RemoveIRCPassword(ctx, n.Name, account); err != nil {
 		monitor.Problem(p.opts.Logger, "removing %s's password on %s: %v", account, n.Name, err)
 	}
-	if err := setPassword(r.Context(), n, account, newToken()); err != nil {
+	if err := setPassword(ctx, n, account, newToken()); err != nil {
 		monitor.Problem(p.opts.Logger, "locking %s out of %s's IRC: %v", account, n.Name, err)
 	}
-	p.signOutEverywhere(r.Context(), n, account)
-	http.Redirect(w, r, "/people", http.StatusSeeOther)
+	if p.opts.Alerts != nil {
+		if err := p.opts.Alerts.ForgetAlerts(ctx, n.Name, account); err != nil {
+			monitor.Problem(p.opts.Logger, "forgetting %s's alerts on %s: %v", account, n.Name, err)
+		}
+	}
+	p.signOutEverywhere(ctx, n, account)
 }
 
 // Teams.
