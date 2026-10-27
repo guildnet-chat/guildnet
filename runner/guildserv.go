@@ -486,6 +486,31 @@ func (r *Runner) checkNewNick(nick string) string {
 	if isService(nick) {
 		return "nicks ending in \"serv\" are reserved for services."
 	}
+	if like := r.lookalikeOf(nick); like != "" {
+		return fmt.Sprintf("%s looks like %s, who's here already: choose a nick nobody could take for theirs.", nick, like)
+	}
+	return ""
+}
+
+// lookalike folds the letters and digits that read alike (a capital I or a 1
+// for an l, a 0 for an o) and the case: two nicks folded alike can pass for
+// each other.
+func lookalike(nick string) string {
+	return strings.ToLower(strings.NewReplacer("I", "l", "1", "l", "0", "o").Replace(nick))
+}
+
+// lookalikeOf is who in the org (or the ledger, GuildServ, the owner) nick
+// could pass for, or "".
+func (r *Runner) lookalikeOf(nick string) string {
+	names := []string{r.cfg.Owner, r.cfg.LedgerNick, guildServNick}
+	for _, p := range r.people() {
+		names = append(names, p.name)
+	}
+	for _, name := range names {
+		if name != "" && lookalike(name) == lookalike(nick) {
+			return name
+		}
+	}
 	return ""
 }
 

@@ -82,6 +82,20 @@ func TestHiringATakenNickIsRefused(t *testing.T) {
 	n.human.expect("a refusal", guildServSaying("method", "already"))
 }
 
+// A nick that only looks like someone's (a capital I for an l, a 0 for an
+// o) is refused too: "Iedger" posting an approval in the ledger's words
+// could pass for the ledger.
+func TestANickThatLooksLikeSomeonesIsRefused(t *testing.T) {
+	n := startNetwork(t, &fakeBrain{})
+
+	for _, cmd := range []string{`MEMBER ADD Iedger ROLE "Guest"`, `HIRE meth0d ROLE "Not the owner"`} {
+		n.human.say("GuildServ", cmd)
+		n.human.expect("refused: "+cmd, guildServSaying("method", "looks like"))
+	}
+	n.human.say("GuildServ", `MEMBER ADD dana ROLE "Designer"`)
+	n.human.expect("dana, who looks like nobody, added", guildServSaying("method", "added dana"))
+}
+
 func TestFiredAgentLeavesAndStopsAnswering(t *testing.T) {
 	brain := &fakeBrain{reply: replyWith("still here")}
 	n := startNetwork(t, brain)
