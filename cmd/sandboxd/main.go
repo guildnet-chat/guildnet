@@ -255,7 +255,7 @@ func proxy(logger *log.Logger) error {
 			private = append(private, h)
 		}
 	}
-	p := &sandbox.Proxy{Allowed: allowed, Keys: keys, Dial: egress.Dial(egress.Options{PrivateHosts: private}), Logger: logger}
+	p := &sandbox.Proxy{Allowed: allowed, Keys: keys, Dial: egress.Dial(egress.Options{PrivateHosts: private}), Logger: logger, Reads: sandbox.DefaultReads}
 	listen := env("GUILDNET_PROXY_LISTEN", ":3128")
 	logger.Printf("desks' way out on %s, to %s, and networks' git hosts with their passes (%d keys)", listen, strings.Join(allowed, ", "), len(keys))
 	if len(private) > 0 {

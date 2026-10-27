@@ -127,6 +127,27 @@ func TestACommandsPassGoesToTheProxy(t *testing.T) {
 	}
 }
 
+// npm reads its registry through the proxy's read-only way, asked directly
+// (not tunnelled), so nothing can be published from a desk.
+func TestADeskReadsNpmThroughTheProxy(t *testing.T) {
+	dk, d := dockerRig(t)
+	dk.Proxy = "http://172.31.255.2:3128"
+	dk.Remove(context.Background(), d)
+	if err := dk.Ensure(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+
+	out, _ := run(t, dk, d, 10*time.Second, "sh", "-c", "echo $NPM_CONFIG_REGISTRY $npm_config_registry; echo $NO_PROXY")
+
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) != 2 || lines[0] != "http://172.31.255.2:3128/npm/ http://172.31.255.2:3128/npm/" {
+		t.Fatalf("npm's registry: %q", out)
+	}
+	if !strings.Contains(lines[1], "172.31.255.2") {
+		t.Errorf("NO_PROXY %q: npm would tunnel to the proxy through itself", lines[1])
+	}
+}
+
 // What sandboxd runs at a desk itself (the timeout around each command, the
 // shell that reads and writes files) is the image's, by its full path: a
 // program an earlier command left in the home, ahead on the PATH, doesn't

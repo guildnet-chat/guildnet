@@ -261,6 +261,60 @@ func TestOneDeskCantHoldEveryTunnel(t *testing.T) {
 	}
 }
 
+// The npm registry is read through the proxy and can't be published to:
+// a token planted in something an agent read can't publish the company's
+// code as a package. GET and HEAD go to the registry, without the desk's
+// credentials; anything else is refused.
+func TestTheNpmRegistryIsReadOnly(t *testing.T) {
+	var got []string
+	registry := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = append(got, r.Method+" "+r.URL.RequestURI()+" auth="+r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"name":"left-pad"}`)
+	}))
+	t.Cleanup(registry.Close)
+	srv := httptest.NewServer(&sandbox.Proxy{Reads: map[string]string{"/npm/": registry.URL + "/"}, ReadClient: registry.Client()})
+	t.Cleanup(srv.Close)
+
+	read, _ := http.NewRequest("GET", srv.URL+"/npm/left-pad?write=true", nil)
+	read.Header.Set("Authorization", "Bearer planted-token")
+	resp, err := http.DefaultClient.Do(read)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || string(body) != `{"name":"left-pad"}` || resp.Header.Get("Content-Type") != "application/json" {
+		t.Fatalf("reading left-pad: %d %q", resp.StatusCode, body)
+	}
+
+	for _, method := range []string{"PUT", "POST", "DELETE", "PATCH"} {
+		req, _ := http.NewRequest(method, srv.URL+"/npm/left-pad", strings.NewReader(`{"_attachments":{}}`))
+		req.Header.Set("Authorization", "Bearer planted-token")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusMethodNotAllowed {
+			t.Errorf("%s (publishing): %d, want refused", method, resp.StatusCode)
+		}
+	}
+	if len(got) != 1 || got[0] != "GET /left-pad?write=true auth=" {
+		t.Errorf("the registry got %q, want one GET without the desk's credentials", got)
+	}
+}
+
+// The registry isn't on the default list of hosts to tunnel to: only the
+// read-only way reaches it.
+func TestDesksDontTunnelToTheNpmRegistry(t *testing.T) {
+	for _, h := range sandbox.DefaultAllowed {
+		if h == "registry.npmjs.org" {
+			t.Error("desks can tunnel to registry.npmjs.org, and publish there")
+		}
+	}
+}
+
 // Only tunnels (HTTPS): a plain request through the proxy is refused.
 func TestTheProxyOnlyTunnels(t *testing.T) {
 	p := proxy(t, []string{"proxy.golang.org"}, "443", egress.Options{})

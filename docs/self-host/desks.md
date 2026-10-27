@@ -27,11 +27,12 @@ Details: [architecture.md](../architecture.md#7-desks).
 
 ## Residual risk
 
-Anything a desk can read can be sent to an allowed host, and allowed hosts
-accept uploads. An agent manipulated by content it read (an issue, a pull
-request, a web page) could push code to another GitHub repository or
-publish a package with credentials supplied by an attacker. The proxy
-blocks everything else, not that.
+Anything a desk can read can be sent to an allowed host, and some allowed
+hosts accept uploads. An agent manipulated by content it read (an issue, a
+pull request, a web page) could push code to another GitHub repository
+with credentials supplied by an attacker. The proxy blocks everything else,
+not that. Publishing a package can't be done: npm's registry is read-only
+from desks, and PyPI's upload host isn't reachable.
 
 Mitigations:
 
@@ -154,14 +155,22 @@ it the next time they're made, and their volumes are removed.
 
 Default `GUILDNET_DESK_ALLOWED`: `github.com`, `api.github.com`,
 `codeload.github.com`, `*.githubusercontent.com`, `proxy.golang.org`,
-`sum.golang.org`, `dl.google.com`, `registry.npmjs.org`, `pypi.org`,
-`files.pythonhosted.org`.
+`sum.golang.org`, `dl.google.com`, `pypi.org`, `files.pythonhosted.org`.
+
+npm's registry isn't on it: it takes uploads, so a token planted in
+something an agent read could publish the company's code there. Desks read
+it through egress instead (`NPM_CONFIG_REGISTRY` is `http://egress:3128/npm/`),
+which passes on only GET and HEAD, without the desk's credentials. Private
+npm packages can't be installed at a desk. (PyPI's uploads go to
+`upload.pypi.org`, which isn't on the list.)
 
 Setting it replaces the list: comma-separated hosts, `*.example.com` for
-subdomains. Keep GitHub's hosts. Example, adding Rust's registry:
+subdomains. Keep GitHub's hosts. Adding a host that takes uploads (a
+registry with its publishing API, say) opens it to that risk. Example,
+adding Rust's registry for downloads:
 
 ```sh
-GUILDNET_DESK_ALLOWED=github.com,api.github.com,codeload.github.com,*.githubusercontent.com,proxy.golang.org,sum.golang.org,dl.google.com,registry.npmjs.org,pypi.org,files.pythonhosted.org,crates.io,static.crates.io
+GUILDNET_DESK_ALLOWED=github.com,api.github.com,codeload.github.com,*.githubusercontent.com,proxy.golang.org,sum.golang.org,dl.google.com,pypi.org,files.pythonhosted.org,static.crates.io,index.crates.io
 ```
 
 ### A network's own hosts

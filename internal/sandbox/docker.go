@@ -147,7 +147,15 @@ func (dk *Docker) runArgs(ctx context.Context, d Desk) ([]string, error) {
 		for _, v := range proxyVars {
 			args = append(args, "--env", v+"="+dk.Proxy)
 		}
-		args = append(args, "--env", "NO_PROXY=localhost,127.0.0.1", "--env", "no_proxy=localhost,127.0.0.1")
+		// npm's registry is read from the proxy itself (read-only: Proxy.Reads),
+		// asked directly.
+		direct := "localhost,127.0.0.1"
+		if u, err := url.Parse(dk.Proxy); err == nil && u.Hostname() != "" {
+			direct += "," + u.Hostname()
+		}
+		registry := strings.TrimRight(dk.Proxy, "/") + "/npm/"
+		args = append(args, "--env", "NO_PROXY="+direct, "--env", "no_proxy="+direct,
+			"--env", "NPM_CONFIG_REGISTRY="+registry, "--env", "npm_config_registry="+registry)
 	}
 	return append(args, strings.TrimSpace(image), "sleep", "infinity"), nil
 }

@@ -18,13 +18,17 @@ import (
 )
 
 // DefaultAllowed is where desks can reach unless a network says otherwise:
-// GitHub, and the Go, npm and PyPI registries.
+// GitHub, and the Go and PyPI registries (PyPI's uploads are elsewhere).
+// npm's registry, which takes uploads, is read through DefaultReads.
 var DefaultAllowed = []string{
 	"github.com", "api.github.com", "codeload.github.com", "*.githubusercontent.com",
 	"proxy.golang.org", "sum.golang.org", "dl.google.com",
-	"registry.npmjs.org",
 	"pypi.org", "files.pythonhosted.org",
 }
+
+// DefaultReads are the registries desks read through the proxy, and can't
+// publish to (Proxy.Reads).
+var DefaultReads = map[string]string{"/npm/": "https://registry.npmjs.org/"}
 
 // Proxy is the desks' only way out: an HTTPS tunnel (CONNECT) to an allowed
 // host, by name, on an allowed port, dialed only at public addresses.
@@ -47,9 +51,17 @@ type Proxy struct {
 	// it all up.
 	Idle       time.Duration
 	MaxTunnels int
+	// Reads are ways to read registries that take uploads, by path prefix
+	// ("/npm/"): GET and HEAD go to the upstream base URL, without the desk's
+	// credentials, and nothing else does. A desk reads packages there, and
+	// can't publish one, whatever token it was given. ReadClient fetches
+	// them; nil means one dialing with Dial.
+	Reads      map[string]string
+	ReadClient *http.Client
 
-	mu   sync.Mutex
-	open map[string]int // desk's address -> tunnels open
+	mu    sync.Mutex
+	open  map[string]int // desk's address -> tunnels open
+	reads *http.Client
 }
 
 // take counts a tunnel from addr, if it's within its share.
@@ -123,6 +135,12 @@ func (p *Proxy) passOpens(r *http.Request, host string, port int) bool {
 
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodConnect {
+		for prefix, upstream := range p.Reads {
+			if rest, ok := strings.CutPrefix(r.URL.Path, prefix); ok {
+				p.read(w, r, upstream, rest)
+				return
+			}
+		}
 		http.Error(w, "only HTTPS tunnels (CONNECT) go through here", http.StatusMethodNotAllowed)
 		return
 	}
@@ -195,6 +213,69 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 	wg.Wait()
+}
+
+// readHeaders are the request headers a read passes on: what to send back,
+// and caching. Never the desk's credentials.
+var readHeaders = []string{"Accept", "Accept-Encoding", "If-None-Match", "If-Modified-Since", "Npm-Command", "User-Agent"}
+
+// answerHeaders are the response headers a read passes back.
+var answerHeaders = []string{"Content-Type", "Content-Encoding", "Content-Length", "ETag", "Last-Modified", "Cache-Control"}
+
+// read gets path from upstream for a desk, if it only reads.
+func (p *Proxy) read(w http.ResponseWriter, r *http.Request, upstream, path string) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		p.logf("%s: refused %s %s (read only)", r.RemoteAddr, r.Method, r.URL.Path)
+		http.Error(w, "this registry is read-only from desks: nothing can be published from one", http.StatusMethodNotAllowed)
+		return
+	}
+	u := upstream + path
+	if r.URL.RawQuery != "" {
+		u += "?" + r.URL.RawQuery
+	}
+	req, err := http.NewRequestWithContext(r.Context(), r.Method, u, nil)
+	if err != nil {
+		http.Error(w, "that isn't a path to read", http.StatusBadRequest)
+		return
+	}
+	for _, h := range readHeaders {
+		if v := r.Header.Get(h); v != "" {
+			req.Header.Set(h, v)
+		}
+	}
+	c := p.ReadClient
+	if c == nil {
+		c = p.readClient()
+	}
+	resp, err := c.Do(req)
+	if err != nil {
+		p.logf("%s: reading %s: %v", r.RemoteAddr, u, err)
+		http.Error(w, "couldn't reach the registry", http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+	for _, h := range answerHeaders {
+		if v := resp.Header.Get(h); v != "" {
+			w.Header().Set(h, v)
+		}
+	}
+	w.WriteHeader(resp.StatusCode)
+	io.Copy(w, resp.Body)
+}
+
+// readClient is a client for Reads, dialing with Dial (public addresses
+// only), made once.
+func (p *Proxy) readClient() *http.Client {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.reads == nil {
+		t := http.DefaultTransport.(*http.Transport).Clone()
+		t.Proxy, t.DialContext = nil, p.Dial
+		t.DisableCompression = true // the desk's own Accept-Encoding goes through
+		t.ResponseHeaderTimeout = 30 * time.Second
+		p.reads = &http.Client{Transport: t, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	}
+	return p.reads
 }
 
 // tunnel is a tunnel's two ends, closed once nothing has gone either way

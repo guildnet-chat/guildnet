@@ -53,7 +53,7 @@ client as one address to rate limits.
 | Your git hosts | with git repositories on other hosts: from the console, the runner, and desks through `egress` ([git.md](git.md)) |
 | Your mail server | with email ([email.md](email.md)) |
 | Connector hosts (Linear, Notion, Sentry, Atlassian) | with connectors ([connectors.md](connectors.md)) |
-| `GUILDNET_DESK_ALLOWED` (GitHub, Go, npm and Python registries by default) | with desks, through `egress` only ([desks.md](desks.md)) |
+| `GUILDNET_DESK_ALLOWED` (GitHub, Go and Python registries by default), and `registry.npmjs.org` (read-only) | with desks, through `egress` only ([desks.md](desks.md)) |
 
 ## Accounts and keys
 

@@ -86,7 +86,7 @@ Optional; see [desks.md](desks.md).
 | `GUILDNET_DESKS_PER_NETWORK` | on a desks host shared by several networks, how many of those one network may have (default: all of them) |
 | `GUILDNET_DESK_FILES` | a folder on the host for desks' files, one folder per network; on XFS with `prjquota`, each network's is limited ([desks.md](desks.md#storage)). Unset: Docker volumes, no limit |
 | `GUILDNET_DESK_STORAGE_GB` | how much each network's desks' files may take, in all, with `GUILDNET_DESK_FILES` on XFS (default: no limit) |
-| `GUILDNET_DESK_ALLOWED` | where desks may go, comma-separated; `*.example.com` takes its subdomains. Default: GitHub, and the Go, npm and Python registries |
+| `GUILDNET_DESK_ALLOWED` | where desks may go, comma-separated; `*.example.com` takes its subdomains. Default: GitHub, and the Go and Python registries (npm's is read through egress, read-only) |
 | `GUILDNET_DESK_BLOCKED` | console and runner: hosts no network's desks reach, whatever its owner's list says, beside GuildNet's own blocklist; comma-separated, each blocking the name and every name under it ([desks.md](desks.md#a-networks-own-hosts)) |
 | `GUILDNET_DESK_RUNTIME` | the Docker runtime desks run in (default `runsc`, gVisor); `desks.sh --without-gvisor` sets `runc` |
 | `GUILDNET_DESK_FIREWALL` | `off`: sandboxd doesn't check, as it starts, that the desks' firewall keeps desks apart (it won't serve if a desk reaches another); `desks.sh --without-firewall` sets it |
