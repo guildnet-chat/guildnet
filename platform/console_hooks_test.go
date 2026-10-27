@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/guildnet-chat/guildnet/platform"
 	. "github.com/guildnet-chat/guildnet/platformtest"
@@ -31,6 +32,7 @@ type house struct {
 	notice        string // atop the owner's org chart
 	brokenNotice  bool
 	core          *platform.Core
+	deleted       chan string // the networks it was told are gone
 }
 
 func (h *house) hooks(c *platform.Core) platform.Hooks {
@@ -61,6 +63,11 @@ func (h *house) hooks(c *platform.Core) platform.Hooks {
 		FormAction: []string{"https://pay.example.com"},
 		BeforeDelete: func(ctx context.Context, n platform.Network) (string, error) {
 			return h.refuse, h.deleteErr
+		},
+		Deleted: func(ctx context.Context, n platform.Network) {
+			if h.deleted != nil {
+				h.deleted <- n.Name
+			}
 		},
 	}
 }
@@ -176,6 +183,35 @@ func TestAnExtensionMayLetFormsGoElsewhere(t *testing.T) {
 	}
 	if csp := w.Browser("initech").Get("/signin").Header.Get("Content-Security-Policy"); strings.Contains(csp, "pay.example.com") {
 		t.Errorf("signed out: %q", csp)
+	}
+}
+
+// Once a network is gone, the extension is told, to forget what it kept of
+// it (GuildNet's, its #feedback); not before.
+func TestAnExtensionIsToldWhenANetworkIsGone(t *testing.T) {
+	h := &house{deleted: make(chan string, 1)}
+	w := houseWorld(t, h)
+	_, console := w.Created("ada@example.com", "initech")
+	w.Host.Hold()
+
+	console.Get("/settings")
+	if r := console.Post("/settings/delete", url.Values{"confirm": {"initech"}}); r.Status != http.StatusOK {
+		t.Fatalf("deleting: %d %s", r.Status, r.Text())
+	}
+	select {
+	case n := <-h.deleted:
+		t.Fatalf("told %s was gone while the host was still removing it", n)
+	case <-time.After(100 * time.Millisecond):
+	}
+	w.Host.Release()
+
+	select {
+	case n := <-h.deleted:
+		if n != "initech" {
+			t.Errorf("told %q was gone", n)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("never told initech was gone")
 	}
 }
 

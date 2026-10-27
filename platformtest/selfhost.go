@@ -122,7 +122,7 @@ func (s *Stack) wait(stop chan struct{}) {
 			s.restarts++
 		}
 		if s.r == nil && !s.done {
-			r, err := startRunner(s.w.T, netspec.Spec{Template: got.Template, Owner: got.Owner, Company: got.Company,
+			r, _, err := startRunner(s.w.T, netspec.Spec{Template: got.Template, Owner: got.Owner, Company: got.Company,
 				Timezone: got.Timezone, RunnerToken: SelfHostedRunnerToken}, &s.brain, func() {})
 			if err == nil {
 				s.r, s.ran = r, got

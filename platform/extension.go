@@ -50,6 +50,9 @@ type Hooks struct {
 	// BeforeDelete has a say before a network's owner deletes it: a refusal
 	// says why not yet.
 	BeforeDelete func(ctx context.Context, n Network) (refusal string, err error)
+	// Deleted is told once a network is gone (its name free again), to
+	// forget what the extension kept of it.
+	Deleted func(ctx context.Context, n Network)
 
 	// Home adds pages to the home page, on the base domain. Its own "GET
 	// /{$}" or "GET /robots.txt" take the place of the open home page's.

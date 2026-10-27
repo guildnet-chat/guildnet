@@ -229,6 +229,9 @@ func (p *Platform) forgetNetwork(ctx context.Context, n Network) error {
 		monitor.Problem(p.opts.Logger, "forgetting %s: %v", n.Name, err)
 		return err
 	}
+	if p.hooks.Deleted != nil {
+		p.hooks.Deleted(ctx, n)
+	}
 	return nil
 }
 

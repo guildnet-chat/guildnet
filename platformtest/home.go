@@ -139,6 +139,7 @@ type FakeHost struct {
 	// refreshes counts each network's runner being asked to fetch its model
 	// keys again.
 	refreshes map[string]int
+	ircs      map[string]*ircfake.Server // each network's IRC server
 }
 
 // KeyRefreshes is how many times network's runner was asked to fetch its
@@ -246,7 +247,7 @@ func (h *FakeHost) Put(_ context.Context, name string, s netspec.Spec) (netspec.
 	if a, ok := h.Running[name]; ok {
 		return a, nil
 	}
-	r, err := startRunner(h.w.T, s, &StubBrain{}, func() {
+	r, irc, err := startRunner(h.w.T, s, &StubBrain{}, func() {
 		h.mu.Lock()
 		defer h.mu.Unlock()
 		if h.refreshes == nil {
@@ -257,6 +258,10 @@ func (h *FakeHost) Put(_ context.Context, name string, s netspec.Spec) (netspec.
 	if err != nil {
 		return netspec.Addresses{}, err
 	}
+	if h.ircs == nil {
+		h.ircs = map[string]*ircfake.Server{}
+	}
+	h.ircs[name] = irc
 	h.w.Ergo.AddNetwork(name, s.ErgoToken)
 	a := netspec.Addresses{RunnerURL: "http://" + r.APIAddr(), ErgoURL: h.w.Ergo.Server.URL + "/" + name,
 		ChatURL: "ws" + strings.TrimPrefix(h.w.Chat.Server.URL, "http") + "/" + name}
@@ -264,13 +269,20 @@ func (h *FakeHost) Put(_ context.Context, name string, s netspec.Spec) (netspec.
 	return a, nil
 }
 
+// OnIRC is a network the host runs, as SayOnIRC takes it.
+func (h *FakeHost) OnIRC(name string) *Network {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return &Network{Name: name, IRC: h.ircs[name]}
+}
+
 // startRunner starts a network's real runner from the real template that s
-// names, on a fake IRC server, as its host would; refreshed is called when
-// it's asked to fetch its model keys again.
-func startRunner(t *testing.T, s netspec.Spec, brain *StubBrain, refreshed func()) (*runner.Runner, error) {
+// names, on a fake IRC server (returned too), as its host would; refreshed
+// is called when it's asked to fetch its model keys again.
+func startRunner(t *testing.T, s netspec.Spec, brain *StubBrain, refreshed func()) (*runner.Runner, *ircfake.Server, error) {
 	irc, err := ircfake.Start()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	t.Cleanup(irc.Close)
 	// The network's data directory is its own, not the test's TempDir: a
@@ -279,7 +291,7 @@ func startRunner(t *testing.T, s netspec.Spec, brain *StubBrain, refreshed func(
 	// ledger closes.
 	dataDir, err := os.MkdirTemp("", "guildnet-network-")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	t.Cleanup(func() { os.RemoveAll(dataDir) })
 	envMu.Lock()
@@ -293,22 +305,22 @@ func startRunner(t *testing.T, s netspec.Spec, brain *StubBrain, refreshed func(
 	}
 	envMu.Unlock()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	cfg.API.Listen, cfg.API.Token, cfg.ContinueWithin = "127.0.0.1:0", s.RunnerToken, -1
 	cfg.RefreshModelKeys = refreshed
 	l, err := ledger.Open(cfg.DataDir, cfg.DailyBudgetUSD)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	// Before its directory goes: work still finishing writes nothing there.
 	t.Cleanup(l.Close)
 	r := runner.New(cfg, org.NewMemory(org.SeedFrom(cfg, personas)), brain, l, log.New(io.Discard, "", 0))
 	if err := r.Start(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	t.Cleanup(r.Stop)
-	return r, nil
+	return r, irc, nil
 }
 
 func (h *FakeHost) Remove(_ context.Context, name string) error {
