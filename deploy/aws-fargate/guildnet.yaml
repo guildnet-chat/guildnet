@@ -343,10 +343,32 @@ Resources:
           MountPoints: [{SourceVolume: rds-ca, ContainerPath: /rds-ca}]
           LogConfiguration: {LogDriver: awslogs, Options: {awslogs-group: !Ref Logs, awslogs-region: !Ref AWS::Region, awslogs-stream-prefix: guildnet}}
 
+        - Name: caddy-files
+          # Hands the task's own /config (root's when it's made) to Caddy's
+          # user, then exits.
+          Image: !Sub "${Registry}/caddy:${Release}"
+          Essential: false
+          User: "0:0"
+          EntryPoint: [chown, "65532:65532", /config]
+          ReadonlyRootFilesystem: true
+          LinuxParameters:
+            Capabilities:
+              Drop: [AUDIT_WRITE, DAC_OVERRIDE, FOWNER, FSETID, KILL, MKNOD, NET_BIND_SERVICE, NET_RAW, SETFCAP, SETGID, SETPCAP, SETUID, SYS_CHROOT]
+          MountPoints: [{SourceVolume: caddy-config, ContainerPath: /config}]
+          LogConfiguration: {LogDriver: awslogs, Options: {awslogs-group: !Ref Logs, awslogs-region: !Ref AWS::Region, awslogs-stream-prefix: guildnet}}
+
         - Name: caddy
           # The edge: HTTPS (Let's Encrypt), and IRC over TLS on 6697.
           Image: !Sub "${Registry}/caddy:${Release}"
           Essential: true
+          # Its own user, with no capabilities: ports 80 and 443 are any
+          # user's in the task's own network namespace (this applies to the
+          # whole task). Its certificates on EFS are written as their access
+          # point's user, so an install from before keeps them.
+          User: "65532:65532"
+          DependsOn: [{ContainerName: caddy-files, Condition: SUCCESS}]
+          SystemControls:
+            - {Namespace: net.ipv4.ip_unprivileged_port_start, Value: "0"}
           PortMappings:
             - {ContainerPort: 80, Protocol: tcp}
             - {ContainerPort: 443, Protocol: tcp}
@@ -358,11 +380,7 @@ Resources:
             - {Name: GUILDNET_IRC_UPSTREAM, Value: "localhost:6668"}
             - {Name: GUILDNET_IRC_HINT_UPSTREAM, Value: "localhost:6699"}
           ReadonlyRootFilesystem: true
-          # Fargate adds no capabilities: Caddy keeps the default set's
-          # NET_BIND_SERVICE (ports 80 and 443), and drops the rest.
-          LinuxParameters:
-            Capabilities:
-              Drop: [AUDIT_WRITE, CHOWN, DAC_OVERRIDE, FOWNER, FSETID, KILL, MKNOD, NET_RAW, SETFCAP, SETGID, SETPCAP, SETUID, SYS_CHROOT]
+          LinuxParameters: {Capabilities: {Drop: [ALL]}}
           MountPoints:
             - {SourceVolume: caddy, ContainerPath: /data}
             - {SourceVolume: caddy-config, ContainerPath: /config}

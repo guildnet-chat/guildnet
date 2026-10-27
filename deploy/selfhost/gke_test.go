@@ -50,6 +50,12 @@ type k8sContainer struct {
 }
 
 type k8sPod struct {
+	SecurityContext struct {
+		Sysctls []struct {
+			Name  string `yaml:"name"`
+			Value string `yaml:"value"`
+		} `yaml:"sysctls"`
+	} `yaml:"securityContext"`
 	HostAliases []struct {
 		IP        string   `yaml:"ip"`
 		Hostnames []string `yaml:"hostnames"`
@@ -194,18 +200,21 @@ func toString(v any) string {
 
 // Every container runs the release's image, with no capabilities but those
 // it needs, none to gain, a root filesystem it can't change, and (but for
-// the edge, and the init container that sets the disk's ownership) not as
-// root.
+// the init container that sets the disk's ownership) not as root. The edge
+// binds 80 and 443 as its own user: in the pod those ports are any user's.
 func TestTheGKEPodRunsTheReleaseLockedDown(t *testing.T) {
 	version, _ := os.ReadFile("../../VERSION")
 	pod := gkeObject(t, "StatefulSet", "guildnet").Spec.Template.Spec
 	job := gkeObject(t, "Job", "guildnet-db-init").Spec.Template.Spec
 	restore := gkeObject(t, "Pod", "guildnet-restore").Spec
-	// The edge binds 80 and 443; the init container and the restore pod set
-	// and keep the disk's ownership.
+	// The init container and the restore pod set and keep the disk's
+	// ownership.
 	keeps := []string{"CHOWN", "FOWNER", "DAC_OVERRIDE"}
-	needs := map[string][]string{"caddy": {"NET_BIND_SERVICE"}, "own": keeps, "restore": keeps}
-	root := map[string]bool{"caddy": true, "own": true, "restore": true}
+	needs := map[string][]string{"own": keeps, "restore": keeps}
+	root := map[string]bool{"own": true, "restore": true}
+	if s := pod.SecurityContext.Sysctls; len(s) != 1 || s[0].Name != "net.ipv4.ip_unprivileged_port_start" || s[0].Value != "0" {
+		t.Errorf("the pod's sysctls are %+v; want net.ipv4.ip_unprivileged_port_start 0, for the edge's ports", s)
+	}
 	for _, c := range slices.Concat(pod.InitContainers, pod.Containers, job.Containers, restore.Containers) {
 		image, tag, _ := strings.Cut(c.Image, ":")
 		if !strings.HasPrefix(image, "ghcr.io/guildnet-chat/") || tag != strings.TrimSpace(string(version)) {
@@ -220,6 +229,10 @@ func TestTheGKEPodRunsTheReleaseLockedDown(t *testing.T) {
 		}
 		if !root[c.Name] && (!sc.RunAsNonRoot || sc.RunAsUser == nil || *sc.RunAsUser == 0) {
 			t.Errorf("%s may run as root", c.Name)
+		}
+		// Caddy's certificates are its user's, on a disk from before too.
+		if c.Name == "own" && !strings.Contains(strings.Join(c.Command, " "), "chown -R 65532:65532 caddy") {
+			t.Errorf("the init container doesn't hand Caddy's folder to its user: %q", c.Command)
 		}
 	}
 	b, err := os.ReadFile("../gke/kustomization.yaml")

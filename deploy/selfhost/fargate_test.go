@@ -30,7 +30,12 @@ type ecsContainer struct {
 		ValueFrom string `yaml:"ValueFrom"`
 	} `yaml:"Secrets"`
 	ReadonlyRootFilesystem bool `yaml:"ReadonlyRootFilesystem"`
-	LinuxParameters        struct {
+	SystemControls         []struct {
+		Namespace string `yaml:"Namespace"`
+		Value     string `yaml:"Value"`
+	} `yaml:"SystemControls"`
+	DependsOn       []ecsDependency `yaml:"DependsOn"`
+	LinuxParameters struct {
 		Capabilities struct {
 			Drop []string `yaml:"Drop"`
 			Add  []string `yaml:"Add"`
@@ -41,6 +46,11 @@ type ecsContainer struct {
 		ContainerPath string `yaml:"ContainerPath"`
 		ReadOnly      bool   `yaml:"ReadOnly"`
 	} `yaml:"MountPoints"`
+}
+
+type ecsDependency struct {
+	ContainerName string `yaml:"ContainerName"`
+	Condition     string `yaml:"Condition"`
 }
 
 type cfnTemplate struct {
@@ -201,16 +211,19 @@ func TestFargateNeverRunsTwoTasks(t *testing.T) {
 }
 
 // Every container runs the release's image (the Release parameter, which
-// defaults to VERSION), with a root filesystem it can't change and no
-// capabilities but Caddy's NET_BIND_SERVICE; the console's CA's key is the
-// console's alone, and the runner reads the CA's certificate read-only.
+// defaults to VERSION), with a root filesystem it can't change, no
+// capabilities (but caddy-files' CHOWN, to hand Caddy its folder), and not
+// as root (but the two that set up the task's own folders, then exit); the
+// edge binds 80 and 443 as its own user, those ports being any user's in
+// the task. The console's CA's key is the console's alone, and the runner
+// reads the CA's certificate read-only.
 func TestTheFargateTaskRunsTheReleaseLockedDown(t *testing.T) {
 	tpl := readFargate(t)
 	version, _ := os.ReadFile("../../VERSION")
 	if got := tpl.Parameters["Release"].Default; got != strings.TrimSpace(string(version)) {
 		t.Errorf("the template's Release defaults to %q, not VERSION's %q", got, strings.TrimSpace(string(version)))
 	}
-	images := map[string]string{"rds-ca": "caddy", "caddy": "caddy", "platform": "platform", "ergo": "ergo", "runner": "runner", "db-init": "postgres"}
+	images := map[string]string{"rds-ca": "caddy", "caddy-files": "caddy", "caddy": "caddy", "platform": "platform", "ergo": "ergo", "runner": "runner", "db-init": "postgres"}
 	all := fargateContainers(t, tpl, "Task")
 	for k, v := range fargateContainers(t, tpl, "DatabaseInit") {
 		all[k] = v
@@ -229,10 +242,10 @@ func TestTheFargateTaskRunsTheReleaseLockedDown(t *testing.T) {
 		if slices.Contains(caps.Drop, "ALL") {
 			kept = nil
 		}
-		if want := map[string][]string{"caddy": {"NET_BIND_SERVICE"}}[name]; !slices.Equal(kept, want) || len(caps.Add) > 0 {
+		if want := map[string][]string{"caddy-files": {"CHOWN"}}[name]; !slices.Equal(kept, want) || len(caps.Add) > 0 {
 			t.Errorf("%s keeps %v and adds %v; want %v", name, kept, caps.Add, want)
 		}
-		if name != "caddy" && name != "rds-ca" && (c.User == "" || strings.HasPrefix(c.User, "0")) {
+		if name != "caddy-files" && name != "rds-ca" && (c.User == "" || strings.HasPrefix(c.User, "0")) {
 			t.Errorf("%s runs as %q; want a user that isn't root", name, c.User)
 		}
 		for _, m := range c.MountPoints {
@@ -243,6 +256,13 @@ func TestTheFargateTaskRunsTheReleaseLockedDown(t *testing.T) {
 				t.Error("the runner can change the CA's certificate it trusts")
 			}
 		}
+	}
+	caddy := all["caddy"]
+	if s := caddy.SystemControls; len(s) != 1 || s[0].Namespace != "net.ipv4.ip_unprivileged_port_start" || s[0].Value != "0" {
+		t.Errorf("caddy's system controls are %+v; want net.ipv4.ip_unprivileged_port_start 0, for its ports", s)
+	}
+	if !slices.Contains(caddy.DependsOn, ecsDependency{"caddy-files", "SUCCESS"}) {
+		t.Errorf("caddy starts before caddy-files hands it its folder: %+v", caddy.DependsOn)
 	}
 }
 

@@ -13,7 +13,7 @@ on an EC2 instance of their own ([desks-host.md](desks-host.md)).
 | Resource | Setting |
 | --- | --- |
 | Network | a VPC of its own: two public subnets (the task, with a public address for its way out, and the load balancer), two private ones (RDS, EFS) |
-| Task | one (the service stops it before starting a replacement), 1 vCPU, 2 GB; every container with a read-only root filesystem and no capabilities but Caddy's `NET_BIND_SERVICE` |
+| Task | one (the service stops it before starting a replacement), 1 vCPU, 2 GB; every container with a read-only root filesystem and no capabilities (but `CHOWN` for the one that hands Caddy its folder), and non-root but for two that set up the task's own folders and exit; Caddy binds 80 and 443 as its own user (`net.ipv4.ip_unprivileged_port_start`, which applies to the whole task) |
 | Addresses | in one task the containers share localhost: the stack's addresses (`platform:8080`, `ergo:6667`, …) are localhost's, and the console reapplies them at start |
 | Database | RDS for PostgreSQL, `db.t4g.small`, private, encrypted, TLS required and checked against RDS's CA, 14 days of backups, deletion protection |
 | Files | EFS, encrypted, TLS only, an access point per program setting who owns its files; AWS Backup on |

@@ -27,11 +27,17 @@ spec:
           hostnames: [platform, broker, ergo, runner]
       securityContext:
         seccompProfile: {type: RuntimeDefault}
+        # Ports 80 and 443 are any user's in the pod's own network
+        # namespace: Caddy binds them as its own user, with no capabilities.
+        sysctls:
+          - {name: net.ipv4.ip_unprivileged_port_start, value: "0"}
       initContainers:
         - name: own
           # Each one's folder on the disk, owned by who writes it: a new
           # disk is root's, and Docker's way of copying ownership from the
-          # image doesn't happen here.
+          # image doesn't happen here. Caddy's is handed over whole: a disk
+          # from before Caddy ran as its own user has its certificates as
+          # root's.
           image: ghcr.io/guildnet-chat/caddy:26.10.2
           command:
             - sh
@@ -40,6 +46,7 @@ spec:
               set -eu
               cd /disk
               mkdir -p caddy ergo welcome runner broker-ca broker-ca-shared
+              chown -R 65532:65532 caddy
               chown 65534:65534 ergo welcome && chmod 0777 welcome
               chown 65532:65532 runner broker-ca broker-ca-shared && chmod 0700 broker-ca
           securityContext:
@@ -64,9 +71,12 @@ spec:
             - {name: GUILDNET_DOMAIN, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_DOMAIN}}}
             - {name: GUILDNET_NETWORK, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_NETWORK}}}
           securityContext:
+            runAsUser: 65532
+            runAsGroup: 65532
+            runAsNonRoot: true
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
-            capabilities: {drop: [ALL], add: [NET_BIND_SERVICE]}
+            capabilities: {drop: [ALL]}
           resources:
             requests: {cpu: 100m, memory: 128Mi}
           volumeMounts:
