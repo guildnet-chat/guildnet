@@ -128,7 +128,8 @@ docker build deploy/ergo
 docker build deploy/postgres
 ```
 
-The platform image builds the chat with `npm ci` and `npm run build` on
+The platform image builds the chat with `npm ci --ignore-scripts` (no
+package's install scripts run) and `npm run build` on
 `node:24-alpine` and serves it from `/chat`. The runner compiles with
 `-p 1` to fit a 2 GB Docker. sandboxd's image runs both `serve` and
 `proxy`. The caddy, ergo, postgres and desk images build from their own

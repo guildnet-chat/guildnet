@@ -9,7 +9,10 @@
 FROM node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS chat
 WORKDIR /chat
 COPY --from=chat-src package.json package-lock.json ./
-RUN npm ci --no-audit --no-fund
+# No package's install scripts run: one a dependency changed could change
+# what the console serves. The build needs none (its native tools load
+# their prebuilt binaries), and makes the same files without them.
+RUN npm ci --no-audit --no-fund --ignore-scripts
 COPY --from=chat-src . .
 RUN npm run build
 

@@ -171,6 +171,24 @@ func TestEveryImagesBasesArePinned(t *testing.T) {
 	}
 }
 
+// No npm package's install scripts run while an image is built: one a
+// dependency changed could change the web chat the console serves.
+func TestImagesRunNoNpmInstallScripts(t *testing.T) {
+	dockerfiles, _ := filepath.Glob("../*/Dockerfile")
+	npm := regexp.MustCompile(`(?m)\bnpm (ci|install|i)\b[^\n]*`)
+	for _, f := range dockerfiles {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, line := range npm.FindAllString(string(b), -1) {
+			if !strings.Contains(line, "--ignore-scripts") {
+				t.Errorf("%s: %q runs packages' install scripts", f, line)
+			}
+		}
+	}
+}
+
 // Releases are tagged by date, and the release workflow runs on those tags
 // only.
 func TestTheReleaseRunsOnTagsByDate(t *testing.T) {
