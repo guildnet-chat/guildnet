@@ -140,7 +140,7 @@ Defaults are the programs' own.
 |---|---|
 | `GUILDNET_BASE_DOMAIN` | the home page's domain; networks' consoles are its subdomains (default `guildnet.localhost`) |
 | `GUILDNET_PLATFORM_LISTEN` | where it serves (default `:8080`) |
-| `GUILDNET_SECURE_COOKIES` | `on` behind HTTPS: cookies only over HTTPS, and the owner and org-wide admins must use two-step sign-in |
+| `GUILDNET_SECURE_COOKIES` | `on` behind HTTPS: cookies only over HTTPS, and the owner and anyone who can change things across the whole org (or in every team) must use two-step sign-in |
 | `GUILDNET_TRUSTED_PROXIES` | the edge's addresses (CIDRs), whose `X-Forwarded-For` is believed |
 | `GUILDNET_PLATFORM_DATABASE_URL` | its Postgres database |
 | `GUILDNET_NETWORK` | the install's one network, which first-run setup makes |

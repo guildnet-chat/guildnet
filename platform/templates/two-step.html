@@ -14,7 +14,7 @@
   <p><a class="button" href="/">I've saved them</a></p>
 </section>
 {{else}}
-{{if .Must}}<p class="note" role="status">As {{if $.Chrome.Owner}}the owner{{else}}someone who can change things across the whole org{{end}}, you need two-step sign-in before you carry on. It takes a minute.</p>{{end}}
+{{if .Must}}<p class="note" role="status">As {{if $.Chrome.Owner}}the owner{{else}}someone who can change things across the whole org, or in every team{{end}}, you need two-step sign-in before you carry on. It takes a minute.</p>{{end}}
 {{if not .Adding}}
 <section class="card">
   <h2>With a passkey</h2>

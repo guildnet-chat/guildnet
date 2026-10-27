@@ -867,7 +867,8 @@ func (r *Runner) apiMe(w http.ResponseWriter, req *http.Request) {
 	if r.isOwner(actor) {
 		access = []string{"Owner"} // everything, whatever the levels say
 	}
-	apiJSON(w, http.StatusOK, map[string]any{"account": actor, "owner": r.isOwner(actor), "guest": r.isGuest(actor), "access": access, "abilities": out})
+	apiJSON(w, http.StatusOK, map[string]any{"account": actor, "owner": r.isOwner(actor), "guest": r.isGuest(actor), "access": access, "abilities": out,
+		"must_two_step": r.mustUseTwoStep(actor)})
 }
 
 // accessJSON is an access level as the API shows it.

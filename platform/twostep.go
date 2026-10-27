@@ -414,10 +414,15 @@ func (p *Platform) mayChangeSteps(r *http.Request, t TwoStepSetup) bool {
 // Who must use it.
 
 // mustUseTwoStep says whether someone with these abilities must: the owner,
-// and anyone who may change things across the whole org.
+// and anyone who may change things across the whole org or in every team,
+// as the runner says (it knows the teams). From a runner that doesn't say:
+// anyone with an ability across the whole org.
 func mustUseTwoStep(m me) bool {
 	if m.Owner {
 		return true
+	}
+	if m.MustTwoStep != nil {
+		return *m.MustTwoStep
 	}
 	return slices.ContainsFunc([]string{"approve", "hire", "budgets", "invite", "arrange"}, func(a string) bool { return m.Abilities[a].Org })
 }

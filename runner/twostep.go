@@ -9,8 +9,11 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
+
+	"github.com/guildnet-chat/guildnet/internal/org"
 )
 
 // Two-step sign-in is the console's: a password, then a code or a passkey.
@@ -77,13 +80,21 @@ func (r *Runner) UseTwoSteps(t TwoSteps) {
 
 // mustUseTwoStep says whether the network, wanting two steps of them, does
 // of actor: the owner, and anyone who may change things across the whole
-// org (as the console decides).
+// org, or in every team (leading the one all the others are inside, say).
+// The console asks it here (/v1/me's must_two_step).
 func (r *Runner) mustUseTwoStep(actor string) bool {
 	if r.isOwner(actor) {
 		return true
 	}
+	teams, err := r.store.Teams(context.Background())
+	if err != nil {
+		return true // can't tell: held to it, not let off
+	}
 	for _, ab := range []ability{canApprove, canHire, canBudget, canInvite, canArrange} {
 		if r.can(actor, ab, wholeOrg) {
+			return true
+		}
+		if len(teams) > 0 && !slices.ContainsFunc(teams, func(t org.Team) bool { return !r.can(actor, ab, inTeam(t.Name)) }) {
 			return true
 		}
 	}

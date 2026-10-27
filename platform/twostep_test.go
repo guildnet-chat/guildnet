@@ -293,6 +293,34 @@ func TestTheOwnerAndOrgWideAdminsMustSetUpTwoStep(t *testing.T) {
 	}
 }
 
+// Leading the team every other team is inside is as good as changing the
+// whole org: that lead must set up two-step too (as the runner says).
+func TestTheLeadOfEveryTeamMustSetUpTwoStep(t *testing.T) {
+	w := NewWorldWith(t, func() Store { return platform.NewMemoryStore() }, RequireTwoStep)
+	ada := w.Browser("acme").SignedIn("ada")
+	ada.Get("/account/two-step")
+	ada.SetUpTwoStep()
+	cy := w.Browser("acme").SignedIn("cy")
+	if r := cy.Get("/"); r.Status != http.StatusOK {
+		t.Fatalf("cy, leading nothing: %d, want in", r.Status)
+	}
+
+	ada.Get("/teams")
+	if r := ada.Post("/teams", url.Values{"name": {"Company"}}); r.Status != http.StatusSeeOther {
+		t.Fatalf("making Company: %d %s", r.Status, r.Text())
+	}
+	for team, form := range map[string]url.Values{"Company": {"leads": {"cy"}}, "Engineering": {"parent": {"Company"}}, "Sales": {"parent": {"Company"}}} {
+		ada.Get("/teams/" + team)
+		if r := ada.Post("/teams/"+team, form); r.Status != http.StatusSeeOther {
+			t.Fatalf("setting %s %v: %d %s", team, form, r.Status, r.Text())
+		}
+	}
+
+	if r := cy.Get("/"); r.Status != http.StatusSeeOther || r.Header.Get("Location") != "/account/two-step" {
+		t.Errorf("cy, leading the team every team is inside: %d %q, want sent to set it up", r.Status, r.Header.Get("Location"))
+	}
+}
+
 func TestOpeningTheConsoleFromTheHomePageStillAsksTheSecondStep(t *testing.T) {
 	w := NewWorld(t)
 	home, console := w.Created("ada@example.com", "initech")

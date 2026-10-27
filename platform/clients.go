@@ -371,6 +371,9 @@ type me struct {
 	Guest     bool             `json:"guest"`
 	Access    []string         `json:"access"`
 	Abilities map[string]reach `json:"abilities"`
+	// The runner's word on whether they must use two-step sign-in
+	// (mustUseTwoStep); nil from a runner from before it said.
+	MustTwoStep *bool `json:"must_two_step"`
 }
 
 type reach struct {

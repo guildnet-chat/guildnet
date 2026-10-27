@@ -21,7 +21,7 @@ known limits. Mechanisms are described in
 
 | Control | |
 | --- | --- |
-| Two-step sign-in | required for the owner and anyone with org-wide change permissions (passkey or TOTP) before any other action; optional for others |
+| Two-step sign-in | required for the owner and anyone with change permissions across the whole org or in every team (passkey or TOTP) before any other action; optional for others |
 | IRC app passwords | for accounts with two-step on or required, IRC apps sign in only with app passwords, made on the account page and shown once; the account's own password signs in to nothing over IRC. Revoking one ends the account's IRC sessions. Anyone may use them, to keep their password out of IRC apps |
 | Changes require two-step | for accounts with two-step on or required, GuildServ accepts changes (hiring, approvals, access, budgets, pausing) only from the console and its web chat. IRC apps, which sign in with one factor (an app password), are read-only for them |
 | Passwords | people's are the console's (bcrypt, as Ergo hashes them). Ergo asks the console about every person's IRC login, and its answer is final (GuildNet's patch to Ergo, `deploy/ergo/authoritative-auth-script.patch`). A password from before, still in Ergo, moves to the console at its first sign-in. Agents' passwords are Ergo's |

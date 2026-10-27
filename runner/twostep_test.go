@@ -52,6 +52,36 @@ func TestTwoStepAccountsChangeTheOrgOnlyFromTheConsole(t *testing.T) {
 	n.human.expect("hired through the console, answered as GuildServ", guildServSaying("method", "hired rex"))
 }
 
+// Leading a team that every other team is inside is as good as changing
+// the whole org, so it's held to two steps too; leading one team among
+// others isn't. The console asks the runner (/v1/me), so both hold the
+// same people to it.
+func TestLeadingEveryTeamNeedsTwoStepsLikeTheWholeOrg(t *testing.T) {
+	n := startNetwork(t, &fakeBrain{}, withAPI())
+	n.human.say("GuildServ", `MEMBER ADD dana ROLE "Head of Engineering" TEAM Engineering`)
+	n.human.expect("dana added", guildServSaying("method", "added dana"))
+	n.human.say("GuildServ", "PROMOTE dana")
+	n.human.expect("dana leads Engineering", guildServSaying("method", "dana is now lead of Engineering"))
+	if _, me := n.api("dana").call("GET", "/v1/me", nil); me["must_two_step"] != false {
+		t.Errorf("leading Engineering alone: must_two_step %v, want false", me["must_two_step"])
+	}
+
+	n.human.say("GuildServ", "TEAM CREATE Company LEAD dana")
+	n.human.expect("Company made", guildServSaying("method", "Company"))
+	for _, team := range []string{"Engineering", "Marketing"} {
+		n.human.say("GuildServ", "TEAM SET "+team+" PARENT Company")
+		n.human.expect(team+" inside Company", guildServSaying("method", team))
+	}
+
+	if _, me := n.api("dana").call("GET", "/v1/me", nil); me["must_two_step"] != true {
+		t.Errorf("leading the team every team is inside: must_two_step %v, want true", me["must_two_step"])
+	}
+	n.runner.UseTwoSteps(&twoSteps{of: map[string]runner.TwoStep{"dana": {Required: true}}})
+	dana := n.joinAs("dana")
+	dana.say("GuildServ", `HIRE rex ROLE "Support" TEAM Engineering`)
+	dana.expect("a change over IRC refused", guildServSaying("dana", "console"))
+}
+
 // Someone who's turned two steps on is held to it, whatever their access.
 func TestSomeoneWithTwoStepOnChangesThingsOnlyFromTheConsole(t *testing.T) {
 	n := startNetwork(t, wantsToMerge(), withAPI())
