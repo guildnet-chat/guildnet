@@ -30,13 +30,12 @@ import (
 	"github.com/guildnet-chat/guildnet/internal/sandbox"
 )
 
-// End to end, when GUILDNET_DOCKER_TESTS=1: an agent's desk in real Docker
-// clones one of its team's repositories from a git host that isn't on the
-// list every desk has, through the desks' proxy, with its network's egress
-// pass and the repository's read token; the agent commits there, and the
-// runner pushes its branch with the push token. The host gets the branch,
-// with the agent's commit, and main is as it was. A desk without the pass
-// can't reach the host at all.
+// End to end, when GUILDNET_DOCKER_TESTS=1: the runner checks one of an
+// agent's team's repositories out at its desk in real Docker, with the
+// repository's read token, which never reaches the desk; the agent commits
+// there, and the runner pushes its branch with the push token. The host
+// gets the branch, with the agent's commit, and main is as it was. The desk
+// itself can't reach the host at all.
 
 const gitE2EImage = "guildnet-desk-git-e2e:latest"
 
@@ -62,7 +61,7 @@ func (l *logged) String() string {
 	return l.b.String()
 }
 
-func TestAnAgentClonesCommitsAndPushesThroughItsDeskInRealDocker(t *testing.T) {
+func TestTheRunnerChecksOutAndPushesForAnAgentsDeskInRealDocker(t *testing.T) {
 	if os.Getenv("GUILDNET_DOCKER_TESTS") != "1" {
 		t.Skip("set GUILDNET_DOCKER_TESTS=1 to test against Docker")
 	}
@@ -93,7 +92,7 @@ func TestAnAgentClonesCommitsAndPushesThroughItsDeskInRealDocker(t *testing.T) {
 	}
 
 	// The desks' proxy, on this machine, where the desks' network's gateway
-	// reaches it: it opens example.com only with acme's pass.
+	// reaches it: it doesn't open example.com.
 	public, private := sandbox.NewKeys()
 	proxyLog := &logged{}
 	ln, err := net.Listen("tcp", "0.0.0.0:0")
@@ -119,29 +118,24 @@ func TestAnAgentClonesCommitsAndPushesThroughItsDeskInRealDocker(t *testing.T) {
 	defer ws.Clear(context.Background(), kai)
 	ws.Clear(ctx, kai)
 
-	// Without the pass, the host can't be reached.
-	ws.Git = fakeGit{{Name: "infra", URL: repoURL, Read: gitwire.Credential{User: gittest.User, Token: gittest.ReadToken}}}
-	ws.Pass = func(context.Context) (string, error) { return "", nil }
-	if err := ws.Ready(ctx, kai); err == nil {
-		t.Fatal("a desk without its network's pass cloned from the host")
-	}
-
-	ws.Pass = func(context.Context) (string, error) {
-		return sandbox.PassFor(private, "acme", []string{host}, time.Now(), 15*time.Minute), nil
-	}
-	if err := ws.Ready(ctx, kai); err != nil {
-		t.Fatalf("readying the desk: %v\nthe proxy: %s", err, proxyLog)
-	}
-	out, err := ws.Run(ctx, kai, "bash", map[string]any{"command": "cd infra && git checkout -q -b kai/fix && echo fixed > fix.txt && git add fix.txt && git commit -q -m 'Fix it' && git rev-parse HEAD && cat ~/.config/guildnet/git/infra"})
-	if err != nil || strings.Contains(out, gittest.ReadToken) {
-		t.Fatalf("committing at the desk: %q, %v", out, err)
-	}
-
-	// The runner pushes, reaching example.com on this machine.
+	// The runner reaches example.com on this machine; the desk doesn't.
 	transport := s.Client().Transport.(*http.Transport).Clone()
 	transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
 		return (&net.Dialer{}).DialContext(ctx, network, strings.Replace(addr, "example.com", "127.0.0.1", 1))
 	}
+	ws.Git = fakeGit{{Name: "infra", URL: repoURL, Read: gitwire.Credential{User: gittest.User, Token: gittest.ReadToken}}}
+	ws.HTTP = &http.Client{Transport: transport}
+	if err := ws.Ready(ctx, kai); err != nil {
+		t.Fatalf("readying the desk: %v", err)
+	}
+	if out, _ := ws.Run(ctx, kai, "bash", map[string]any{"command": "git ls-remote " + repoURL + " >/dev/null 2>&1 && echo reached || echo unreachable"}); !strings.Contains(out, "unreachable") {
+		t.Errorf("the desk reached the git host itself: %q", out)
+	}
+	out, err := ws.Run(ctx, kai, "bash", map[string]any{"command": "cd infra && git checkout -q -b kai/fix && echo fixed > fix.txt && git add fix.txt && git commit -q -m 'Fix it' && git rev-parse HEAD && grep -rl " + gittest.ReadToken + " /workspace /home/desk; true"})
+	if err != nil || strings.Contains(out, "/workspace/") || strings.Contains(out, "/home/desk/") {
+		t.Fatalf("committing at the desk (or the read token is there): %q, %v", out, err)
+	}
+
 	broker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/git":
@@ -172,7 +166,7 @@ func TestAnAgentClonesCommitsAndPushesThroughItsDeskInRealDocker(t *testing.T) {
 	if got := s.Ref("refs/heads/main"); got != s.Main {
 		t.Errorf("main moved to %s", got)
 	}
-	if !strings.Contains(proxyLog.String(), "tunnel to "+host) {
-		t.Errorf("the desk didn't go through the proxy:\n%s", proxyLog)
+	if strings.Contains(proxyLog.String(), "tunnel to "+host) {
+		t.Errorf("the desk tunnelled to the git host:\n%s", proxyLog)
 	}
 }
