@@ -188,10 +188,10 @@ func (r *Runner) moveAfter() time.Duration {
 	return defaultMoveAfter
 }
 
-// canDecide reports whether account may decide approval a: the owner, anyone
-// on its route (before or after whoever's being asked now), or anyone who
-// may approve for the agent (by default, anyone above it who leads or
-// manages).
+// canDecide reports whether account may decide approval a: the owner, or
+// anyone who may approve for the agent now (by default, anyone above it who
+// leads or manages). Its route (approvalRoute) is only who held that when
+// it was raised: being on it, or being asked, is no say once that's gone.
 func (r *Runner) canDecide(account string, a org.Approval) bool {
 	if r.isOwner(account) {
 		return true
@@ -202,12 +202,6 @@ func (r *Runner) canDecide(account string, a org.Approval) bool {
 	// Only someone still in the org: one taken out since keeps no say.
 	if !r.inOrgAsPerson(account) {
 		return false
-	}
-	if strings.EqualFold(account, a.Approver) {
-		return true
-	}
-	if slices.ContainsFunc(a.Route, func(x string) bool { return strings.EqualFold(x, account) }) {
-		return true
 	}
 	return r.can(account, canApprove, onPerson(a.Agent))
 }
