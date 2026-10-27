@@ -263,3 +263,31 @@ func TestAWebhookMustBeAPublicHTTPSAddress(t *testing.T) {
 		t.Errorf("after clearing: gets work %v", out["gets_work"])
 	}
 }
+
+// A webhook's address often carries a secret of its own (in its path): it's
+// shown only to those who may change the agent, the rest see where it goes
+// (the host), and the org's log keeps only the host.
+func TestAWebhooksAddressIsShownOnlyToThoseWhoMayChangeTheAgent(t *testing.T) {
+	n := startNetwork(t, &fakeBrain{}, withAPI())
+	outside(t, n)
+	n.human.say("GuildServ", `MEMBER ADD dana ROLE "Designer" TEAM Marketing`)
+	n.human.expect("dana added", guildServSaying("method", "added dana"))
+	const url = "https://hooks.example.com/catch/8812/s3cr3t-path"
+	if status, out := n.api("method").call("POST", "/v1/staff/kai/webhook", map[string]any{"url": url}); status != http.StatusOK {
+		t.Fatalf("setting the webhook: %d %v", status, out)
+	}
+
+	_, owner := n.api("method").call("GET", "/v1/staff/kai", nil)
+	_, member := n.api("dana").call("GET", "/v1/staff/kai", nil)
+	_, log := n.api("method").call("GET", "/v1/log", nil)
+
+	if owner["webhook_url"] != url {
+		t.Errorf("the owner sees %v, want the whole address", owner["webhook_url"])
+	}
+	if member["gets_work"] != "webhook" || member["webhook_host"] != "hooks.example.com" || strings.Contains(jsonText(member), "s3cr3t") {
+		t.Errorf("dana, who can't change kai, sees %v", member)
+	}
+	if text := jsonText(log); strings.Contains(text, "s3cr3t") || !strings.Contains(text, "hooks.example.com") {
+		t.Errorf("the org's log: %s", text)
+	}
+}

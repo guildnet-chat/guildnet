@@ -16,7 +16,7 @@
 <section class="card outside-status">
   <h2>Runs outside {{brand}}</h2>
   {{if eq $a.GetsWork "webhook"}}
-  <p>Its work is sent to <code>{{$a.WebhookURL}}</code>.
+  <p>Its work is sent to {{with $a.WebhookURL}}<code>{{.}}</code>{{else}}an address at <code>{{$a.WebhookHost}}</code>{{end}}.
     {{with $a.LastDelivery}}{{if .OK}}<span class="dot on" aria-hidden="true"></span>The last call, {{when .At}}, went through.{{else}}<span class="dot off" aria-hidden="true"></span>The last call, {{when .At}}, failed: {{.Err}}.{{end}}{{end}}
     Wake-ups today: {{$a.Wakes}} of {{$a.DailyWakes}}.</p>
   {{else}}

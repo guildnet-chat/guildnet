@@ -272,9 +272,11 @@ type agentProfile struct {
 	DailyWakes int        `json:"daily_wakes"`
 	WakesToday *int       `json:"wakes_today"`
 	// How an outside agent gets its work: "inbox", or "webhook" (sent to
-	// WebhookURL; LastDelivery is how the last call went).
+	// WebhookURL, given only to those who may change it; anyone gets its
+	// WebhookHost; LastDelivery is how the last call went).
 	GetsWork     string `json:"gets_work"`
 	WebhookURL   string `json:"webhook_url"`
+	WebhookHost  string `json:"webhook_host"`
 	LastDelivery *struct {
 		At  time.Time `json:"at"`
 		OK  bool      `json:"ok"`

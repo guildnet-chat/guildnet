@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	neturl "net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -174,8 +175,17 @@ func (r *Runner) setAgentWebhook(ctx context.Context, actor, nick, url string) (
 	if err := r.store.SetAgentWebhook(ctx, p.Nick, url, sealed); err != nil {
 		return "", r.storeRefusal(p.Nick, err)
 	}
-	r.logChange(actor, "webhook", p.Nick, p.Team, url)
+	r.logChange(actor, "webhook", p.Nick, p.Team, "to "+webhookHost(url))
 	return "whsec_" + base64.StdEncoding.EncodeToString(key), nil
+}
+
+// webhookHost is where a webhook goes, without its path: the path may hold
+// a secret of the receiver's (a catch hook's, say).
+func webhookHost(address string) string {
+	if u, err := neturl.Parse(address); err == nil && u.Host != "" {
+		return u.Host
+	}
+	return "an address"
 }
 
 func (r *Runner) apiAgentWebhook(w http.ResponseWriter, req *http.Request) {

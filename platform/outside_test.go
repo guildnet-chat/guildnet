@@ -192,6 +192,21 @@ func TestAnOutsideAgentsWorkCanBeSentToItsOwnAddress(t *testing.T) {
 	}
 }
 
+// Someone who can't change the agent sees where its work goes, not the whole
+// address (which may hold the receiver's secret in its path).
+func TestAWebhooksWholeAddressIsForThoseWhoMayChangeTheAgent(t *testing.T) {
+	w := NewWorld(t)
+	ada, _, _ := HireOutside(t, w)
+	ada.Get("/staff/rex")
+	ada.Post("/staff/rex/webhook", url.Values{"webhook_url": {"https://hooks.example.com/catch/s3cr3t"}})
+
+	page := w.Browser("acme").SignedIn("cy").Get("/staff/rex")
+
+	if page.Status != http.StatusOK || !strings.Contains(page.Text(), "hooks.example.com") || strings.Contains(page.Body, "s3cr3t") {
+		t.Errorf("rex's page for cy: %d\n%s", page.Status, page.Text())
+	}
+}
+
 // A new token, from the agent's page, is shown once, and the old one stops
 // working at once.
 func TestAnOutsideAgentGetsANewTokenFromItsPage(t *testing.T) {

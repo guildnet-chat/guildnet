@@ -307,9 +307,12 @@ type agentJSON struct {
 	DailyWakes int        `json:"daily_wakes,omitempty"`
 	WakesToday *int       `json:"wakes_today,omitempty"`
 	// How it gets its work: "inbox" (its program checks in) or "webhook"
-	// (sent to WebhookURL; LastDelivery says how the last call went).
+	// (sent to WebhookURL, which may hold a secret of its own and is shown
+	// only to those who may change the agent; everyone sees WebhookHost;
+	// LastDelivery says how the last call went).
 	GetsWork     string    `json:"gets_work,omitempty"`
 	WebhookURL   string    `json:"webhook_url,omitempty"`
+	WebhookHost  string    `json:"webhook_host,omitempty"`
 	LastDelivery *delivery `json:"last_delivery,omitempty"`
 }
 
@@ -331,7 +334,10 @@ func (r *Runner) showAgent(actor string, p config.Persona, notes []string) agent
 		a.DailyWakes, a.WakesToday = wakeCap(p), &today
 		a.GetsWork = "inbox"
 		if url, _, _ := r.store.AgentWebhook(context.Background(), p.Nick); url != "" {
-			a.GetsWork, a.WebhookURL = "webhook", url
+			a.GetsWork, a.WebhookHost = "webhook", webhookHost(url)
+			if r.can(actor, canHire, onPerson(p.Nick)) {
+				a.WebhookURL = url
+			}
 			if d, ok := r.outside.lastDelivery(p.Nick); ok {
 				a.LastDelivery = &d
 			}
