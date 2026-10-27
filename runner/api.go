@@ -152,6 +152,10 @@ func (r *Runner) startAPI() error {
 	r.agentToolRoutes(agents)
 	people, outsiders := r.apiAuth(mux), r.agentAuth(agents)
 	r.api = &http.Server{Handler: monitor.Handler(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if apiStarting(r, req) {
+			apiError(w, http.StatusServiceUnavailable, "the network is starting: try again in a moment")
+			return
+		}
 		if strings.HasPrefix(req.URL.Path, "/agents/") {
 			outsiders.ServeHTTP(w, req)
 			return
@@ -171,6 +175,14 @@ func (r *Runner) startAPI() error {
 	go r.api.Serve(ln)
 	r.logger.Printf("API listening on %s", r.apiAddr)
 	return nil
+}
+
+// apiStarting says req must wait for Start to finish: until everyone's
+// connected, only who someone is (GET /v1/me) is answered, which needs only
+// the org chart, and which the console asks while Ergo checks agents'
+// logins.
+func apiStarting(r *Runner, req *http.Request) bool {
+	return !r.started.Load() && !(req.Method == "GET" && req.URL.Path == "/v1/me")
 }
 
 // APIAddr is where the API listens, once started ("" if it's off).

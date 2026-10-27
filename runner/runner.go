@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -72,6 +73,9 @@ type Staffing interface {
 type Runner struct {
 	api     *http.Server // the internal API, if it's on
 	apiAddr string
+	// Set once Start has connected everyone: until then the API answers
+	// only who someone is (apiStarting).
+	started atomic.Bool
 	cfg     *config.Runner
 	store   org.Store
 	brain   Brain
@@ -202,6 +206,11 @@ func (r *Runner) Start() error {
 			return err
 		}
 	}
+	// The API listens before anyone connects: Ergo asks the console about
+	// each agent's login, and the console asks here who the account is.
+	if err := r.startAPI(); err != nil {
+		return err
+	}
 
 	r.ledgerConn = r.newConn(r.cfg.LedgerNick, "GuildNet ledger (spend, budgets, loop guard)")
 	// The ledger reads channel history back from the server after joining,
@@ -260,7 +269,8 @@ func (r *Runner) Start() error {
 	r.logger.Printf("connected %d agents to %s", len(agents), r.cfg.Server)
 	r.requestSync() // again, now that everyone's here
 	go r.watchApprovals(r.stop)
-	return r.startAPI()
+	r.started.Store(true)
+	return nil
 }
 
 // Stop disconnects everyone.

@@ -7,10 +7,13 @@ import (
 	"encoding/json"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/guildnet-chat/guildnet/config"
 	"github.com/guildnet-chat/guildnet/internal/ircfake"
@@ -141,6 +144,82 @@ func TestTheAPIWontStartWithoutASecret(t *testing.T) {
 
 	if err == nil || !strings.Contains(err.Error(), "secret") {
 		t.Errorf("Start = %v, want a refusal to serve the API without a secret", err)
+	}
+}
+
+// While the runner is still connecting its agents, Ergo asks the console
+// about each one's login, and the console asks the runner who the account
+// is: the API answers that already (an agent isn't a person, the owner is),
+// and says the network is starting to anything else.
+func TestTheAPISaysWhoSomeoneIsWhileTheAgentsConnect(t *testing.T) {
+	// An IRC server that takes connections and never answers: the runner
+	// stays connecting.
+	silent, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	var held []net.Conn
+	go func() {
+		for {
+			c, err := silent.Accept()
+			if err != nil {
+				return
+			}
+			mu.Lock()
+			held = append(held, c)
+			mu.Unlock()
+		}
+	}()
+	free, _ := net.Listen("tcp", "127.0.0.1:0")
+	addr := free.Addr().String()
+	free.Close()
+	cfg, store, l := testOrg(t, silent.Addr().String(), withAPI())
+	cfg.API.Listen = addr
+	r := runner.New(cfg, store, &fakeBrain{}, l, log.New(io.Discard, "", 0))
+	var startErr error
+	started := make(chan struct{})
+	go func() { startErr = r.Start(); close(started) }()
+	t.Cleanup(func() {
+		silent.Close()
+		mu.Lock()
+		for _, c := range held {
+			c.Close()
+		}
+		mu.Unlock()
+		<-started
+		r.Stop()
+	})
+	c := &apiCaller{t: t, base: "http://" + addr, token: networkSecret, header: true}
+	for deadline := time.Now().Add(waitTimeout); ; time.Sleep(20 * time.Millisecond) {
+		if conn, err := net.Dial("tcp", addr); err == nil {
+			conn.Close()
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the API isn't listening while the agents connect")
+		}
+	}
+
+	c.actor = "kai"
+	agent, _ := c.call("GET", "/v1/me", nil)
+	c.actor = "method"
+	owner, me := c.call("GET", "/v1/me", nil)
+	other, out := c.call("GET", "/v1/org", nil)
+
+	if agent != http.StatusForbidden {
+		t.Errorf("an agent's /v1/me: %d, want 403 (not a person)", agent)
+	}
+	if owner != http.StatusOK || me["owner"] != true {
+		t.Errorf("the owner's /v1/me: %d %v", owner, me)
+	}
+	if other != http.StatusServiceUnavailable || !strings.Contains(errorOf(out), "starting") {
+		t.Errorf("/v1/org while starting: %d %v, want 503 saying it's starting", other, out)
+	}
+	select {
+	case <-started:
+		t.Fatalf("Start returned while the agents were connecting: %v", startErr)
+	default:
 	}
 }
 
