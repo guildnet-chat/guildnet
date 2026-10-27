@@ -8,7 +8,7 @@ the reference behind them.
 
 | Tool | Version | Needed for |
 | --- | --- | --- |
-| Go | the `go` line in `go.mod` (1.27.1) | everything; CI reads the version from `go.mod` |
+| Go | the `go` line in `go.mod` (1.27.3) | everything; CI reads the version from `go.mod` |
 | Docker | Engine 28 or later | tests against real Ergo and Postgres; desk, image and stack tests (`GUILDNET_DOCKER_TESTS=1`); building images; gitleaks |
 | Node | 24 (guildnet-chat's CI) | the web chat |
 | git | any recent | the licence-header test reads `git ls-files`; the git-host tests run a real git server (`internal/gittest`, skipped without git) |

@@ -6,7 +6,7 @@
 # comes from the guildnet-chat repo as the "chat-src" build context, e.g.
 # docker build --build-context chat-src=../guildnet-chat ... It's AGPL and
 # stays a separate program: the platform only serves its built files.
-FROM node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS chat
+FROM node:24-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53 AS chat
 WORKDIR /chat
 COPY --from=chat-src package.json package-lock.json ./
 # No package's install scripts run: one a dependency changed could change
@@ -16,7 +16,7 @@ RUN npm ci --no-audit --no-fund --ignore-scripts
 COPY --from=chat-src . .
 RUN npm run build
 
-FROM golang:1.27-alpine@sha256:738d1cf061836894ff6bb8c33881080ac66de8cf0586615012a0c8f592649cfa AS build
+FROM golang:1.27-alpine@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb AS build
 WORKDIR /src
 COPY . .
 # Which build this is, in reports of faults, and which guildnet-chat commit

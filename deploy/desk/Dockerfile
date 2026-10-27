@@ -11,8 +11,8 @@
 # proxy sandboxd sets. xfsprogs is for sandboxd, which sets networks'
 # storage limits from a short-lived container of this image (a desk can't:
 # it has no capabilities).
-FROM golang:1.27-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61
-RUN apt-get update && apt-get install -y --no-install-recommends \
+FROM golang:1.27-bookworm@sha256:972b4110ba0f47539a975c31e52c64765e1ff19f2d74469ae4a595c6676e80a5
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
         ripgrep python3 python3-venv python3-pip nodejs npm jq less procps xfsprogs \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --uid 1000 --create-home --home-dir /home/desk --shell /bin/bash desk \

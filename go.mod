@@ -1,6 +1,6 @@
 module github.com/guildnet-chat/guildnet
 
-go 1.27.1
+go 1.27.3
 
 require (
 	github.com/anthropics/anthropic-sdk-go v1.75.0

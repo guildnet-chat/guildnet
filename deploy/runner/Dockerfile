@@ -3,7 +3,7 @@
 # GuildNet runner. Build context is a module's root: this repo's builds the
 # open runner; a build with more plugged in (GuildNet's own) builds its own
 # cmd/runner the same way, with OPEN saying where this repo is in it.
-FROM golang:1.27-alpine@sha256:738d1cf061836894ff6bb8c33881080ac66de8cf0586615012a0c8f592649cfa AS build
+FROM golang:1.27-alpine@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb AS build
 WORKDIR /src
 COPY . .
 # One package at a time: the model providers' SDKs are each big to compile,

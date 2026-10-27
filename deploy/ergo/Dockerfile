@@ -8,8 +8,10 @@
 # people can't change their own credentials or unregister over IRC (the
 # console keeps people's passwords; guildnet-ircauth, in ircauth/, asks it);
 # motd-file-only.patch sends a welcome only from a file, never a link (the
-# runner, which shares /welcome, could leave one to Ergo's database).
-FROM golang:1.27-alpine@sha256:738d1cf061836894ff6bb8c33881080ac66de8cf0586615012a0c8f592649cfa AS build
+# runner, which shares /welcome, could leave one to Ergo's database). Its
+# golang.org/x/crypto is moved up to a release with the fixes Ergo's own
+# lacks (the weekly scan finds them).
+FROM golang:1.27-alpine@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb AS build
 RUN apk add --no-cache git
 ARG ERGO_VERSION=v2.19.1
 ARG ERGO_COMMIT=63c743a70644f0f19109508ade8580bf37f7d23d
@@ -18,6 +20,7 @@ RUN git clone --quiet --depth 1 --branch "$ERGO_VERSION" https://github.com/ergo
 COPY authoritative-auth-script.patch motd-file-only.patch /ergo/
 WORKDIR /ergo
 RUN git apply authoritative-auth-script.patch motd-file-only.patch \
+    && go get golang.org/x/crypto@v0.58.0 && go mod vendor \
     && CGO_ENABLED=0 go build -trimpath -tags "i18n mysql postgresql sqlite" \
         -ldflags "-X main.commit=$ERGO_COMMIT -X main.version=$ERGO_VERSION-guildnet" -o /out/ergo .
 COPY ircauth/main.go /ircauth/main.go
@@ -25,7 +28,10 @@ WORKDIR /ircauth
 RUN CGO_ENABLED=0 go build -trimpath -o /out/guildnet-ircauth main.go
 
 # The upstream image of the same release: its layout, languages and run.sh.
+# It's rebuilt only with Ergo's releases, so its Alpine packages are brought
+# up to date here.
 FROM ghcr.io/ergochat/ergo:stable@sha256:72db5b93b437ea0512fb79d9d4d035f0916ccba07ed736dec19e8d5b5a73f972
+RUN apk upgrade --no-cache
 COPY --from=build /out/ergo /ircd-bin/ergo
 COPY --from=build /out/guildnet-ircauth /ircd-bin/guildnet-ircauth
 COPY ircd.yaml /ircd-bin/guildnet.yaml
