@@ -64,9 +64,10 @@ services:
       - api
 
   egress:
-    # The desks' only way out: HTTPS to GitHub, the package registries and a
-    # network's git hosts (with its egress pass); never to a private address
-    # that GUILDNET_GIT_PRIVATE_HOSTS doesn't name.
+    # The desks' only way out: HTTPS to the hosts GUILDNET_DESK_ALLOWED and
+    # each network's owner let them reach (with its egress pass), and npm's
+    # registry to read; never a private address (desks reach no git host:
+    # the runner fetches for them), which desks-firewall.sh holds it to.
     <<: *locked
     image: ${GUILDNET_REGISTRY:-ghcr.io/guildnet-chat}/sandboxd:${GUILDNET_VERSION:?run init.sh first}
     build:
@@ -75,13 +76,11 @@ services:
       args: [GUILDNET_RELEASE]
     command: ["proxy"]
     environment:
-      # Where desks may go, comma-separated (default: GitHub, and the Go,
-      # npm and Python registries); "*.example.com" takes its subdomains.
+      # Where desks may go, comma-separated (default: GitHub's downloads,
+      # and the Go and Python registries; npm's is read through egress); "*.example.com" takes its subdomains.
       GUILDNET_DESK_ALLOWED: ${GUILDNET_DESK_ALLOWED:-}
-      # Networks' egress passes open their git hosts; git servers on your
-      # own network are reached only where they're named.
+      # Networks' egress passes open the hosts their owners chose.
       GUILDNET_SANDBOX_PUBLIC_KEY: ${GUILDNET_SANDBOX_PUBLIC_KEY:-}
-      GUILDNET_GIT_PRIVATE_HOSTS: ${GUILDNET_GIT_PRIVATE_HOSTS:-}
     user: "65534:65534"
     read_only: true
     oom_score_adj: -500
@@ -130,8 +129,13 @@ networks:
       config:
         - subnet: 172.31.255.0/24
           ip_range: 172.31.255.128/25
-  # egress's way out, shared with nothing else.
+  # egress's way out, shared with nothing else: desks-firewall.sh keeps it
+  # to the internet.
   outbound:
+    name: guildnet-desks-outbound
+    ipam:
+      config:
+        - subnet: 172.31.254.0/24
 
 volumes:
   sandbox-tls:

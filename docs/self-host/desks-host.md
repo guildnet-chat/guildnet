@@ -18,8 +18,11 @@ the console signs. Desks themselves work as in [desks.md](desks.md).
 
 As in the [Compute Engine](compute-engine.md) or [EC2](ec2.md) guide, with
 no public ports and, on Compute Engine, no external address
-(`--no-address`; images come through Cloud NAT). Let only the console in,
-e.g. on Compute Engine, from a VM tagged `guildnet`:
+(`--no-address`; images come through Cloud NAT). It needs no cloud
+credentials, so give it none: on Compute Engine `--no-service-account
+--no-scopes` in place of the guide's `--service-account` and `--scopes`; on
+EC2, no instance profile. Let only the console in, e.g. on Compute Engine,
+from a VM tagged `guildnet`:
 
 ```bash
 gcloud compute firewall-rules create guildnet-desks-host --network default \

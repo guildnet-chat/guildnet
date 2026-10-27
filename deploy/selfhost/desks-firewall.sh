@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Keeps desks apart: on the desks' network (172.31.255.0/24) each desk
 # reaches its proxy (egress, at .2) and nothing else, not another desk and
-# not this machine. The network itself has no way out, and the proxy goes
-# only to public addresses.
+# not this machine. The network itself has no way out, and the proxy's own
+# (172.31.254.0/24) goes only to public addresses.
 #
 #   sudo sh desks-firewall.sh            # sets the rules up now
 #   sudo sh desks-firewall.sh install    # and whenever Docker starts
@@ -12,6 +12,7 @@
 set -eu
 desks=172.31.255.0/24
 proxy=172.31.255.2
+outbound=172.31.254.0/24
 
 if [ "${1:-}" = install ]; then
   dir=/usr/local/lib/guildnet
@@ -72,4 +73,18 @@ iptables -A GUILDNET-DESKS-HOST -m conntrack --ctstate ESTABLISHED,RELATED -j RE
 iptables -A GUILDNET-DESKS-HOST -j REJECT
 once INPUT -s "$desks" -j GUILDNET-DESKS-HOST
 
-echo "desks firewall: desks reach only their proxy"
+# The proxy's way out (its own network): lookups (Docker makes them from the
+# proxy's network, to this machine's resolver, which may be on a private or
+# link-local address), then the internet only. Not the cloud's metadata
+# server (this VM's service account's tokens), nor the private networks,
+# whatever the proxy's own checks would let by.
+chain GUILDNET-DESKS-OUT
+iptables -A GUILDNET-DESKS-OUT -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+iptables -A GUILDNET-DESKS-OUT -p udp --dport 53 -j RETURN
+iptables -A GUILDNET-DESKS-OUT -p tcp --dport 53 -j RETURN
+for net in 169.254.0.0/16 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10; do
+  iptables -A GUILDNET-DESKS-OUT -d "$net" -j REJECT
+done
+once DOCKER-USER -s "$outbound" -j GUILDNET-DESKS-OUT
+
+echo "desks firewall: desks reach only their proxy, and it only the internet"

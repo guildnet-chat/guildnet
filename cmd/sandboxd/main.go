@@ -235,9 +235,10 @@ func proxy(logger *log.Logger) error {
 	if v := os.Getenv("GUILDNET_DESK_ALLOWED"); v != "" {
 		allowed = strings.Split(v, ",")
 	}
-	// Networks' egress passes, signed by the platform, open their git
-	// repositories' hosts too; git servers on the install's own network are
-	// reached only where they're named.
+	// Networks' egress passes, signed by the platform, open the hosts their
+	// owners chose. Never a private address: desks reach no git host (the
+	// runner fetches for them), so not even git servers on the install's own
+	// network.
 	var keys []ed25519.PublicKey
 	for _, text := range strings.Split(os.Getenv("GUILDNET_SANDBOX_PUBLIC_KEY"), ",") {
 		if strings.TrimSpace(text) == "" {
@@ -249,18 +250,9 @@ func proxy(logger *log.Logger) error {
 		}
 		keys = append(keys, key)
 	}
-	var private []string
-	for _, h := range strings.Split(os.Getenv("GUILDNET_GIT_PRIVATE_HOSTS"), ",") {
-		if h = strings.TrimSpace(h); h != "" {
-			private = append(private, h)
-		}
-	}
-	p := &sandbox.Proxy{Allowed: allowed, Keys: keys, Dial: egress.Dial(egress.Options{PrivateHosts: private}), Logger: logger, Reads: sandbox.DefaultReads}
+	p := &sandbox.Proxy{Allowed: allowed, Keys: keys, Dial: egress.Dial(egress.Options{}), Logger: logger, Reads: sandbox.DefaultReads}
 	listen := env("GUILDNET_PROXY_LISTEN", ":3128")
-	logger.Printf("desks' way out on %s, to %s, and networks' git hosts with their passes (%d keys)", listen, strings.Join(allowed, ", "), len(keys))
-	if len(private) > 0 {
-		logger.Printf("git servers on this network: %s", strings.Join(private, ", "))
-	}
+	logger.Printf("desks' way out on %s, to %s, and the hosts networks' passes open (%d keys)", listen, strings.Join(allowed, ", "), len(keys))
 	srv := &http.Server{Addr: listen, Handler: monitor.Handler(p), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 2 * time.Minute}
 	ctx, stop := serve.Signalled()
 	defer stop()

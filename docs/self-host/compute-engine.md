@@ -87,9 +87,11 @@ gcloud compute disks add-resource-policies guildnet --zone $ZONE \
 ```
 
 The `cloud-platform` scope only allows what the service account's roles
-allow, here the backup bucket. Containers on the VM can reach the
-metadata server and get the account's token; desks can't (egress refuses
-link-local addresses). Snapshots contain `.env` and so every secret:
+allow, here the backup bucket. The console's and runner's containers can
+reach the metadata server and get the account's token; desks can't
+(egress refuses link-local addresses, and `desks-firewall.sh` rejects them
+from its network). A desks host of its own needs no service account
+([desks-host.md](desks-host.md)). Snapshots contain `.env` and so every secret:
 grant `compute.snapshots.*` and `compute.disks.*` to as few people as
 possible.
 

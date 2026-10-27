@@ -8,6 +8,7 @@ package app
 
 import (
 	"context"
+	"crypto/ed25519"
 	"encoding/base64"
 	"flag"
 	"fmt"
@@ -369,25 +370,7 @@ func Run(build Config) {
 		tokens = func(context.Context, bool) (string, error) {
 			return sandbox.TokenFor(key, network, sandbox.Desks, time.Now(), 15*time.Minute), nil
 		}
-		// The network's egress pass, for its git repositories' hosts and the
-		// owner's list, signed here as the platform would.
-		pass = func(context.Context) (string, error) {
-			var hosts []string
-			if git != nil {
-				for _, repo := range git.Repos() {
-					hosts = append(hosts, repo.HostPort())
-				}
-			}
-			for _, h := range deskHosts.Hosts() {
-				if h, problem := sandbox.CheckDeskHost(h, deskBlocked); problem == "" {
-					hosts = append(hosts, h+":443")
-				}
-			}
-			if len(hosts) == 0 {
-				return "", nil
-			}
-			return sandbox.PassFor(key, network, hosts, time.Now(), 15*time.Minute), nil
-		}
+		pass = deskPass(key, network, deskHosts.Hosts, deskBlocked)
 	}
 	useSandbox := func(sandboxURL string, tokens desk.TokenSource, wakeSandbox func(context.Context) error, deskBroker *desk.Broker, pass func(context.Context) (string, error)) {
 		sd := desk.NewRemoteFrom(sandboxURL, tokens)
@@ -564,6 +547,25 @@ func (t tlsOnly) RoundTrip(req *http.Request) (*http.Response, error) {
 // whoever runs it; everywhere else, git hosts must be on the internet.
 func gitPrivateHosts(getenv func(string) string) []string {
 	return listFrom(getenv("GUILDNET_GIT_PRIVATE_HOSTS"))
+}
+
+// deskPass is the network's egress pass, signed here as the platform would:
+// the hosts its owner lets desks reach (hosts), on 443, less any blocked.
+// Not its git hosts: the runner fetches and pushes for desks, which reach
+// no git host at all. "" when there are none.
+func deskPass(key ed25519.PrivateKey, network string, hosts func() []string, blocked []string) func(context.Context) (string, error) {
+	return func(context.Context) (string, error) {
+		var open []string
+		for _, h := range hosts() {
+			if h, problem := sandbox.CheckDeskHost(h, blocked); problem == "" {
+				open = append(open, h+":443")
+			}
+		}
+		if len(open) == 0 {
+			return "", nil
+		}
+		return sandbox.PassFor(key, network, open, time.Now(), 15*time.Minute), nil
+	}
 }
 
 // listFrom is a comma-separated setting's items.

@@ -129,6 +129,27 @@ func TestDesksReachOnlyTheirProxy(t *testing.T) {
 	}
 }
 
+// The desks' proxy has a way out of its own (172.31.254.0/24, shared with
+// nothing else), which desks-firewall.sh keeps to the internet: desks reach
+// no git host (the runner fetches for them), so the proxy is given none on
+// this network either. The same in both stacks.
+func TestTheDesksProxysWayOutIsItsOwn(t *testing.T) {
+	for file, s := range map[string]stack{"compose.yml": readStack(t), "../desks-host/compose.yml": readDesksHost(t)} {
+		out := s.Networks["outbound"]
+		if out.Name != "guildnet-desks-outbound" || len(out.IPAM.Config) != 1 || out.IPAM.Config[0].Subnet != "172.31.254.0/24" {
+			t.Errorf("%s: egress's way out is %+v, want guildnet-desks-outbound, 172.31.254.0/24", file, out)
+		}
+		for name, svc := range s.Services {
+			if name != "egress" && slices.Contains(networksOf(svc), "outbound") {
+				t.Errorf("%s: %s shares egress's way out", file, name)
+			}
+		}
+		if _, ok := s.Services["egress"].Environment["GUILDNET_GIT_PRIVATE_HOSTS"]; ok {
+			t.Errorf("%s: egress is given git servers on this network", file)
+		}
+	}
+}
+
 // On the desks' network, a desk reaches the proxy and nothing else: not
 // another desk, and not this machine. desks-firewall.sh sets that up with
 // iptables; it runs whenever Docker starts, so running it again must leave
@@ -164,6 +185,17 @@ iptables -S`
 		"-A INPUT -s 172.31.255.0/24 -j GUILDNET-DESKS-HOST",
 		"-A GUILDNET-DESKS-HOST -m conntrack --ctstate RELATED,ESTABLISHED -j RETURN",
 		"-A GUILDNET-DESKS-HOST -j REJECT --reject-with icmp-port-unreachable",
+		// The proxy's way out: lookups, then the internet only (not the cloud's
+		// metadata server, nor private networks).
+		"-A DOCKER-USER -s 172.31.254.0/24 -j GUILDNET-DESKS-OUT",
+		"-A GUILDNET-DESKS-OUT -m conntrack --ctstate RELATED,ESTABLISHED -j RETURN",
+		"-A GUILDNET-DESKS-OUT -p udp -m udp --dport 53 -j RETURN",
+		"-A GUILDNET-DESKS-OUT -p tcp -m tcp --dport 53 -j RETURN",
+		"-A GUILDNET-DESKS-OUT -d 169.254.0.0/16 -j REJECT --reject-with icmp-port-unreachable",
+		"-A GUILDNET-DESKS-OUT -d 10.0.0.0/8 -j REJECT --reject-with icmp-port-unreachable",
+		"-A GUILDNET-DESKS-OUT -d 172.16.0.0/12 -j REJECT --reject-with icmp-port-unreachable",
+		"-A GUILDNET-DESKS-OUT -d 192.168.0.0/16 -j REJECT --reject-with icmp-port-unreachable",
+		"-A GUILDNET-DESKS-OUT -d 100.64.0.0/10 -j REJECT --reject-with icmp-port-unreachable",
 	} {
 		if strings.Count(rules, want+"\n") != 1 {
 			t.Errorf("want once: %s\ngot:\n%s", want, rules)
