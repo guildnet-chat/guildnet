@@ -1,0 +1,28 @@
+diff --git a/irc/config.go b/irc/config.go
+index ab53eb1..d6df05f 100644
+--- a/irc/config.go
++++ b/irc/config.go
+@@ -2078,11 +2078,23 @@ func compileGuestRegexp(guestFormat string, casemapping i18n.Casemapping) (stand
+
+ func (config *Config) loadMOTD() error {
+ 	if config.Server.MOTD != "" {
++		// Only a file of its own: the MOTD may be in a directory another
++		// user shares, who could leave a link there to something of ours.
++		named, err := os.Lstat(config.Server.MOTD)
++		if err != nil {
++			return err
++		}
++		if !named.Mode().IsRegular() {
++			return fmt.Errorf("MOTD %s is not a regular file", config.Server.MOTD)
++		}
+ 		file, err := os.Open(config.Server.MOTD)
+ 		if err != nil {
+ 			return err
+ 		}
+ 		defer file.Close()
++		if opened, err := file.Stat(); err != nil || !os.SameFile(named, opened) {
++			return fmt.Errorf("MOTD %s changed while it was opened", config.Server.MOTD)
++		}
+ 		contents, err := io.ReadAll(file)
+ 		if err != nil {
+ 			return err

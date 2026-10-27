@@ -819,3 +819,108 @@ func TestErgoTakesGuildServsPasswordAsItIs(t *testing.T) {
 		t.Errorf("ergo keeps the password in its environment once it's hashed")
 	}
 }
+
+// The runner shares /welcome with Ergo and rewrites the welcome there, but
+// can't make Ergo send something else of its own: a welcome swapped for a
+// link (to Ergo's account database, say) is refused when Ergo rereads it.
+// One the runner writes as a file of its own is still sent.
+func TestErgoSendsOnlyAWelcomeThatIsAFile(t *testing.T) {
+	if os.Getenv("GUILDNET_DOCKER_TESTS") != "1" {
+		t.Skip("set GUILDNET_DOCKER_TESTS=1 to test against Docker")
+	}
+	image := "guildnet-selfhost-test-ergo"
+	docker(t, "build", "--quiet", "--tag", image, "../ergo")
+	id := docker(t, "run", "-d", "--rm", "--user", "65534:65534", "-p", "127.0.0.1::6667",
+		"-e", "GUILDNET_OPER_PASSWORD=Gs-0per_pw", "-e", "ERGO__OPERS__GUILDSERV__CLASS=guildserv",
+		"-e", `ERGO__API__BEARER_TOKENS=["api-token"]`, "-e", "ERGO__ACCOUNTS__REQUIRE_SASL__ENABLED=false", image)
+	t.Cleanup(func() { exec.Command("docker", "rm", "-f", id).Run() })
+	var addr string
+	for deadline := time.Now().Add(20 * time.Second); addr == "" && time.Now().Before(deadline); time.Sleep(200 * time.Millisecond) {
+		if out, err := exec.Command("docker", "port", id, "6667/tcp").Output(); err == nil {
+			addr = strings.Split(strings.TrimSpace(string(out)), "\n")[0]
+		}
+	}
+	if addr == "" {
+		t.Fatalf("ergo's port wasn't published:\n%s", docker(t, "logs", id))
+	}
+	// Connected and opered as GuildServ, as the runner is. Docker publishes
+	// the port before Ergo listens: a connection closed before Ergo says
+	// anything is tried again.
+	var conn net.Conn
+	var sc *bufio.Scanner
+	for deadline := time.Now().Add(30 * time.Second); conn == nil; time.Sleep(200 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatalf("couldn't connect to ergo; its log:\n%s", docker(t, "logs", id))
+		}
+		c, err := net.Dial("tcp", addr)
+		if err != nil {
+			continue
+		}
+		c.SetDeadline(time.Now().Add(time.Minute))
+		fmt.Fprintf(c, "NICK gs\r\nUSER gs 0 * :gs\r\n")
+		sc = bufio.NewScanner(c)
+		if sc.Scan() {
+			conn = c
+		} else {
+			c.Close()
+		}
+	}
+	defer conn.Close()
+	// until reads to the first of these replies and answers it.
+	until := func(replies ...string) string {
+		t.Helper()
+		var said []string
+		for sc.Scan() {
+			said = append(said, sc.Text())
+			f := strings.Fields(sc.Text())
+			if len(f) > 1 && f[0] == "PING" {
+				fmt.Fprintf(conn, "PONG %s\r\n", f[1])
+			}
+			if len(f) > 1 && slices.Contains(replies, f[1]) {
+				return f[1]
+			}
+		}
+		t.Fatalf("no %v from ergo (%v); it said:\n%s\nits log:\n%s", replies, sc.Err(), strings.Join(said, "\n"), docker(t, "logs", id))
+		return ""
+	}
+	if !strings.Contains(sc.Text(), " 001 ") {
+		until("001")
+	}
+	fmt.Fprintf(conn, "OPER guildserv Gs-0per_pw\r\n")
+	if got := until("381", "464", "491"); got != "381" {
+		t.Fatalf("OPER: %s", got)
+	}
+	// motd rereads the welcome and says what Ergo sends now.
+	motd := func() string {
+		t.Helper()
+		fmt.Fprintf(conn, "REHASH\r\n")
+		if got := until("NOTICE", "400", "481"); got != "NOTICE" { // "Rehash complete"
+			t.Fatalf("REHASH: %s", got)
+		}
+		fmt.Fprintf(conn, "MOTD\r\n")
+		var lines []string
+		for sc.Scan() {
+			f := strings.SplitN(sc.Text(), " ", 4)
+			switch {
+			case len(f) == 4 && f[1] == "372":
+				lines = append(lines, f[3])
+			case len(f) > 1 && (f[1] == "376" || f[1] == "422"):
+				return strings.Join(lines, "\n")
+			}
+		}
+		t.Fatalf("no end to the MOTD (%v)", sc.Err())
+		return ""
+	}
+	runner := func(script string) {
+		t.Helper()
+		docker(t, "exec", "--user", "65532:65532", id, "sh", "-c", script)
+	}
+	runner("ln -sfn /ircd/ircd.db /welcome/guildnet.motd")
+	if got := motd(); got != "" {
+		t.Errorf("with the welcome a link to Ergo's database, Ergo sent:\n%s", got)
+	}
+	runner("printf 'Made by GuildServ\\n' > /welcome/.new && mv -f /welcome/.new /welcome/guildnet.motd")
+	if got := motd(); !strings.Contains(got, "Made by GuildServ") {
+		t.Errorf("with the runner's own welcome, Ergo sent %q", got)
+	}
+}
