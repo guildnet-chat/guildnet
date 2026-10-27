@@ -310,6 +310,31 @@ func TestTheAPIShowsAGuestOnlyTheirChannelsAndTheAgentsInThem(t *testing.T) {
 	expectStatus(t, n, "method", http.StatusOK, "GET", "/v1/org", nil)
 }
 
+// The web chat badges only the network's own agents and bots (anyone can
+// put themselves in bot mode): /v1/me/channels names their accounts. A
+// person in the org gets every agent's; a guest only those in their
+// channels', as the rest of the API shows them.
+func TestTheWebChatIsToldWhichAccountsAreBots(t *testing.T) {
+	n := salesOrg(t)
+	expectStatus(t, n, "method", http.StatusCreated, "POST", "/v1/members", map[string]any{"account": "gus", "team": "Sales", "guest": true})
+	expectStatus(t, n, "method", http.StatusCreated, "POST", "/v1/staff", map[string]any{"nick": "rex", "team": "Engineering", "channels": []string{"#engineering"}})
+
+	member := strs(expectStatus(t, n, "dana", http.StatusOK, "GET", "/v1/me/channels", nil)["bots"])
+	guest := strs(expectStatus(t, n, "gus", http.StatusOK, "GET", "/v1/me/channels", nil)["bots"])
+
+	for _, want := range []string{"kai", "vera", "rex", "ledger", "GuildServ"} {
+		if !slices.Contains(member, want) {
+			t.Errorf("dana's bots %v leave out %s", member, want)
+		}
+	}
+	if slices.Contains(guest, "rex") || !slices.Contains(guest, "kai") || !slices.Contains(guest, "ledger") || !slices.Contains(guest, "GuildServ") {
+		t.Errorf("gus's bots = %v, want the agents in his channels (not rex), the ledger and GuildServ", guest)
+	}
+	if slices.Contains(member, "dana") || slices.Contains(member, "method") {
+		t.Errorf("people among the bots: %v", member)
+	}
+}
+
 func TestGuestsCantBeGivenAccessOrLead(t *testing.T) {
 	n := salesOrg(t)
 	expectStatus(t, n, "method", http.StatusCreated, "POST", "/v1/members", map[string]any{"account": "gus", "team": "Sales", "guest": true})

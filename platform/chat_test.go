@@ -322,8 +322,9 @@ func TestTheChatAppIsServedToSignedInPeople(t *testing.T) {
 			Signin string `json:"signin"`
 		} `json:"token"`
 		Bots struct {
-			Label  string            `json:"label"`
-			Labels map[string]string `json:"labels"`
+			Label    string            `json:"label"`
+			Labels   map[string]string `json:"labels"`
+			Accounts []string          `json:"accounts"`
 		} `json:"bots"`
 		Members struct {
 			Groups map[string]string `json:"groups"`
@@ -331,6 +332,11 @@ func TestTheChatAppIsServedToSignedInPeople(t *testing.T) {
 	}
 	if err := json.Unmarshal([]byte(conf.Body), &c); err != nil {
 		t.Fatalf("config.json: %v: %s", err, conf.Body)
+	}
+	// Only the network's agents and bots are badged (anyone can put
+	// themselves in bot mode), by account.
+	if !slices.Contains(c.Bots.Accounts, "kai") || !slices.Contains(c.Bots.Accounts, "ledger") || slices.Contains(c.Bots.Accounts, "ada") {
+		t.Errorf("the accounts badged: %v, want the agents and the ledger, not people", c.Bots.Accounts)
 	}
 	// Agents (hostnames ai.<team> and ai-lead.<team>) are badged AI and
 	// services like GuildServ BOT; the member list is grouped the way the org

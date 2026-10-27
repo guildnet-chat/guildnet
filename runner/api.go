@@ -101,8 +101,10 @@ func (r *Runner) startAPI() error {
 		apiJSON(w, http.StatusOK, map[string]any{"models": out, "default": r.defaultModel()})
 	})
 	mux.HandleFunc("GET /v1/me/channels", func(w http.ResponseWriter, req *http.Request) {
-		channels := r.personsChannels(actorOf(req))
-		apiJSON(w, http.StatusOK, map[string]any{"channels": channels, "repos": r.channelsRepos(channels), "agents": r.agentsIn(channels)})
+		actor := actorOf(req)
+		channels := r.personsChannels(actor)
+		agents := r.agentsIn(channels)
+		apiJSON(w, http.StatusOK, map[string]any{"channels": channels, "repos": r.channelsRepos(channels), "agents": agents, "bots": r.botsFor(actor, agents)})
 	})
 	mux.HandleFunc("GET /v1/staff/{nick}", r.apiAgent)
 	mux.HandleFunc("POST /v1/staff", r.apiHire)
@@ -175,6 +177,23 @@ func (r *Runner) startAPI() error {
 	go r.api.Serve(ln)
 	r.logger.Printf("API listening on %s", r.apiAddr)
 	return nil
+}
+
+// botsFor is the accounts the web chat badges for actor (anyone can put
+// themselves in bot mode): the ledger, GuildServ, and the agents, every
+// one for a person in the org, a guest's channels' (agents) for a guest.
+func (r *Runner) botsFor(actor string, agents []channelAgent) []string {
+	bots := []string{r.cfg.LedgerNick, guildServNick}
+	if r.isGuest(actor) {
+		for _, a := range agents {
+			bots = append(bots, a.Nick)
+		}
+		return bots
+	}
+	for _, p := range r.staff() {
+		bots = append(bots, p.Nick)
+	}
+	return bots
 }
 
 // apiStarting says req must wait for Start to finish: until everyone's

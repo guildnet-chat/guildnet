@@ -182,9 +182,12 @@ func (p *Platform) chatApp(w http.ResponseWriter, r *http.Request) {
 		// hasn't put them in before, so leaving a channel sticks.
 		// And the repos of those channels' teams, so "PR #42" there links
 		// to the right one.
+		// And which accounts are the network's agents and bots, the only
+		// ones badged: anyone can put themselves in bot mode.
 		var mine struct {
 			Channels []string            `json:"channels"`
 			Repos    map[string][]string `json:"repos"`
+			Bots     []string            `json:"bots"`
 		}
 		if err := p.runner(r).call(r.Context(), "GET", "/v1/me/channels", nil, &mine); err != nil {
 			monitor.Problem(p.opts.Logger, "finding %s's channels: %v", networkOf(r).Name, err)
@@ -202,10 +205,10 @@ func (p *Platform) chatApp(w http.ResponseWriter, r *http.Request) {
 			// (chatGuildServ).
 			"guildserv": map[string]any{"url": "/chat/guildserv"},
 			// Agents (GuildServ gives them ai.<team> and ai-lead.<team>
-			// hostnames) are badged AI, and services like GuildServ BOT; the
-			// member list reads like the org chart GuildServ keeps in IRC
-			// ranks.
-			"bots":    map[string]any{"label": "BOT", "labels": map[string]string{"ai.*": "AI", "ai-lead.*": "AI"}},
+			// hostnames) are badged AI, and services like GuildServ BOT, those
+			// accounts alone; the member list reads like the org chart
+			// GuildServ keeps in IRC ranks.
+			"bots":    bots(mine.Bots),
 			"members": map[string]any{"groups": map[string]string{"~": "Owner", "@": "Leads", "+": "Team", "": "Everyone else"}},
 			"repos":   mine.Repos,
 		}
@@ -240,6 +243,17 @@ func (p *Platform) chatSource() string {
 		return p.opts.ChatSource
 	}
 	return strings.TrimSuffix(p.opts.ChatSource, "/") + "/tree/" + p.opts.ChatCommit
+}
+
+// bots is config.json's badges: agents' hostnames get AI, other bots BOT,
+// and only accounts (the network's agents and bots) are badged; without
+// them (the runner didn't say), bot mode is enough, as before.
+func bots(accounts []string) map[string]any {
+	b := map[string]any{"label": "BOT", "labels": map[string]string{"ai.*": "AI", "ai-lead.*": "AI"}}
+	if accounts != nil {
+		b["accounts"] = accounts
+	}
+	return b
 }
 
 // chatApprovals says which approvals are waiting on the signed-in person, and
