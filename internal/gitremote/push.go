@@ -91,7 +91,7 @@ func (u *Pusher) Guide(p config.Persona) string {
 		return ""
 	}
 	return "Your team's git repositories outside GitHub (" + names(repos) + ") are in /workspace/<name> at your desk. To hand work on one over, commit it on a branch " +
-		strings.ToLower(p.Nick) + "/<topic> and push it with " + pushTool + "; if the branch moved on the host, fetch and rebase first."
+		strings.ToLower(p.Nick) + "/<topic> and push it with " + pushTool + "; if the branch moved on the host, git_fetch and rebase first."
 }
 
 // Prepare is never needed: a push doesn't ask a person.
@@ -127,7 +127,7 @@ cd "$dir"
 if ! tip=$(git rev-parse --verify --quiet "refs/heads/$branch^{commit}"); then echo "there's no branch $branch in $dir: commit your work on it first"; exit 4; fi
 read -r old || old=
 if [ -n "$old" ] && ! { git cat-file -e "$old^{commit}" 2>/dev/null && git merge-base --is-ancestor "$old" "$tip"; }; then
-  echo "$branch on the host has commits yours doesn't: fetch, rebase onto origin/$branch, and push again"; exit 5
+  echo "$branch on the host has commits yours doesn't: git_fetch, rebase onto origin/$branch, and push again"; exit 5
 fi
 { echo "$tip"; while read -r oid; do if git cat-file -e "$oid^{commit}" 2>/dev/null; then echo "^$oid"; fi; done; } | git pack-objects --revs --stdout -q > "$out"
 echo "$tip"`
@@ -196,7 +196,7 @@ func (u *Pusher) Run(ctx context.Context, p config.Persona, name string, in map[
 	var rejected *gitwire.RejectedError
 	switch {
 	case errors.Is(err, gitwire.ErrMoved):
-		return "", fmt.Errorf("%s moved on the host while you pushed: fetch, rebase onto origin/%s, and push again", branch, branch)
+		return "", fmt.Errorf("%s moved on the host while you pushed: git_fetch, rebase onto origin/%s, and push again", branch, branch)
 	case errors.As(err, &rejected):
 		msg := fmt.Sprintf("%s refused the push: %s", repo.Name, rejected.Reason)
 		if rejected.Said != "" {

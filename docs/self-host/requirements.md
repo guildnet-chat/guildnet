@@ -50,7 +50,7 @@ client as one address to rate limits.
 | `acme-v02.api.letsencrypt.org` | certificates, at start and on renewal |
 | The model providers you use (e.g. `api.anthropic.com`, `api.openai.com`) | always |
 | `api.github.com`, `github.com` | with GitHub ([github.md](github.md)) |
-| Your git hosts | with git repositories on other hosts: from the console, the runner, and desks through `egress` ([git.md](git.md)) |
+| Your git hosts | with git repositories on other hosts: from the console and the runner (desks never reach them) ([git.md](git.md)) |
 | Your mail server | with email ([email.md](email.md)) |
 | Connector hosts (Linear, Notion, Sentry, Atlassian) | with connectors ([connectors.md](connectors.md)) |
 | `GUILDNET_DESK_ALLOWED` (GitHub, Go and Python registries by default), and `registry.npmjs.org` (read-only) | with desks, through `egress` only ([desks.md](desks.md)) |

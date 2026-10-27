@@ -21,6 +21,7 @@ import (
 	"github.com/guildnet-chat/guildnet/internal/brain"
 	"github.com/guildnet-chat/guildnet/internal/chat"
 	"github.com/guildnet-chat/guildnet/internal/desk"
+	"github.com/guildnet-chat/guildnet/internal/gittest"
 	"github.com/guildnet-chat/guildnet/internal/sandbox"
 	"github.com/guildnet-chat/guildnet/models"
 )
@@ -83,6 +84,54 @@ func (s *scripted) toolResults() map[string]string {
 		}
 	}
 	return out
+}
+
+// The runner checks a repo out at a desk in real Docker, piping the pack
+// through sandboxd into git in the desk's container, and fetches again: the
+// desk itself reaches no git host.
+func TestTheRunnerChecksOutAndFetchesAtADeskInRealDocker(t *testing.T) {
+	if os.Getenv("GUILDNET_DOCKER_TESTS") != "1" {
+		t.Skip("set GUILDNET_DOCKER_TESTS=1 to test against Docker")
+	}
+	s := gittest.New(t)
+	build := exec.Command("docker", "build", "--quiet", "--tag", e2eImage, "-")
+	build.Stdin = strings.NewReader("FROM alpine:3.20\nRUN apk add --no-cache bash ripgrep coreutils git && adduser -u 1000 -D -h /home/desk desk && mkdir -p /workspace && chown desk:desk /workspace\n")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("building the image: %v: %s", err, out)
+	}
+	exec.Command("docker", "network", "create", "--internal", "guildnet-desks-test").Run()
+	public, private := sandbox.NewKeys()
+	backend := &sandbox.Docker{Image: e2eImage, Network: "guildnet-desks-test", Memory: "256m", CPUs: "1", Pids: 128}
+	sandboxd := httptest.NewServer(sandbox.NewServer(sandbox.Options{Backend: backend, PublicKeys: []ed25519.PublicKey{public}}))
+	defer sandboxd.Close()
+	ws := desk.New(desk.NewRemote(sandboxd.URL, sandbox.TokenFor(private, "e2e", sandbox.Desks, time.Now(), 15*time.Minute)), nil)
+	ws.Git = fakeGit{{Name: "web", URL: s.URL(), Read: reader}}
+	ws.HTTP = s.Client()
+	p := config.Persona{Nick: "git", Name: "Git", Role: "Engineer", ReportsTo: "method"}
+	defer ws.Clear(context.Background(), p)
+	ws.Clear(context.Background(), p)
+
+	if err := ws.Ready(context.Background(), p); err != nil {
+		t.Fatal(err)
+	}
+	out, err := ws.Run(context.Background(), p, "bash", map[string]any{"command": "cd web && git rev-parse HEAD && cat README && git status -sb | head -1"})
+	if err != nil || !strings.Contains(out, s.Main) || !strings.Contains(out, "hello") || !strings.Contains(out, "## main...origin/main") {
+		t.Fatalf("the checkout at the desk: %q %v", out, err)
+	}
+	w := s.Clone()
+	next := w.Commit(s.Main, "news.txt", "fresh\n")
+	w.Send("refs/heads/main", next)
+
+	if _, err := ws.Run(context.Background(), p, "git_fetch", map[string]any{}); err != nil {
+		t.Fatal(err)
+	}
+	out, _ = ws.Run(context.Background(), p, "bash", map[string]any{"command": "cd web && git rev-parse origin/main && git merge -q --ff-only origin/main && cat news.txt"})
+	if !strings.Contains(out, next) || !strings.Contains(out, "fresh") {
+		t.Errorf("after git_fetch: %q", out)
+	}
+	if out, _ := ws.Run(context.Background(), p, "bash", map[string]any{"command": "grep -rl " + gittest.ReadToken + " /workspace /home/desk 2>/dev/null; echo done"}); strings.Contains(out, "/workspace") || strings.Contains(out, "/home/desk") {
+		t.Errorf("the read credential is at the desk: %q", out)
+	}
 }
 
 func TestAnAgentOnAnyModelWorksAtADeskInRealDocker(t *testing.T) {

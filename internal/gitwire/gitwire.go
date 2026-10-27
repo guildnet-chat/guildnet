@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // Package gitwire speaks enough of git's smart HTTP protocol to list a
-// repository's refs and push one branch to it: the runner's way of pushing
-// what a desk made to any git host, holding a credential the desk never
-// sees. A push is a compare-and-swap: the branch moves only if it's where
-// the pusher says it is, so it can't clobber anyone's work. Only branches,
-// never tags, and nothing is deleted.
+// repository's refs, fetch from it, and push one branch to it: the runner's
+// way of filling desks' checkouts from any git host, and pushing what they
+// made, holding credentials desks never see. A push is a compare-and-swap:
+// the branch moves only if it's where the pusher says it is, so it can't
+// clobber anyone's work. Only branches, never tags, and nothing is deleted.
 package gitwire
 
 import (
@@ -187,6 +187,112 @@ func readAdvert(r io.Reader, s Service) (*Refs, error) {
 		return nil, ErrNotGit
 	}
 	return refs, nil
+}
+
+// Fetch writes to pack the objects wants have that haves don't: a pack, as
+// git index-pack takes it in. refs are what List said for fetching (the
+// host's capabilities are in them). Each want must be one of refs' objects.
+// The pack holds no deltas against objects outside it (no thin pack).
+func Fetch(ctx context.Context, c *http.Client, repo string, cred Credential, refs *Refs, wants, haves []string, pack io.Writer) error {
+	repo, err := checkRepo(repo)
+	if err != nil {
+		return err
+	}
+	if len(wants) == 0 {
+		return errors.New("nothing to fetch")
+	}
+	listed := map[string]bool{}
+	for _, oid := range refs.Refs {
+		listed[oid] = true
+	}
+	for _, w := range wants {
+		if !listed[w] {
+			return fmt.Errorf("%q isn't one of the repository's refs", w)
+		}
+	}
+	for _, h := range haves {
+		if !isHex(h) {
+			return fmt.Errorf("%q isn't an object's name", h)
+		}
+	}
+	_, sideband := refs.caps["side-band-64k"]
+	caps := []string{"agent=guildnet"}
+	for _, c := range []string{"side-band-64k", "ofs-delta", "no-progress"} {
+		if _, ok := refs.caps[c]; ok {
+			caps = append(caps, c)
+		}
+	}
+	if f, ok := refs.caps["object-format"]; ok {
+		caps = append(caps, "object-format="+f)
+	}
+	var body bytes.Buffer
+	for i, w := range wants {
+		if i == 0 {
+			writePkt(&body, "want "+w+" "+strings.Join(caps, " ")+"\n")
+		} else {
+			writePkt(&body, "want "+w+"\n")
+		}
+	}
+	body.WriteString("0000")
+	for _, h := range haves {
+		writePkt(&body, "have "+h+"\n")
+	}
+	writePkt(&body, "done\n")
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, repo+"/git-upload-pack", &body)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/x-git-upload-pack-request")
+	req.Header.Set("Accept", "application/x-git-upload-pack-result")
+	res, err := do(c, req, cred, "application/x-git-upload-pack-result")
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	p := newPktReader(res.Body)
+	// "NAK", or "ACK <object>" for the first have the host has too, then the
+	// pack.
+	line, err := p.next()
+	if err != nil {
+		return err
+	}
+	if ack := string(line); ack != "NAK\n" && !strings.HasPrefix(ack, "ACK ") {
+		return fmt.Errorf("%w: %q before the pack", ErrNotGit, oneLine(ack))
+	}
+	if !sideband {
+		_, err := io.Copy(pack, p.r)
+		return err
+	}
+	// Band 1 is the pack, 2 progress (asked not to be sent), 3 an error.
+	for {
+		line, err := p.next()
+		if err != nil {
+			return err
+		}
+		if line == nil {
+			return nil
+		}
+		switch line[0] {
+		case 1:
+			if _, err := pack.Write(line[1:]); err != nil {
+				return err
+			}
+		case 3:
+			return fmt.Errorf("the host stopped: %s", tidy(string(line[1:])))
+		}
+	}
+}
+
+func oneLine(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		s = s[:i]
+	}
+	if len(s) > 100 {
+		s = s[:100]
+	}
+	return s
 }
 
 // Update is a branch to move: from Old ("" for a branch that isn't there

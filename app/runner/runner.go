@@ -399,9 +399,13 @@ func Run(build Config) {
 		ws := desk.New(sd, repos)
 		ws.Wake = wakeSandbox
 		ws.Pass = pass
-		// The team's git repositories on any host, reached with the network's
-		// egress pass, and pushed to by the runner (the push credential never
-		// reaches a desk).
+		// The runner fetches desks' repos for them, GitHub's and other hosts':
+		// desks can't reach git hosts, and no git credential reaches one. A
+		// first checkout of a big repository takes a while.
+		ws.HTTP = egress.Client(egress.Options{PrivateHosts: gitPrivateHosts(os.Getenv)})
+		ws.HTTP.Timeout = 30 * time.Minute
+		// The team's git repositories on any host, pushed to by the runner
+		// (the push credential never reaches a desk).
 		var pusher agent.Toolbox
 		if git != nil {
 			ws.Git = gitremote.Checkouts{Live: git, TeamRepos: teamRepos}

@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -172,26 +171,6 @@ func (p *Platform) gitRepoViews(ctx context.Context, network string) []gitRepoVi
 	var out []gitRepoView
 	for _, r := range repos {
 		out = append(out, gitRepoView{Name: r.Name, URL: r.URL, Read: r.Read != (gitwire.Credential{}), Write: r.Write != (gitwire.Credential{}), At: r.At})
-	}
-	return out
-}
-
-// gitHosts are where network's repositories are, as host:port, for its
-// egress pass.
-func (p *Platform) gitHosts(ctx context.Context, network string) []string {
-	var out []string
-	for _, v := range p.gitRepoViews(ctx, network) {
-		u, err := url.Parse(v.URL)
-		if err != nil {
-			continue
-		}
-		port := u.Port()
-		if port == "" {
-			port = "443"
-		}
-		if h := net.JoinHostPort(strings.ToLower(u.Hostname()), port); !slices.Contains(out, h) {
-			out = append(out, h)
-		}
 	}
 	return out
 }

@@ -27,6 +27,11 @@ var DefaultBlocked = []string{
 	// Tunnels.
 	"ngrok.io", "ngrok.app", "ngrok-free.app", "ngrok.dev", "trycloudflare.com", "loca.lt", "localtunnel.me", "serveo.net", "localhost.run", "lhr.life",
 	"pinggy.io", "pinggy.link", "bore.pub", "playit.gg", "telebit.io",
+	// Git hosting, and registries' publishing: what's sent there can be the
+	// company's code, under someone else's name (the runner fetches desks'
+	// repos for them, and reading a registry needs no publishing host).
+	"github.com", "gitlab.com", "bitbucket.org", "codeberg.org",
+	"registry.npmjs.org", "upload.pypi.org",
 }
 
 // internalNames are where names inside a network end: never reached by

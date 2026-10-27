@@ -340,10 +340,11 @@ func TestATeamsLeadGivesItGitRepositoriesInTheConsole(t *testing.T) {
 	}
 }
 
-// A network's desks reach its git repositories' hosts with its egress
-// pass, which the broker gives its runner with its sandbox token: it opens
-// that network's hosts, and only those.
-func TestARunnersEgressPassOpensItsGitHostsOnly(t *testing.T) {
+// A network's desks don't reach its git repositories' hosts: the runner
+// fetches for them, so a credential planted in something an agent read
+// can't push the company's code to another repository there. Its egress
+// pass doesn't open them.
+func TestARunnersEgressPassDoesntOpenItsGitHosts(t *testing.T) {
 	w, s := gitWorld(t, func(o *Setup) { o.Sandbox = platform.Sandbox{URL: "http://10.20.0.5:8443", Key: SandboxKey} })
 	addRepo(t, w.Browser("acme").SignedIn("ada"), repoForm(s, "web"))
 	u, _ := url.Parse(s.URL())
@@ -351,19 +352,14 @@ func TestARunnersEgressPassOpensItsGitHostsOnly(t *testing.T) {
 	keys := []ed25519.PublicKey{SandboxKey.Public().(ed25519.PublicKey)}
 
 	_, acme := BrokerCall(t, w, "acme", RunnerSecret(w, "acme"), "GET", "/sandbox")
-	_, globex := BrokerCall(t, w, "globex", RunnerSecret(w, "globex"), "GET", "/sandbox")
 
-	pass, _ := acme["egress"].(string)
-	if !sandbox.PassOpens(keys, pass, time.Now(), "127.0.0.1", port) {
-		t.Errorf("acme's pass %q doesn't open its git host", pass)
-	}
-	if other, _ := globex["egress"].(string); sandbox.PassOpens(keys, other, time.Now(), "127.0.0.1", port) {
-		t.Error("globex's pass opens acme's git host")
+	if pass, _ := acme["egress"].(string); sandbox.PassOpens(keys, pass, time.Now(), "127.0.0.1", port) {
+		t.Errorf("acme's pass %q opens its git host to its desks", pass)
 	}
 	broker := httptest.NewServer(w.Broker)
 	defer broker.Close()
 	runners := desk.Broker{URL: broker.URL, Network: "acme", Secret: RunnerSecret(w, "acme")}
-	if pass, err := runners.Pass(context.Background(), nil); err != nil || !sandbox.PassOpens(keys, pass, time.Now(), "127.0.0.1", port) {
+	if pass, err := runners.Pass(context.Background(), nil); err != nil || sandbox.PassOpens(keys, pass, time.Now(), "127.0.0.1", port) {
 		t.Errorf("the runner's pass: %q, %v", pass, err)
 	}
 }

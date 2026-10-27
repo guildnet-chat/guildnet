@@ -1,8 +1,8 @@
 # Desks
 
 Optional. A desk is an agent's own workspace: a container from the desk
-image (Go, Node, Python, git, ripgrep) where the agent clones its team's
-repositories, builds and runs tests. Without desks, agents work in chat and
+image (Go, Node, Python, git, ripgrep) where the agent works on its team's
+repositories (the runner checks them out there), builds and runs tests. Without desks, agents work in chat and
 reach repositories through GitHub's API; repositories on other git hosts
 ([git.md](git.md)) need a desk.
 
@@ -17,7 +17,8 @@ console on GKE or Fargate, say).
 | --- | --- |
 | gVisor (`runsc`) | each desk gets its own kernel; a container escape reaches gVisor, not the host kernel |
 | The `desks` network | `internal` Docker network, 172.31.255.0/24, with no route out; IPv4 only (`desks-firewall.sh` refuses a desks' network with IPv6) |
-| `egress` | the only way out: an HTTPS (CONNECT) proxy to port 443 of the hosts in `GUILDNET_DESK_ALLOWED`, and to a network's git hosts and its owner's hosts with its egress pass ([git.md](git.md#reaching-the-host), [below](#a-networks-own-hosts)); public addresses only. It isn't on the console's, runner's or database's networks |
+| `egress` | the only way out: an HTTPS (CONNECT) proxy to port 443 of the hosts in `GUILDNET_DESK_ALLOWED`, and to its owner's hosts with the network's egress pass ([below](#a-networks-own-hosts)); public addresses only; and npm's registry, read-only. It isn't on the console's, runner's or database's networks |
+| Git | desks reach no git host and hold no git credential: the runner fetches their repos for them and pipes in the packs (at each readying, and `git_fetch`), and pushes their work (pull requests on GitHub, `git_push_branch` elsewhere) |
 | `desks-firewall.sh` | iptables rules: a desk reaches `egress` and nothing else on its network, not other desks and not the host. sandboxd checks it as it starts (one probe desk tries to reach another) and won't serve if it isn't working |
 | sandboxd | creates and stops desks. It holds the Docker socket (root-equivalent), so it's on the private network only and acts only on a console-signed token: valid 15 minutes, for one network's desks; only the console's admin token removes all of them |
 | Limits | memory, CPUs and processes per desk; commands run as an unprivileged user |
@@ -27,17 +28,20 @@ Details: [architecture.md](../architecture.md#7-desks).
 
 ## Residual risk
 
-Anything a desk can read can be sent to an allowed host, and some allowed
-hosts accept uploads. An agent manipulated by content it read (an issue, a
-pull request, a web page) could push code to another GitHub repository
-with credentials supplied by an attacker. The proxy blocks everything else,
-not that. Publishing a package can't be done: npm's registry is read-only
-from desks, and PyPI's upload host isn't reachable.
+An agent manipulated by content it read (an issue, a pull request, a web
+page) might try to send the company's code somewhere, with credentials
+supplied by an attacker. By default nothing a desk reaches takes uploads:
+not git hosts (the runner does desks' git), not npm's registry (read-only
+from desks), not PyPI's upload host. What stays is a host that does, on
+`GUILDNET_DESK_ALLOWED` or a network's own list; GitHub, GitLab, Bitbucket,
+Codeberg and the registries' publishing hosts are on the blocklist, so an
+owner can't add them by accident.
 
 Mitigations:
 
-- Give teams only the repositories they need; a desk clones only its team's.
-- Keep `GUILDNET_DESK_ALLOWED`, and each network's own hosts, short.
+- Give teams only the repositories they need; a desk has only its team's.
+- Keep `GUILDNET_DESK_ALLOWED`, and each network's own hosts, short, and
+  free of hosts that take uploads.
 - Desk output counts as untrusted: a write through a connector shortly
   after (a Linear issue, say) asks a person first, whatever its policy.
 
@@ -153,9 +157,16 @@ it the next time they're made, and their volumes are removed.
 
 ## Allowed hosts
 
-Default `GUILDNET_DESK_ALLOWED`: `github.com`, `api.github.com`,
-`codeload.github.com`, `*.githubusercontent.com`, `proxy.golang.org`,
-`sum.golang.org`, `dl.google.com`, `pypi.org`, `files.pythonhosted.org`.
+Default `GUILDNET_DESK_ALLOWED`: `codeload.github.com`,
+`*.githubusercontent.com` (GitHub's downloads: release files, raw files,
+archives), `proxy.golang.org`, `sum.golang.org`, `dl.google.com`,
+`pypi.org`, `files.pythonhosted.org`.
+
+`github.com` and `api.github.com` aren't on it: they take pushes, gists and
+API writes. Desks don't need them: the runner fetches their repositories,
+and GitHub's tools (pull requests, issues, reading code) are the runner's.
+Dependencies pulled straight from a git host (`git+https://` in pip,
+`github:` in npm, private Go modules) don't install at a desk.
 
 npm's registry isn't on it: it takes uploads, so a token planted in
 something an agent read could publish the company's code there. Desks read
@@ -165,12 +176,12 @@ npm packages can't be installed at a desk. (PyPI's uploads go to
 `upload.pypi.org`, which isn't on the list.)
 
 Setting it replaces the list: comma-separated hosts, `*.example.com` for
-subdomains. Keep GitHub's hosts. Adding a host that takes uploads (a
-registry with its publishing API, say) opens it to that risk. Example,
-adding Rust's registry for downloads:
+subdomains. Adding a host that takes uploads (a git host, a registry with
+its publishing API) opens it to that risk. Example, adding Rust's registry
+for downloads:
 
 ```sh
-GUILDNET_DESK_ALLOWED=github.com,api.github.com,codeload.github.com,*.githubusercontent.com,proxy.golang.org,sum.golang.org,dl.google.com,pypi.org,files.pythonhosted.org,static.crates.io,index.crates.io
+GUILDNET_DESK_ALLOWED=codeload.github.com,*.githubusercontent.com,proxy.golang.org,sum.golang.org,dl.google.com,pypi.org,files.pythonhosted.org,static.crates.io,index.crates.io
 ```
 
 ### A network's own hosts
@@ -186,11 +197,12 @@ emailed to the owner.
   single-label name, or one ending `.internal`, `.local`, `.localhost`,
   `.lan`, `.home.arpa` and the like.
 - A blocklist wins whatever an owner's list says: GuildNet's own (paste
-  sites, file drops, request catchers and tunnels, in
-  `internal/sandbox/hosts.go`) and `GUILDNET_DESK_BLOCKED` (comma-separated,
-  on the console and runner; each blocks the name and every name under it).
+  sites, file drops, request catchers, tunnels, git hosting and registries'
+  publishing hosts, in `internal/sandbox/hosts.go`) and
+  `GUILDNET_DESK_BLOCKED` (comma-separated, on the console and runner; each
+  blocks the name and every name under it).
 - The hosts reach `egress` in the network's egress pass, which the console
-  signs, as for its git hosts: `egress` needs `GUILDNET_SANDBOX_PUBLIC_KEY`.
+  signs: `egress` needs `GUILDNET_SANDBOX_PUBLIC_KEY`.
   Each command at a desk carries the pass as it is then, so a host approved
   while an agent works opens from its next command.
 

@@ -177,12 +177,12 @@ func TestOnlyAgentsAtDesksHaveTheToolToAskForAHost(t *testing.T) {
 
 	// What can't be asked for goes back to the agent, not to a person.
 	expectStatus(t, n, "method", http.StatusOK, "POST", "/v1/desk-hosts", map[string]any{"host": "api.stripe.com"})
-	for host, why := range map[string]string{"1.2.3.4": "not its address", "webhook.site": "blocked", "api.stripe.com": "already", "github.com": "already"} {
+	for host, why := range map[string]string{"1.2.3.4": "not its address", "webhook.site": "blocked", "api.stripe.com": "already", "github.com": "blocked", "api.github.com": "blocked"} {
 		if _, _, err := hosts.Prepare(context.Background(), deskKai, "request_host", map[string]any{"host": host, "why": "x"}); err == nil || !strings.Contains(err.Error(), why) {
 			t.Errorf("%s: %v, want it to say %q", host, err, why)
 		}
 	}
-	if _, _, err := hosts.Prepare(context.Background(), deskKai, "request_host", map[string]any{"host": "crates.io"}); err == nil || !strings.Contains(err.Error(), "why") {
+	if _, _, err := hosts.Prepare(context.Background(), deskKai, "request_host", map[string]any{"host": "static.crates.io"}); err == nil || !strings.Contains(err.Error(), "why") {
 		t.Errorf("asked without saying why: %v", err)
 	}
 }

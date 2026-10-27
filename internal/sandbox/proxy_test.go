@@ -305,12 +305,14 @@ func TestTheNpmRegistryIsReadOnly(t *testing.T) {
 	}
 }
 
-// The registry isn't on the default list of hosts to tunnel to: only the
-// read-only way reaches it.
-func TestDesksDontTunnelToTheNpmRegistry(t *testing.T) {
+// Nothing that takes uploads is on the default list of hosts to tunnel to:
+// not npm's registry (only the read-only way reaches it), and not GitHub's
+// git or API (the runner fetches desks' repos for them), where a planted
+// token could push the company's code to someone else's repository.
+func TestDesksDontTunnelToHostsThatTakeUploads(t *testing.T) {
 	for _, h := range sandbox.DefaultAllowed {
-		if h == "registry.npmjs.org" {
-			t.Error("desks can tunnel to registry.npmjs.org, and publish there")
+		if h == "registry.npmjs.org" || h == "github.com" || h == "api.github.com" || h == "uploads.github.com" || h == "upload.pypi.org" {
+			t.Errorf("desks can tunnel to %s, and send the company's code there", h)
 		}
 	}
 }

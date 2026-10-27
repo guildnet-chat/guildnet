@@ -3,6 +3,7 @@
 package sandbox_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"fmt"
@@ -141,6 +142,27 @@ func TestAnUnusedNetworksStorageIsTheDefault(t *testing.T) {
 
 	if err != nil || got.LimitGB != 5 || got.Used() != 0 {
 		t.Errorf("acme's storage = %+v %v, want 5 GB, none used", got, err)
+	}
+}
+
+// A command can be given more input than a file write takes, as a stream:
+// the runner pipes a repository's pack into git at the desk that way.
+func TestALargeInputIsPipedToACommand(t *testing.T) {
+	r := start(t)
+	big := bytes.Repeat([]byte("x"), 20<<20)
+
+	out, err := r.client("acme").Pipe(context.Background(), "kai", desk.Command{Args: []string{"git", "index-pack", "--stdin"}, Dir: "/workspace/web", Timeout: time.Minute}, bytes.NewReader(big))
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The stand-in prints what came in: the first 64 KiB, then how much more.
+	if want := fmt.Sprintf("%d more bytes", len(big)-64<<10); !strings.Contains(out.Text, want) {
+		t.Errorf("the command didn't get all 20 MiB: %.100q...%q", out.Text, out.Text[max(0, len(out.Text)-120):])
+	}
+	e := r.backend.execs[len(r.backend.execs)-1]
+	if strings.Join(e.Args, " ") != "git index-pack --stdin" || e.Dir != "/workspace/web" {
+		t.Errorf("ran %v in %s", e.Args, e.Dir)
 	}
 }
 

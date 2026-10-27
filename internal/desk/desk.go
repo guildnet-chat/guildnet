@@ -2,17 +2,19 @@
 
 // Package desk is desks of GuildNet's own: each agent at one has a
 // workspace in a sandbox (see sandboxd), and works in it through six tools
-// the runner carries out there: bash, read, write, edit, glob and grep. The
-// loop that calls the model is the runner's own (package brain), so desks
-// work on any model; keys never enter the sandbox.
+// the runner carries out there: bash, read, write, edit, glob and grep, and
+// git_fetch for its repos, which the runner fetches for it. The loop that
+// calls the model is the runner's own (package brain), so desks work on any
+// model; keys and git credentials never enter the sandbox.
 package desk
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"path"
 	"slices"
 	"strings"
@@ -97,7 +99,7 @@ type Repos interface {
 
 // Clone is a git repository on any host (not GitHub's app) a desk checks
 // out: its name, where it is, and the credential to read it with (none for
-// a public one). The credential reaches the desk, so it should only read.
+// a public one). The runner reads with it; it never reaches a desk.
 type Clone struct {
 	Name, URL string
 	Read      gitwire.Credential
@@ -125,6 +127,9 @@ type Workspace struct {
 	Wake func(ctx context.Context) error
 	// Retry is how often a woken sandbox is tried again.
 	Retry time.Duration
+	// HTTP reaches git hosts, from the runner: desks can't, and never hold a
+	// git credential. The runner fetches for them, and pipes the packs in.
+	HTTP *http.Client
 
 	mu sync.Mutex
 	// secrets are what each desk was handed when last readied (tokens, the
@@ -146,7 +151,7 @@ func prop(typ, desc string) map[string]any { return map[string]any{"type": typ, 
 func (w *Workspace) Tools(config.Persona) []agent.Tool {
 	file := prop("string", "Path to the file, from /workspace or absolute")
 	dir := prop("string", "Directory to search, from /workspace or absolute; defaults to /workspace")
-	return []agent.Tool{
+	tools := []agent.Tool{
 		{Name: "bash", ReadOnly: true,
 			Description: "Run a shell command in your workspace (bash, starting in /workspace). Each command starts afresh: cd and variables don't carry over, files do. Output over 64 KB is cut.",
 			Properties: map[string]any{
@@ -189,6 +194,12 @@ func (w *Workspace) Tools(config.Persona) []agent.Tool {
 			},
 			Required: []string{"pattern"}},
 	}
+	if w.repos != nil || w.Git != nil {
+		tools = append(tools, agent.Tool{Name: fetchTool, ReadOnly: true,
+			Description: "Fetch your team's repositories at your desk from their hosts, as git fetch would: origin/<branch> come up to date, then you rebase or merge. Git hosts can't be reached from the shell; this is how to get what's new.",
+			Properties:  map[string]any{"repo": prop("string", "One repository's name or folder; all of them unless you say")}})
+	}
+	return tools
 }
 
 // Guide says nothing more: what an agent at a desk is told about its
@@ -211,6 +222,8 @@ func (w *Workspace) SourceOf(string) string { return agent.YourRepos }
 // marked untrusted: it's whatever is in the repos and on the web.
 func (w *Workspace) Run(ctx context.Context, p config.Persona, name string, in map[string]any) (string, error) {
 	switch name {
+	case fetchTool:
+		return w.gitFetch(ctx, p, in)
 	case "bash", "read", "glob", "grep":
 		out, err := w.look(ctx, p, name, in)
 		if err != nil {
@@ -480,41 +493,208 @@ shift 2
 cd /workspace
 `
 
-// checkout is run in the sandbox to ready an agent's repos. What's secret
-// comes in on its input, a line each, and is kept where git's credential
-// helpers read it (each readying brings fresh ones): "github <token>",
-// "git <name> <base64 of what git's helper answers>", and "pass <egress
-// pass>", which git hands the desks' proxy for the git repositories' hosts.
-// Its arguments are the repos, three each: github or git (and its name),
-// the directory and the URL. Repos not yet there are cloned.
-const checkout = `umask 077
-mkdir -p "$HOME/.config/guildnet/git"
-pass=
-while IFS= read -r line; do
-  case "$line" in
-    "github "*) printf '%s' "${line#github }" > "$HOME/.config/guildnet/github-token" ;;
-    "git "*) rest=${line#git }; printf '%s' "${rest#* }" | base64 -d > "$HOME/.config/guildnet/git/${rest%% *}" ;;
-    "pass "*) pass=${line#pass } ;;
+// The runner checks out and fetches desks' repos for them: desks can't
+// reach git hosts, and no git credential ever enters one, so content an
+// agent read can't steer it into pushing the company's code somewhere else.
+// For each repo the desk says what it has (haveScript), the runner fetches
+// the rest from the host with the read credential, pipes the pack into git
+// at the desk, and the desk's origin/* refs move to where the host's
+// branches are (refScript).
+
+// haveScript readies a repo's directory ($1) at the desk, as a repository
+// with origin at its address ($2), and says what it has from there: "new"
+// first if it was just made, then the objects its origin/* refs are at.
+const haveScript = `set -eu
+dir=$1 url=$2
+if [ ! -d "$dir/.git" ]; then
+  git init -q "$dir"
+  git -C "$dir" remote add origin "$url"
+  echo new
+fi
+git -C "$dir" for-each-ref --format='%(objectname)' refs/remotes/origin/`
+
+// refScript moves a repo's origin/* refs at the desk ($1) to the host's
+// branches, on its input as "<object> refs/heads/<branch>", and drops those
+// the host no longer has. "head <branch>" names the default branch, which a
+// new checkout ($2 is "new") starts on.
+const refScript = `set -eu
+cd "$1"
+keep= head=
+while read -r oid ref; do
+  case "$oid" in
+    head) head=$ref ;;
+    *) b=${ref#refs/heads/}; git update-ref "refs/remotes/origin/$b" "$oid"; keep="$keep refs/remotes/origin/$b " ;;
   esac
 done
-if [ -f "$HOME/.config/guildnet/github-token" ]; then
-  git config --global credential.https://github.com.helper '!f() { test "$1" = get || exit 0; echo username=x-access-token; echo "password=$(cat "$HOME/.config/guildnet/github-token")"; }; f'
-fi
-while [ $# -gt 0 ]; do
-  kind=$1 dir=$2 url=$3
-  shift 3
-  case "$kind" in git:*)
-    name=${kind#git:}
-    if [ -f "$HOME/.config/guildnet/git/$name" ]; then
-      git config --global "credential.$url.helper" "!f() { test \"\$1\" = get || exit 0; cat \"\$HOME/.config/guildnet/git/$name\"; }; f"
-    fi
-    if [ -n "$pass" ] && [ -n "${HTTPS_PROXY:-}" ]; then
-      git config --global "http.$url.proxy" "http://guildnet:$pass@${HTTPS_PROXY#*://}"
-      git config --global "http.$url.proxyAuthMethod" basic
-    fi ;;
-  esac
-  if [ ! -d "$dir/.git" ]; then git clone --quiet "$url" "$dir"; fi
-done`
+for r in $(git for-each-ref --format='%(refname)' refs/remotes/origin/); do
+  case "$keep" in *" $r "*) ;; *) [ "$r" = refs/remotes/origin/HEAD ] || git update-ref -d "$r" ;; esac
+done
+if [ -n "$head" ] && git rev-parse -q --verify "refs/remotes/origin/$head" >/dev/null; then
+  git symbolic-ref refs/remotes/origin/HEAD "refs/remotes/origin/$head"
+  if [ "$2" = new ]; then git checkout -q -B "$head" --track "origin/$head"; fi
+fi`
+
+// Piper is a Sandbox that can stream a command's input (sandboxd): a
+// repository's pack is bigger than a command's input can hold.
+type Piper interface {
+	Pipe(ctx context.Context, nick string, c Command, in io.Reader) (Output, error)
+}
+
+// checkoutRepo is a repo a desk checks out: its directory there, its
+// address, and the credential the runner reads it with.
+type checkoutRepo struct {
+	name, dir, url string
+	cred           gitwire.Credential
+}
+
+// checkouts are p's team's repos, GitHub's and other hosts', with where
+// each goes at the desk.
+func (w *Workspace) checkouts(ctx context.Context, p config.Persona) ([]checkoutRepo, error) {
+	var out []checkoutRepo
+	taken := map[string]bool{}
+	if w.repos != nil {
+		urls, token, err := w.repos.Checkout(ctx, p)
+		if err != nil {
+			return nil, err
+		}
+		for _, u := range urls {
+			dir := Root + "/" + path.Base(u)
+			taken[dir] = true
+			out = append(out, checkoutRepo{name: path.Base(u), dir: dir, url: u, cred: gitwire.Credential{User: "x-access-token", Token: token}})
+		}
+	}
+	if w.Git != nil {
+		clones, err := w.Git.Clones(ctx, p)
+		if err != nil {
+			return nil, err
+		}
+		for _, c := range clones {
+			dir := Root + "/" + c.Name
+			if taken[dir] {
+				dir = Root + "/git-" + c.Name
+			}
+			out = append(out, checkoutRepo{name: c.Name, dir: dir, url: c.URL, cred: c.Read})
+		}
+	}
+	return out, nil
+}
+
+// fetched is how a repo's fetch went, for the agent: its default branch and
+// where that is.
+type fetched struct {
+	head, at string
+	branches int
+}
+
+// fetch brings r's checkout at p's desk up to date with its host, making it
+// if it isn't there.
+func (w *Workspace) fetch(ctx context.Context, p config.Persona, r checkoutRepo) (fetched, error) {
+	piper, ok := w.sb.(Piper)
+	if !ok || w.HTTP == nil {
+		return fetched{}, errors.New("this sandbox can't be given repositories")
+	}
+	out, err := w.sb.Run(ctx, p.Nick, Command{Args: append(shell(haveScript), "have", r.dir, r.url), Dir: Root, Timeout: 2 * time.Minute})
+	if err != nil {
+		return fetched{}, err
+	}
+	if out.Exit != 0 || out.TimedOut {
+		return fetched{}, fmt.Errorf("readying %s at the desk: %s", r.dir, strings.TrimSpace(out.Text))
+	}
+	isNew := "old"
+	var haves []string
+	for _, line := range strings.Fields(out.Text) {
+		if line == "new" {
+			isNew = "new"
+		} else if len(line) == 40 || len(line) == 64 {
+			haves = append(haves, line)
+		}
+	}
+	refs, err := gitwire.List(ctx, w.HTTP, r.url, r.cred, gitwire.Fetching)
+	if err != nil {
+		return fetched{}, fmt.Errorf("%s: %w", r.name, err)
+	}
+	have := map[string]bool{}
+	for _, h := range haves {
+		have[h] = true
+	}
+	var wants []string
+	var moves strings.Builder
+	f := fetched{head: strings.TrimPrefix(refs.Head, "refs/heads/")}
+	for name, oid := range refs.Refs {
+		if !gitwire.BranchRef(name) {
+			continue // tags and the like aren't fetched
+		}
+		f.branches++
+		fmt.Fprintf(&moves, "%s %s\n", oid, name)
+		if !have[oid] && !slices.Contains(wants, oid) {
+			wants = append(wants, oid)
+		}
+		if name == refs.Head {
+			f.at = oid
+		}
+	}
+	if len(wants) > 0 {
+		pr, pw := io.Pipe()
+		fetching := make(chan error, 1)
+		go func() {
+			err := gitwire.Fetch(ctx, w.HTTP, r.url, r.cred, refs, wants, haves, pw)
+			pw.CloseWithError(err)
+			fetching <- err
+		}()
+		out, err := piper.Pipe(ctx, p.Nick, Command{Args: []string{"git", "index-pack", "--stdin"}, Dir: r.dir, Timeout: maxTimeout}, pr)
+		pr.Close()
+		if ferr := <-fetching; ferr != nil {
+			return fetched{}, fmt.Errorf("fetching %s: %w", r.name, ferr)
+		}
+		if err != nil {
+			return fetched{}, fmt.Errorf("giving %s to the desk: %w", r.name, err)
+		}
+		if out.Exit != 0 || out.TimedOut {
+			return fetched{}, fmt.Errorf("giving %s to the desk: %s", r.name, strings.TrimSpace(out.Text))
+		}
+	}
+	if f.head != "" {
+		fmt.Fprintf(&moves, "head %s\n", f.head)
+	}
+	out, err = w.sb.Run(ctx, p.Nick, Command{Args: append(shell(refScript), "refs", r.dir, isNew), Dir: Root, Stdin: moves.String(), Timeout: 2 * time.Minute})
+	if err != nil {
+		return fetched{}, err
+	}
+	if out.Exit != 0 || out.TimedOut {
+		return fetched{}, fmt.Errorf("updating %s at the desk: %s", r.name, strings.TrimSpace(out.Text))
+	}
+	return f, nil
+}
+
+const fetchTool = "git_fetch"
+
+// gitFetch is git_fetch: p's repos (or the one named) fetched again.
+func (w *Workspace) gitFetch(ctx context.Context, p config.Persona, in map[string]any) (string, error) {
+	repos, err := w.checkouts(ctx, p)
+	if err != nil {
+		return "", err
+	}
+	want := strings.TrimSpace(str(in, "repo"))
+	var said []string
+	for _, r := range repos {
+		if want != "" && want != r.name && Root+"/"+want != r.dir && want != r.dir {
+			continue
+		}
+		f, err := w.fetch(ctx, p, r)
+		if err != nil {
+			return "", err
+		}
+		line := fmt.Sprintf("%s: fetched, %d branch(es) as origin/*", r.dir, f.branches)
+		if f.at != "" {
+			line += fmt.Sprintf("; origin/%s is at %s", f.head, f.at[:7])
+		}
+		said = append(said, line)
+	}
+	if len(said) == 0 {
+		return "", fmt.Errorf("%q isn't one of your repositories at your desk", want)
+	}
+	return strings.Join(said, "\n") + "\nRebase or merge from origin/<branch> as you would.", nil
+}
 
 // wakeFor is how long a woken sandbox VM gets to start.
 const wakeFor = 4 * time.Minute
@@ -621,71 +801,22 @@ func (w *Workspace) waitTurn(ctx context.Context, p config.Persona) error {
 	}
 }
 
-// Ready wakes p's desk, makes its home fresh, and checks out its team's
-// repos, with a fresh read-only token.
+// Ready wakes p's desk, makes its home fresh, and brings its team's repos
+// there up to date, checking out any not there yet.
 func (w *Workspace) Ready(ctx context.Context, p config.Persona) error {
 	if err := w.open(ctx, p); err != nil {
 		return err
 	}
-	var urls []string
-	var token string
-	if w.repos != nil {
-		var err error
-		if urls, token, err = w.repos.Checkout(ctx, p); err != nil {
-			return err
-		}
-	}
-	var clones []Clone
-	if w.Git != nil {
-		var err error
-		if clones, err = w.Git.Clones(ctx, p); err != nil {
-			return err
-		}
+	repos, err := w.checkouts(ctx, p)
+	if err != nil {
+		return err
 	}
 	name := p.Name
 	if name == "" {
 		name = p.Nick
 	}
-	args := []string{"ready", fmt.Sprintf("%s (%s, AI agent)", name, p.Nick), strings.ToLower(p.Nick) + "@agents.guildnet.dev"}
-	var stdin strings.Builder
-	var secrets []string
-	if token != "" {
-		fmt.Fprintf(&stdin, "github %s\n", token)
-		secrets = append(secrets, token)
-	}
-	taken := map[string]bool{}
-	for _, u := range urls {
-		dir := Root + "/" + path.Base(u)
-		taken[dir] = true
-		args = append(args, "github", dir, u)
-	}
-	for _, c := range clones {
-		dir := Root + "/" + c.Name
-		if taken[dir] {
-			dir = Root + "/git-" + c.Name
-		}
-		args = append(args, "git:"+c.Name, dir, c.URL)
-		if c.Read != (gitwire.Credential{}) {
-			answer := "username=" + c.Read.User + "\npassword=" + c.Read.Token + "\n"
-			fmt.Fprintf(&stdin, "git %s %s\n", c.Name, base64.StdEncoding.EncodeToString([]byte(answer)))
-			secrets = append(secrets, c.Read.Token)
-		}
-	}
-	if len(clones) > 0 && w.Pass != nil {
-		pass, err := w.Pass(ctx)
-		if err != nil {
-			return fmt.Errorf("the network's egress pass: %w", err)
-		}
-		fmt.Fprintf(&stdin, "pass %s\n", pass)
-		secrets = append(secrets, pass)
-	}
-	w.handed(p.Nick, secrets)
-	script := fresh
-	if len(urls)+len(clones) > 0 {
-		script += checkout
-	}
-	out, err := w.sb.Run(ctx, p.Nick, Command{Args: append(shell(script), args...),
-		Dir: Root, Stdin: stdin.String(), Timeout: maxTimeout})
+	out, err := w.sb.Run(ctx, p.Nick, Command{Args: append(shell(fresh), "ready", fmt.Sprintf("%s (%s, AI agent)", name, p.Nick), strings.ToLower(p.Nick)+"@agents.guildnet.dev"),
+		Dir: Root, Timeout: 2 * time.Minute})
 	switch {
 	case err != nil:
 		return err
@@ -693,6 +824,11 @@ func (w *Workspace) Ready(ctx context.Context, p config.Persona) error {
 		return errors.New("readying the desk took too long")
 	case out.Exit != 0:
 		return fmt.Errorf("readying the desk: %s", strings.TrimSpace(out.Text))
+	}
+	for _, r := range repos {
+		if _, err := w.fetch(ctx, p, r); err != nil {
+			return err
+		}
 	}
 	return nil
 }

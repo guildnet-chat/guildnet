@@ -109,6 +109,7 @@ func NewServer(o Options) *Server {
 	s := &Server{opts: o, mux: http.NewServeMux(), desks: map[Desk]*state{}, since: o.Now(), removed: map[string]time.Time{}, storage: map[string]int{}}
 	s.mux.HandleFunc("POST /v1/desks/{nick}/open", s.desk(s.open))
 	s.mux.HandleFunc("POST /v1/desks/{nick}/run", s.desk(s.run))
+	s.mux.HandleFunc("POST /v1/desks/{nick}/pipe", s.desk(s.pipe))
 	s.mux.HandleFunc("POST /v1/desks/{nick}/read", s.desk(s.read))
 	s.mux.HandleFunc("POST /v1/desks/{nick}/write", s.desk(s.write))
 	s.mux.HandleFunc("DELETE /v1/desks/{nick}", s.desk(s.remove))
@@ -151,7 +152,11 @@ func (s *Server) desk(h handler) http.HandlerFunc {
 		d := Desk{Network: network, Nick: nick}
 		s.begin(d)
 		defer s.end(d)
-		r.Body = http.MaxBytesReader(w, r.Body, maxFile*2)
+		limit := int64(maxFile * 2)
+		if strings.HasSuffix(r.URL.Path, "/pipe") {
+			limit = maxPipe
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, limit)
 		err := s.limitStorage(r.Context(), c)
 		if err == nil {
 			err = h(w, r, d)
@@ -390,6 +395,45 @@ func (s *Server) run(w http.ResponseWriter, r *http.Request, d Desk) error {
 		return err
 	}
 	s.logf("%s %s: run %s (%s, exit %d)", d.Network, d.Nick, short(strings.Join(req.Args, " "), 200), s.opts.Now().Sub(start).Round(time.Millisecond), res.Exit)
+	writeJSON(w, runResponse{Output: out.String(), Exit: res.Exit, TimedOut: res.TimedOut})
+	return nil
+}
+
+// maxPipe is the most input piped to one command (a repository's pack, from
+// the runner).
+const maxPipe = 4 << 30
+
+// PipeHeader carries a piped command (its args, dir and timeout, as JSON):
+// the request's body is its input.
+const PipeHeader = "GuildNet-Command"
+
+// pipe runs a command with the request's body as its input, as it streams
+// in: for more than a run's input (in its JSON) can hold.
+func (s *Server) pipe(w http.ResponseWriter, r *http.Request, d Desk) error {
+	var req runRequest
+	if err := json.Unmarshal([]byte(r.Header.Get(PipeHeader)), &req); err != nil || len(req.Args) == 0 {
+		return bad("give the command's args, as JSON in the %s header", PipeHeader)
+	}
+	if req.Dir == "" {
+		req.Dir = "/workspace"
+	}
+	if !path.IsAbs(req.Dir) {
+		return bad("dir must be an absolute path")
+	}
+	timeout := time.Duration(req.TimeoutMS) * time.Millisecond
+	if timeout <= 0 || timeout > maxTimeout {
+		timeout = maxTimeout
+	}
+	if err := s.awake(r.Context(), d, false); err != nil {
+		return err
+	}
+	out := &capped{max: maxOutput}
+	start := s.opts.Now()
+	res, err := s.opts.Backend.Exec(r.Context(), d, Exec{Args: req.Args, Dir: req.Dir, Output: out, Timeout: timeout, Stdin: r.Body})
+	if err != nil {
+		return err
+	}
+	s.logf("%s %s: pipe to %s (%s, exit %d)", d.Network, d.Nick, short(strings.Join(req.Args, " "), 200), s.opts.Now().Sub(start).Round(time.Millisecond), res.Exit)
 	writeJSON(w, runResponse{Output: out.String(), Exit: res.Exit, TimedOut: res.TimedOut})
 	return nil
 }

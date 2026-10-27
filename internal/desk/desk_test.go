@@ -4,7 +4,6 @@ package desk_test
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"slices"
@@ -16,7 +15,6 @@ import (
 	"github.com/guildnet-chat/guildnet/config"
 	"github.com/guildnet-chat/guildnet/internal/agent"
 	"github.com/guildnet-chat/guildnet/internal/desk"
-	"github.com/guildnet-chat/guildnet/internal/gitwire"
 )
 
 // An agent at a desk of GuildNet's own works in its workspace through six
@@ -357,107 +355,13 @@ func TestStepsSayWhatTheAgentDoes(t *testing.T) {
 	}
 }
 
-// Readying a desk wakes its sandbox and checks out the team's repos with a
-// read-only token, which goes in on the command's input, not its arguments
-// (where process lists and logs would show it).
-func TestReadyingADeskChecksOutTheTeamsRepos(t *testing.T) {
-	sb := newSandbox()
-	w := desk.New(sb, fakeRepos{urls: []string{"https://github.com/acme/api", "https://github.com/acme/web"}, token: "ghs_readonly"})
-
-	if err := w.Ready(context.Background(), kai); err != nil {
-		t.Fatal(err)
-	}
-
-	if !slices.Equal(sb.opened, []string{"kai"}) {
-		t.Errorf("opened %v", sb.opened)
-	}
-	ran := sb.commands()
-	if len(ran) != 1 {
-		t.Fatalf("ran %d commands", len(ran))
-	}
-	c := ran[0]
-	if !strings.Contains(c.Stdin, "ghs_readonly") || strings.Contains(strings.Join(c.Args, " "), "ghs_") {
-		t.Errorf("the token went in %q / %v; want only on the input", c.Stdin, c.Args)
-	}
-	if !slices.Contains(c.Args, "https://github.com/acme/api") || !slices.Contains(c.Args, "https://github.com/acme/web") {
-		t.Errorf("ran %v; want both repos checked out", c.Args)
-	}
-}
-
 // fakeGit is the team's git repositories on other hosts.
 type fakeGit []desk.Clone
 
 func (g fakeGit) Clones(context.Context, config.Persona) ([]desk.Clone, error) { return g, nil }
 
-// Git repositories on any host are checked out too, each with its own read
-// credential, on the command's input; desks reach their hosts with the
-// network's egress pass, also on the input.
-func TestReadyingADeskChecksOutTheTeamsGitRepositories(t *testing.T) {
-	sb := newSandbox()
-	w := desk.New(sb, fakeRepos{urls: []string{"https://github.com/acme/web"}, token: "ghs_readonly"})
-	w.Git = fakeGit{
-		{Name: "infra", URL: "https://git.example.com/ops/infra.git", Read: gitwire.Credential{User: "deploy", Token: "glpat-infra"}},
-		{Name: "web", URL: "https://git.example.com/ops/web.git", Read: gitwire.Credential{User: "deploy", Token: "glpat-web"}},
-		{Name: "docs", URL: "https://git.example.com/ops/docs.git"}, // public
-	}
-	w.Pass = func(context.Context) (string, error) { return "v2.egress-pass", nil }
-
-	if err := w.Ready(context.Background(), config.Persona{Nick: "kai", Name: "Kai", Team: "Engineering"}); err != nil {
-		t.Fatal(err)
-	}
-
-	c := sb.commands()[0]
-	args := strings.Join(c.Args, " ")
-	input := c.Stdin // with what's encoded in it, decoded
-	for _, f := range strings.Fields(c.Stdin) {
-		if b, err := base64.StdEncoding.DecodeString(f); err == nil {
-			input += "\n" + string(b)
-		}
-	}
-	for _, secret := range []string{"glpat-infra", "glpat-web", "v2.egress-pass", "ghs_readonly"} {
-		if !strings.Contains(input, secret) || strings.Contains(args, secret) {
-			t.Errorf("%s went in %q / %v; want only on the input", secret, c.Stdin, c.Args)
-		}
-	}
-	for _, want := range []string{"https://git.example.com/ops/infra.git", "/workspace/infra", "https://git.example.com/ops/docs.git", "/workspace/docs",
-		// web is GitHub's here too: the other one goes beside it.
-		"https://github.com/acme/web", "/workspace/web", "https://git.example.com/ops/web.git", "/workspace/git-web",
-		// Commits made at the desk are the agent's.
-		"Kai (kai, AI agent)", "kai@agents.guildnet.dev"} {
-		if !slices.Contains(c.Args, want) {
-			t.Errorf("ran %v; want %q in it", c.Args, want)
-		}
-	}
-}
-
-// What a desk shows its agent never has a secret the runner handed it: a
-// command that prints the credentials gets them blanked out.
-func TestADesksSecretsAreBlankedFromWhatItShows(t *testing.T) {
-	sb := newSandbox()
-	w := desk.New(sb, fakeRepos{urls: []string{"https://github.com/acme/web"}, token: "ghs_readonly"})
-	w.Git = fakeGit{{Name: "infra", URL: "https://git.example.com/ops/infra.git", Read: gitwire.Credential{User: "deploy", Token: "glpat-infra"}}}
-	w.Pass = func(context.Context) (string, error) { return "v2.egress-pass", nil }
-	w.Ready(context.Background(), kai)
-	sb.answer = func(desk.Command) desk.Output {
-		return desk.Output{Text: "https://deploy:glpat-infra@git.example.com/ops/infra.git\nghs_readonly\nhttp://guildnet:v2.egress-pass@proxy:3128\n"} // trufflehog:ignore (made up)
-	}
-	sb.Write(context.Background(), "kai", "/workspace/creds", []byte("token=glpat-infra\n"))
-
-	ran, _ := w.Run(context.Background(), kai, "bash", map[string]any{"command": "cat ~/.config/guildnet/*"})
-	read, _ := w.Run(context.Background(), kai, "read", map[string]any{"path": "creds"})
-	found, _ := w.Run(context.Background(), kai, "grep", map[string]any{"pattern": "glpat"})
-
-	for _, out := range []string{ran, read, found} {
-		for _, secret := range []string{"glpat-infra", "ghs_readonly", "v2.egress-pass"} {
-			if strings.Contains(out, secret) {
-				t.Errorf("the agent was shown %s:\n%s", secret, out)
-			}
-		}
-	}
-	if !strings.Contains(ran, "[a secret]") {
-		t.Errorf("the agent should be told something was blanked out:\n%s", ran)
-	}
-}
+// The repos a desk works on are checked out by the runner: see
+// checkout_test.go.
 
 // Every command goes out with the network's egress pass as it is now, so
 // whatever it runs (curl, pip, npm) reaches the hosts the owner chose, one
@@ -546,7 +450,7 @@ func TestADeskWithoutReposIsJustWokenAndMadeFresh(t *testing.T) {
 // don't read a shell's startup files at all.
 func TestADeskIsMadeFreshEachTimeAndRunsNoStartupFiles(t *testing.T) {
 	sb := newSandbox()
-	w := desk.New(sb, fakeRepos{urls: []string{"https://github.com/acme/api"}, token: "t"})
+	w := desk.New(sb, nil)
 
 	w.Ready(context.Background(), kai)
 	w.Run(context.Background(), kai, "bash", map[string]any{"command": "ls"})
@@ -555,11 +459,8 @@ func TestADeskIsMadeFreshEachTimeAndRunsNoStartupFiles(t *testing.T) {
 	script := strings.Join(ran[0].Args, " ")
 	for _, f := range []string{".bash_profile", ".bashrc", ".profile", ".gitconfig", ".config/go", ".npmrc", ".config/pip", "usercustomize"} {
 		if !strings.Contains(script, f) {
-			t.Errorf("readying the desk leaves %s as it was:\n%s", f, script)
+			t.Errorf("readying the desk leaves %s as it was (the first thing it runs):\n%s", f, script)
 		}
-	}
-	if strings.Index(script, ".bashrc") > strings.Index(script, "git clone") {
-		t.Error("the home should be made fresh before anything runs in it")
 	}
 	if c := ran[1].Args; !slices.Equal(c[:3], []string{"bash", "--noprofile", "--norc"}) {
 		t.Errorf("a command ran as %v; want no startup files read", c)
@@ -714,18 +615,6 @@ func (s *asleepToRemove) Remove(ctx context.Context, nick string) error {
 		return fmt.Errorf("dialing: %w", desk.ErrUnreachable)
 	}
 	return s.fakeSandbox.Remove(ctx, nick)
-}
-
-func TestACheckoutThatFailsSaysWhy(t *testing.T) {
-	sb := newSandbox()
-	sb.answer = func(desk.Command) desk.Output { return desk.Output{Text: "fatal: repository not found", Exit: 128} }
-	w := desk.New(sb, fakeRepos{urls: []string{"https://github.com/acme/api"}, token: "t"})
-
-	err := w.Ready(context.Background(), kai)
-
-	if err == nil || !strings.Contains(err.Error(), "repository not found") {
-		t.Errorf("err = %v", err)
-	}
 }
 
 func TestFiringAnAgentRemovesItsDesk(t *testing.T) {

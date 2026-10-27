@@ -5,9 +5,11 @@ package gitwire_test
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -23,6 +25,82 @@ var (
 func push(t *testing.T, s *gittest.Server, cred gitwire.Credential, u gitwire.Update, pack []byte) (gitwire.Result, error) {
 	t.Helper()
 	return gitwire.Push(context.Background(), s.Client(), s.URL(), cred, u, bytes.NewReader(pack))
+}
+
+// gitIn runs git in dir, as the tests' server does, with stdin.
+func gitIn(t *testing.T, s *gittest.Server, dir string, stdin []byte, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir, cmd.Env = dir, s.Env()
+	if stdin != nil {
+		cmd.Stdin = bytes.NewReader(stdin)
+	}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s: %v: %s", strings.Join(args, " "), err, out)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func fetch(t *testing.T, s *gittest.Server, cred gitwire.Credential, wants, haves []string) []byte {
+	t.Helper()
+	refs, err := gitwire.List(context.Background(), s.Client(), s.URL(), cred, gitwire.Fetching)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var pack bytes.Buffer
+	if err := gitwire.Fetch(context.Background(), s.Client(), s.URL(), cred, refs, wants, haves, &pack); err != nil {
+		t.Fatal(err)
+	}
+	return pack.Bytes()
+}
+
+// Fetching is how the runner fills a desk's checkout, holding the read
+// credential the desk never sees: a pack of what's wanted, which git at the
+// desk takes in (index-pack) as it would from a clone.
+func TestFetchingGetsWhatABranchHas(t *testing.T) {
+	s := gittest.New(t)
+	dir := t.TempDir()
+	gitIn(t, s, dir, nil, "init", "-q")
+
+	pack := fetch(t, s, reader, []string{s.Main}, nil)
+
+	gitIn(t, s, dir, pack, "index-pack", "--stdin")
+	if got := gitIn(t, s, dir, nil, "rev-parse", s.Main+"^{commit}"); got != s.Main {
+		t.Errorf("after the fetch, main's commit is %q", got)
+	}
+	gitIn(t, s, dir, nil, "fsck", "--no-dangling", s.Main)
+}
+
+// Fetching again sends only what's new: what the desk has, it says it has.
+func TestFetchingAgainGetsOnlyWhatsNew(t *testing.T) {
+	s := gittest.New(t)
+	dir := t.TempDir()
+	gitIn(t, s, dir, nil, "init", "-q")
+	first := fetch(t, s, reader, []string{s.Main}, nil)
+	gitIn(t, s, dir, first, "index-pack", "--stdin")
+	w := s.Clone()
+	next := w.Commit(s.Main, "news.txt", "fresh\n")
+	w.Send("refs/heads/main", next)
+
+	pack := fetch(t, s, reader, []string{next}, []string{s.Main})
+
+	gitIn(t, s, dir, pack, "index-pack", "--stdin")
+	if got := gitIn(t, s, dir, nil, "show", next+":news.txt"); got != "fresh" {
+		t.Errorf("the new commit's file: %q", got)
+	}
+	// A pack's header: "PACK", its version, then how many objects.
+	if len(pack) < 12 || string(pack[:4]) != "PACK" || binary.BigEndian.Uint32(pack[8:12]) > 3 {
+		t.Errorf("the second fetch sent more than the new commit, its tree and its file (%d bytes)", len(pack))
+	}
+}
+
+// A repository whose credential can't read it isn't fetched.
+func TestFetchingNeedsACredentialThatReads(t *testing.T) {
+	s := gittest.New(t)
+	if _, err := gitwire.List(context.Background(), s.Client(), s.URL(), gitwire.Credential{User: gittest.User, Token: "wrong"}, gitwire.Fetching); !errors.Is(err, gitwire.ErrDenied) {
+		t.Errorf("listing with a wrong token: %v, want refused", err)
+	}
 }
 
 // A new branch arrives with its commits, and nothing else moves.

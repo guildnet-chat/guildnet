@@ -70,9 +70,10 @@ func (p *Platform) brokerSandbox(w http.ResponseWriter, r *http.Request) {
 	out := map[string]any{"url": s.URL,
 		"token": sandbox.DesksTokenFor(s.Key, n.Name, storage, now, deskTokenTTL), "expires": now.Add(deskTokenTTL).UTC().Format(time.RFC3339)}
 	// The network's egress pass: its desks hand it to their proxy to reach
-	// its git repositories' hosts, and the hosts its owner chose (its runner
-	// keeps the list, and names them), as this install allows: only its own.
-	hosts := p.gitHosts(r.Context(), n.Name)
+	// the hosts its owner chose (its runner keeps the list, and names them),
+	// as this install allows: only its own. Never its git repositories'
+	// hosts: the runner fetches for its desks.
+	var hosts []string
 	for _, raw := range r.URL.Query()["host"] {
 		if len(hosts) >= maxPassHosts {
 			break

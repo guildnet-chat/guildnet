@@ -102,6 +102,12 @@ func (r *Remote) send(ctx context.Context, method, u string, raw []byte, out any
 		}
 		resp.Body.Close()
 	}
+	return answer(resp, out)
+}
+
+// answer is sandboxd's answer decoded into out (if any), or the error it
+// says: 404 and 413 are ErrNoFile and ErrTooBig, 429 ErrFull.
+func answer(resp *http.Response, out any) error {
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
 		var e struct {
@@ -175,6 +181,44 @@ func (r *Remote) Remove(ctx context.Context, nick string) error {
 // the network has been deleted.
 func (r *Remote) RemoveAll(ctx context.Context) error {
 	return r.call(ctx, "DELETE", "", "", nil, nil)
+}
+
+// Pipe runs c at nick's desk with in as its input, streamed: for more than
+// a command's input can hold (a repository's pack). The input can't be sent
+// twice, so a token sandboxd refuses isn't replaced and tried again: the
+// caller tries again.
+func (r *Remote) Pipe(ctx context.Context, nick string, c Command, in io.Reader) (Output, error) {
+	head, err := json.Marshal(map[string]any{"args": c.Args, "dir": c.Dir, "timeout_ms": c.Timeout.Milliseconds()})
+	if err != nil {
+		return Output{}, err
+	}
+	token, err := r.tokens(ctx, false)
+	if err != nil {
+		return Output{}, fmt.Errorf("a token for the sandbox: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", r.url+"/v1/desks/"+url.PathEscape(strings.ToLower(nick))+"/pipe", in)
+	if err != nil {
+		return Output{}, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/octet-stream")
+	req.Header.Set(sandbox.PipeHeader, string(head))
+	resp, err := r.http.Do(req)
+	if err != nil {
+		if ctx.Err() != nil {
+			return Output{}, err
+		}
+		return Output{}, fmt.Errorf("%w: %v", ErrUnreachable, err)
+	}
+	var out struct {
+		Output   string `json:"output"`
+		Exit     int    `json:"exit"`
+		TimedOut bool   `json:"timed_out"`
+	}
+	if err := answer(resp, &out); err != nil {
+		return Output{}, err
+	}
+	return Output{Text: out.Output, Exit: out.Exit, TimedOut: out.TimedOut}, nil
 }
 
 // Storage is how much the token's network's desks' files take, and its

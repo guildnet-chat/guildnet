@@ -371,10 +371,16 @@ func TestTheGuideTellsTheAgentHowToChangeCode(t *testing.T) {
 
 	guide := c.Guide(kai)
 
-	for _, want := range []string{"read-only", "github_open_pull_request", "edits", "patch", "git rebase origin/<base>", "...HEAD", "github_close_pull_request", "when a tool result says so", "/workspace/guildnet", "approv"} {
+	for _, want := range []string{"git_fetch", "github_open_pull_request", "edits", "patch", "git rebase origin/<base>", "...HEAD", "github_close_pull_request", "when a tool result says so", "/workspace/guildnet", "approv"} {
 		if !strings.Contains(guide, want) {
 			t.Errorf("guide should mention %q:\n%s", want, guide)
 		}
+	}
+	// On Managed Agents, the desk's checkout has a read-only token of its own.
+	managed := kai
+	managed.Platform = "managed"
+	if guide := c.Guide(managed); !strings.Contains(guide, "read-only") || strings.Contains(guide, "git_fetch") {
+		t.Errorf("a Managed Agents desk's guide:\n%s", guide)
 	}
 }
 

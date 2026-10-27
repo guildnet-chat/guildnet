@@ -18,10 +18,11 @@ import (
 )
 
 // DefaultAllowed is where desks can reach unless a network says otherwise:
-// GitHub, and the Go and PyPI registries (PyPI's uploads are elsewhere).
-// npm's registry, which takes uploads, is read through DefaultReads.
+// GitHub's downloads, and the Go and PyPI registries (PyPI's uploads are
+// elsewhere). Nothing that takes uploads: not git hosts (the runner fetches
+// desks' repos for them), and npm's registry only through DefaultReads.
 var DefaultAllowed = []string{
-	"github.com", "api.github.com", "codeload.github.com", "*.githubusercontent.com",
+	"codeload.github.com", "*.githubusercontent.com",
 	"proxy.golang.org", "sum.golang.org", "dl.google.com",
 	"pypi.org", "files.pythonhosted.org",
 }

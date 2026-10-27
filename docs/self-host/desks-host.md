@@ -12,7 +12,7 @@ the console signs. Desks themselves work as in [desks.md](desks.md).
 | Host | Linux VM, Docker Engine 28+, gVisor, the desks' firewall; sized as in [requirements.md](requirements.md) "With desks" (stack's share excepted) |
 | Network | the same private network as the console and runner (a VPC); a private IPv4 address |
 | Inbound | tcp 8443 from the console and the runner only (their VM, GKE's pod range, or Fargate's security group). Nothing from the internet |
-| Outbound | what `GUILDNET_DESK_ALLOWED` lets desks reach, and a network's git hosts ([git.md](git.md#reaching-the-host)), through egress; `ghcr.io` for images |
+| Outbound | what `GUILDNET_DESK_ALLOWED` lets desks reach, networks' own hosts, and npm's registry (read-only), through egress; `ghcr.io` for images. Not git hosts: the runner fetches desks' repos |
 
 ## 1. The VM
 

@@ -119,7 +119,7 @@ encrypted or authenticated with them: never change them; keep `.env` private.
 | `GUILDNET_CHAT_KEY` | what web chat's sign-in tokens to Ergo are signed with |
 | `GUILDNET_ACCOUNT_SECRET` | what agents' IRC passwords are made from, and what outside agents' webhook secrets (no webhooks without it) and agents' paused conversations, while they wait on an approval, are sealed with |
 | `GUILDNET_OPER_PASSWORD` | GuildServ's operator password on Ergo (Ergo hashes it as it starts) |
-| `GUILDNET_SANDBOX_KEY` | the console's half of the sandbox's key pair: it signs the runner's desk tokens, and networks' egress passes ([git.md](git.md#reaching-the-host)) |
+| `GUILDNET_SANDBOX_KEY` | the console's half of the sandbox's key pair: it signs the runner's desk tokens, and networks' egress passes ([desks.md](desks.md#a-networks-own-hosts)) |
 | `GUILDNET_SANDBOX_PUBLIC_KEY` | sandboxd's and egress's half: they check them (comma-separated, the old and the new, while the pair's changed). A token is good for 15 minutes, and only for its network's desks |
 | `GUILDNET_SANDBOX_URL` | where sandboxd is (`https://sandboxd:8443`; on a desks host of its own, `https://<its private address>:8443`) |
 | `GUILDNET_DESKS_HOST_ADDRESS` | on a desks host: its private address, the only one sandboxd is published on ([desks-host.md](desks-host.md)) |

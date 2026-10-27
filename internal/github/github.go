@@ -293,15 +293,22 @@ func (c *Client) Guide(p config.Persona) string {
 		names = append(names, c.owner()+"/"+r)
 		paths = append(paths, "/workspace/"+r)
 	}
+	// At a desk of GuildNet's own, the runner fetches for it; on Managed
+	// Agents, its checkout has a read-only token of its own.
+	reach, update := "GitHub can't be reached from the shell: git_fetch brings what's new as origin/<branch>, and changes go in as pull requests.",
+		`git_fetch, then "git rebase origin/<base>"`
+	if p.Platform == "managed" {
+		reach, update = "It has a read-only token: git pull for updates, but you can't push from the shell.", `"git fetch origin && git rebase origin/<base>"`
+	}
 	return fmt.Sprintf(`<github>
-Your team's repositories (%s) are checked out in your workspace at %s, with a read-only token: read, build, and test there, and git pull for updates, but you can't push from the shell.
+Your team's repositories (%s) are checked out in your workspace at %s: read, build, and test there. %s
 
-To change code, use github_open_pull_request: put your change on a branch of your own, named <your nick>/<topic> (other names are refused). The easiest way: make the change in your workspace and commit it on a branch there, then bring it up to date ("git fetch origin && git rebase origin/<base>"), run the tests on that, and pass patch: the output of "git diff origin/<base>...HEAD" (three dots: only your branch's own changes; for a new PR) or "git diff origin/<your branch>...HEAD" (to add to one). The patch must hold your whole change, not just the latest fix. The PR's checks (github_pr_status) are what count, not tests you ran. Or give files: edits (exact old text and its replacement) for existing files, content only for new ones. Don't resend whole files. Calling it again with the same branch adds a commit to that pull request. If the PR falls behind its base branch, github_update_branch brings it up to date; if that conflicts, redo your change on a new branch from the base and close the old PR with a comment. github_close_pull_request closes one of your PRs, with a comment saying why. github_pr_status shows a PR's checks; github_comment replies on a PR or issue.
+To change code, use github_open_pull_request: put your change on a branch of your own, named <your nick>/<topic> (other names are refused). The easiest way: make the change in your workspace and commit it on a branch there, then bring it up to date (%s), run the tests on that, and pass patch: the output of "git diff origin/<base>...HEAD" (three dots: only your branch's own changes; for a new PR) or "git diff origin/<your branch>...HEAD" (to add to one). The patch must hold your whole change, not just the latest fix. The PR's checks (github_pr_status) are what count, not tests you ran. Or give files: edits (exact old text and its replacement) for existing files, content only for new ones. Don't resend whole files. Calling it again with the same branch adds a commit to that pull request. If the PR falls behind its base branch, github_update_branch brings it up to date; if that conflicts, redo your change on a new branch from the base and close the old PR with a comment. github_close_pull_request closes one of your PRs, with a comment saying why. github_pr_status shows a PR's checks; github_comment replies on a PR or issue.
 
 Only say something is pushed, opened, closed, or merged when a tool result says so. If a tool failed and your change didn't get in, say that plainly.
 
 Merging (github_merge_pull_request) waits for a person's approval, and merges exactly what they approved. Ask for it when the PR is ready and its checks pass.
-</github>`, strings.Join(names, ", "), strings.Join(paths, ", "))
+</github>`, strings.Join(names, ", "), strings.Join(paths, ", "), reach, update)
 }
 
 // Tools are the GitHub tools p gets: none if its team has no repos.
