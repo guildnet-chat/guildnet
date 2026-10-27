@@ -58,15 +58,26 @@ func (r *Runner) vhostFor(p person) string {
 	return strings.Join(append(parts, domain), ".")
 }
 
-// teamSlug is the team's channel name without the #, e.g. "customer-success".
+// roleLabels are the hostname labels that say who someone is: a team's slug
+// is never one, so a team called AI can't give its people an agent's.
+var roleLabels = []string{"owner", "guest", "bot", "ai", "ai-lead", "lead", "team"}
+
+// teamSlug is the team's channel name without the #, e.g.
+// "customer-success": one label (a dot becomes a dash), and "team-" before
+// one that's a role's ("team-ai").
 func (r *Runner) teamSlug(team string) string {
 	if team == "" {
 		return ""
 	}
+	slug := strings.ToLower(strings.Join(strings.Fields(team), "-"))
 	if l, err := r.store.Team(context.Background(), team); err == nil && l.Channel != "" {
-		return strings.ToLower(strings.TrimLeft(l.Channel, "#&"))
+		slug = strings.ToLower(strings.TrimLeft(l.Channel, "#&"))
 	}
-	return strings.ToLower(strings.Join(strings.Fields(team), "-"))
+	slug = strings.ReplaceAll(slug, ".", "-")
+	if slices.Contains(roleLabels, slug) {
+		slug = "team-" + slug
+	}
+	return slug
 }
 
 // How soon (then at most how rarely) refused hostnames are asked for again,

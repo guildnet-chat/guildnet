@@ -65,6 +65,27 @@ func TestHostnamesFollowTheOrgChart(t *testing.T) {
 	n.expectHost("vera", "ai.engineering.guildnet")
 }
 
+// A team's name can't make a person's hostname a role's: someone in a team
+// called AI isn't ai.guildnet (an agent's), and a team's channel with a dot
+// in it can't make ai.engineering.guildnet either.
+func TestATeamsNameCantGiveAPersonAnAgentsHostname(t *testing.T) {
+	n := startRealNetwork(t, &fakeBrain{})
+	if err := n.ergo.Register("dana", testPassword); err != nil {
+		t.Fatal(err)
+	}
+	joinHumanLoggedIn(t, n.ergo.Addr, "dana", "dana", testPassword, "#general")
+	n.human.say("GuildServ", "TEAM CREATE AI")
+	n.human.expect("AI made", guildServSaying("method", "AI"))
+	n.human.say("GuildServ", `MEMBER ADD dana ROLE "Researcher" TEAM AI`)
+	n.human.expect("dana added", guildServSaying("method", "added dana"))
+
+	n.expectHost("dana", "team-ai.guildnet")
+
+	n.human.say("GuildServ", "TEAM SET AI CHANNEL #ai.engineering")
+	n.human.expect("AI's channel set", guildServSaying("method", "AI"))
+	n.expectHost("dana", "ai-engineering.guildnet")
+}
+
 // Someone added to the org before they have an IRC account can't be given a
 // hostname yet. Once they register, the next change to the org gives them
 // theirs; it isn't marked as done when the server refused it.
