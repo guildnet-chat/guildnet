@@ -16,6 +16,7 @@ type Tries struct {
 	max    int
 	window time.Duration
 	tries  map[string][]time.Time
+	swept  time.Time // when keys whose tries passed were last swept out
 }
 
 // New counts tries: after max within window, a key is refused.
@@ -24,8 +25,12 @@ func New(max int, window time.Duration) *Tries {
 }
 
 // keys is how many keys Tries holds before it sweeps out the ones whose
-// tries have all passed.
-const keys = 10_000
+// tries have all passed: at most once every sweepEvery, so made-up keys (a
+// sign-in with a new name each time) can't have every try walk them all.
+const (
+	keys       = 10_000
+	sweepEvery = time.Second
+)
 
 func (l *Tries) recent(key string, now time.Time) []time.Time {
 	var keep []time.Time
@@ -59,7 +64,8 @@ func (l *Tries) Try(key string, now time.Time) bool {
 	if len(l.recent(key, now)) >= l.max {
 		return false
 	}
-	if len(l.tries) >= keys {
+	if len(l.tries) >= keys && (now.Sub(l.swept) >= sweepEvery || now.Before(l.swept)) {
+		l.swept = now
 		for k := range l.tries {
 			l.recent(k, now)
 		}
@@ -96,4 +102,54 @@ func (l *Tries) Reset(key string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	delete(l.tries, key)
+}
+
+// Len is how many keys it holds tries of.
+func (l *Tries) Len() int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return len(l.tries)
+}
+
+// Locks are locks by key, kept only while someone holds or waits for one
+// (so made-up keys leave nothing behind). Its zero value is ready to use.
+type Locks struct {
+	mu   sync.Mutex
+	held map[string]*keyLock
+}
+
+type keyLock struct {
+	sync.Mutex
+	users int // holding it, or waiting to
+}
+
+// Lock holds key's lock until the func it returns is called.
+func (k *Locks) Lock(key string) (unlock func()) {
+	k.mu.Lock()
+	if k.held == nil {
+		k.held = map[string]*keyLock{}
+	}
+	l := k.held[key]
+	if l == nil {
+		l = &keyLock{}
+		k.held[key] = l
+	}
+	l.users++
+	k.mu.Unlock()
+	l.Lock()
+	return func() {
+		l.Unlock()
+		k.mu.Lock()
+		if l.users--; l.users == 0 {
+			delete(k.held, key)
+		}
+		k.mu.Unlock()
+	}
+}
+
+// Len is how many keys it holds locks for.
+func (k *Locks) Len() int {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	return len(k.held)
 }

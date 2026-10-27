@@ -174,9 +174,9 @@ type Platform struct {
 	// sign-ins waiting for theirs.
 	codeAttempts *limit.Tries
 	steps        pendingSteps
-	stepped      stepped  // sign-ins whose second step was just shown
-	signIns      signIns  // people's IRC passwords, for a store that keeps none
-	signInLocks  sync.Map // network|account -> *sync.Mutex: one sign-in at a time
+	stepped      stepped     // sign-ins whose second step was just shown
+	signIns      signIns     // people's IRC passwords, for a store that keeps none
+	signInLocks  limit.Locks // by network|account: one sign-in at a time
 	repos        reposByInstallation
 	sleep        sleeper // networks' use, and those waking (sleep.go)
 	// githubConnects: connecting GitHub from networks' consoles.

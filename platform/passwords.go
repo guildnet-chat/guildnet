@@ -143,9 +143,7 @@ func (p *Platform) checkSignInWith(ctx context.Context, n Network, account, pass
 	account = strings.ToLower(account)
 	// One at a time for an account: passwords sent at once are counted
 	// before the next is checked.
-	lock, _ := p.signInLocks.LoadOrStore(signInKey(n.Name, account), &sync.Mutex{})
-	lock.(*sync.Mutex).Lock()
-	defer lock.(*sync.Mutex).Unlock()
+	defer p.signInLocks.Lock(signInKey(n.Name, account))()
 	store := p.passwords()
 	source := signInSource(ip)
 	now := p.opts.Now()
