@@ -27,11 +27,15 @@ COPY ircauth/main.go /ircauth/main.go
 WORKDIR /ircauth
 RUN CGO_ENABLED=0 go build -trimpath -o /out/guildnet-ircauth main.go
 
-# The upstream image of the same release: its layout, languages and run.sh.
-# It's rebuilt only with Ergo's releases, so its Alpine packages are brought
-# up to date here.
-FROM ghcr.io/ergochat/ergo:stable@sha256:72db5b93b437ea0512fb79d9d4d035f0916ccba07ed736dec19e8d5b5a73f972
-RUN apk upgrade --no-cache
+# The upstream image's layout (/ircd-bin, /ircd), on Alpine, with the
+# release's languages. Not the upstream image itself: it's rebuilt only with
+# Ergo's releases, and its default.yaml's example key looks like a leaked
+# one to scans.
+FROM alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
+WORKDIR /ircd
+VOLUME /ircd
+EXPOSE 6667 6697
+COPY --from=build /ergo/languages /ircd-bin/languages/
 COPY --from=build /out/ergo /ircd-bin/ergo
 COPY --from=build /out/guildnet-ircauth /ircd-bin/guildnet-ircauth
 COPY ircd.yaml /ircd-bin/guildnet.yaml
