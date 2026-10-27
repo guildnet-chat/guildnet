@@ -262,6 +262,16 @@ func (r *Runner) hostDecided(actor string, a org.Approval, allow bool, reason st
 	}
 }
 
+// hostExpired tells a person who asked for a host that nobody decided (an
+// agent hears as it carries on).
+func (r *Runner) hostExpired(a org.Approval) {
+	if _, agentAsked := r.persona(a.Agent); agentAsked {
+		return
+	}
+	host, _ := hostAsked(a.Summary)
+	r.guildReply(a.Agent, fmt.Sprintf("#%d expired: %s didn't decide within 24 working hours, so desks can't reach %s. Ask again if they still need it.", a.ID, a.Approver, host))
+}
+
 // The runner's API: the list for anyone in the company; the owner changes
 // it, anyone else asks.
 

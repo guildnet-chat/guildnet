@@ -502,6 +502,9 @@ func (r *Runner) expireApprovals() {
 		}
 		r.guildConn.Privmsg(a.Approver, truncate(fmt.Sprintf("#%d expired without a decision: %s won't %s.", a.ID, a.Agent, a.Summary), maxLineBytes))
 		r.ledgerConn.Privmsg(r.cfg.OpsChannel, truncate(fmt.Sprintf("#%d expired (%s: %s)", a.ID, a.Agent, a.Summary), maxLineBytes))
+		if a.Tool == deskHostTool {
+			r.hostExpired(a)
+		}
 		r.resumeAfter(a, false, reason)
 	}
 }

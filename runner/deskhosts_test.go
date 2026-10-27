@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/guildnet-chat/guildnet/config"
 	"github.com/guildnet-chat/guildnet/internal/agent"
@@ -107,6 +108,24 @@ func TestSomeoneElseAsksTheOwnerForAHost(t *testing.T) {
 		t.Errorf("the list: %v", got)
 	}
 	dana.expect("dana told", guildServSaying("dana", "api.stripe.com"))
+}
+
+func TestAPersonHearsWhenTheirAskForAHostExpires(t *testing.T) {
+	clock := &fakeClock{t: time.Date(2026, 9, 23, 10, 0, 0, 0, time.UTC)} // a Wednesday
+	n := startNetwork(t, &fakeBrain{}, withAPI(), withClock(clock))
+	dana, _ := kaiUnderDana(t, n)
+
+	expectStatus(t, n, "dana", http.StatusOK, "POST", "/v1/desk-hosts/ask", map[string]any{"host": "api.stripe.com", "why": "the payments work"})
+	n.human.expect("the owner asked", askedToApprove("method"))
+
+	clock.Advance(25 * time.Hour)
+	m := dana.expect("dana told it expired", guildServSaying("dana", "expired"))
+	if !strings.Contains(m.text, "api.stripe.com") || !strings.Contains(m.text, "again") {
+		t.Errorf("dana was told %q, want the host and that dana can ask again", m.text)
+	}
+	if got := listedHosts(t, n); len(got) != 0 {
+		t.Errorf("the list after it expired: %v", got)
+	}
 }
 
 // deskKai is kai, at a desk of GuildNet's own.
