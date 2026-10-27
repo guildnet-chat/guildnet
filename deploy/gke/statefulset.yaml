@@ -38,7 +38,7 @@ spec:
           # image doesn't happen here. Caddy's is handed over whole: a disk
           # from before Caddy ran as its own user has its certificates as
           # root's.
-          image: ghcr.io/guildnet-chat/caddy:26.10.2
+          image: ghcr.io/guildnet-chat/caddy:26.10.3
           command:
             - sh
             - -c
@@ -62,7 +62,7 @@ spec:
         - name: caddy
           # The edge, and the only thing reachable from outside: HTTPS (with
           # certificates from Let's Encrypt), and IRC over TLS on 6697.
-          image: ghcr.io/guildnet-chat/caddy:26.10.2
+          image: ghcr.io/guildnet-chat/caddy:26.10.3
           ports:
             - {name: http, containerPort: 80}
             - {name: https, containerPort: 443}
@@ -87,7 +87,7 @@ spec:
           # The console: the home page (first-run setup), the network's
           # console and web chat, and the broker the runner gets its settings
           # and keys from.
-          image: ghcr.io/guildnet-chat/platform:26.10.2
+          image: ghcr.io/guildnet-chat/platform:26.10.3
           env:
             - {name: GUILDNET_DOMAIN, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_DOMAIN}}}
             - {name: GUILDNET_BASE_DOMAIN, value: $(GUILDNET_DOMAIN)}
@@ -161,7 +161,7 @@ spec:
         - name: ergo
           # The network's IRC server. Members only: an account is needed to
           # connect, and accounts come from the console and invites.
-          image: ghcr.io/guildnet-chat/ergo:26.10.2
+          image: ghcr.io/guildnet-chat/ergo:26.10.3
           env:
             - {name: GUILDNET_DOMAIN, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_DOMAIN}}}
             - {name: GUILDNET_NETWORK, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_NETWORK}}}
@@ -208,7 +208,7 @@ spec:
         - name: runner
           # The network's agents, GuildServ and the ledger. It waits for
           # first-run setup, then starts from what it chose.
-          image: ghcr.io/guildnet-chat/runner:26.10.2
+          image: ghcr.io/guildnet-chat/runner:26.10.3
           env:
             - {name: GUILDNET_NETWORK, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_NETWORK}}}
             - {name: GUILDNET_SETTINGS_FROM_BROKER, value: "on"}

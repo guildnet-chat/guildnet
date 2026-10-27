@@ -19,8 +19,8 @@ Requirements: Linux with Docker Engine 28+, and a domain with `A` records for
 ([full requirements](docs/self-host/requirements.md)).
 
 ```bash
-curl -fsSL https://github.com/guildnet-chat/guildnet/archive/refs/tags/26.10.2.tar.gz | tar -xz
-cd guildnet-26.10.2/deploy/selfhost
+curl -fsSL https://github.com/guildnet-chat/guildnet/archive/refs/tags/26.10.3.tar.gz | tar -xz
+cd guildnet-26.10.3/deploy/selfhost
 sh init.sh chat.example.com hq
 docker compose pull
 docker compose up -d

@@ -59,7 +59,7 @@ settings with the Compose stack's `init.sh`, then move them into
 `deploy/gke`:
 
 ```bash
-cd guildnet-26.10.2/deploy/selfhost
+cd guildnet-26.10.3/deploy/selfhost
 sh init.sh chat.example.com hq
 cd ../gke
 grep -v '^#' ../selfhost/.env | grep . > guildnet.env && chmod 600 guildnet.env
@@ -132,7 +132,7 @@ Read the release notes. Get the new release, copy `guildnet.env`,
 `kustomization.yaml` names its images), and apply from there:
 
 ```bash
-cp ../../../guildnet-26.10.1/deploy/gke/{guildnet.env,server-ca.pem,address.yaml} .
+cp ../../../guildnet-26.10.2/deploy/gke/{guildnet.env,server-ca.pem,address.yaml} .
 kubectl apply -k .
 ```
 
