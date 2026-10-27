@@ -220,6 +220,41 @@ func TestNothingNewFetchesNothing(t *testing.T) {
 	}
 }
 
+// A repo taken off the team (or the network) goes from its desks at their
+// next start: its clone, the code in it with it. What the agent made itself
+// stays, and nothing outside the workspace is touched, whatever the list of
+// checkouts the desk keeps says.
+func TestAReposCheckoutGoesWhenItsTakenAway(t *testing.T) {
+	s, h, w := gitDesk(t)
+	w.Git = fakeGit{{Name: "web", URL: s.URL(), Read: reader}, {Name: "payments", URL: s.URL(), Read: reader}}
+	if err := w.Ready(context.Background(), kaiAtDesk); err != nil {
+		t.Fatal(err)
+	}
+	os.MkdirAll(filepath.Join(h.root, "notes"), 0o755)
+	os.WriteFile(filepath.Join(h.root, "notes", "plan.md"), []byte("mine\n"), 0o644)
+	outside := t.TempDir()
+	list, _ := os.ReadFile(filepath.Join(h.root, ".guildnet-checkouts"))
+	os.WriteFile(filepath.Join(h.root, ".guildnet-checkouts"), append(list, []byte(filepath.ToSlash(outside)+"\n"+h.root+"/../x\n")...), 0o644)
+
+	w.Git = fakeGit{{Name: "web", URL: s.URL(), Read: reader}}
+	if err := w.Ready(context.Background(), kaiAtDesk); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(filepath.Join(h.root, "payments")); !os.IsNotExist(err) {
+		t.Errorf("payments' checkout is still at the desk (%v)", err)
+	}
+	if got := h.git("/workspace/web", "rev-parse", "HEAD"); got != s.Main {
+		t.Errorf("web's checkout: %q", got)
+	}
+	if b, _ := os.ReadFile(filepath.Join(h.root, "notes", "plan.md")); string(b) != "mine\n" {
+		t.Error("the agent's own notes went")
+	}
+	if _, err := os.Stat(outside); err != nil {
+		t.Errorf("a folder outside the workspace went: %v", err)
+	}
+}
+
 // A repository whose credential the host refuses isn't checked out, and the
 // desk isn't ready, saying why.
 func TestACheckoutTheHostRefusesSaysWhy(t *testing.T) {

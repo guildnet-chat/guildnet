@@ -438,8 +438,16 @@ func TestADeskWithoutReposIsJustWokenAndMadeFresh(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(sb.opened) != 1 || len(sb.commands()) != 1 || strings.Contains(strings.Join(sb.commands()[0].Args, " "), "clone") {
-		t.Errorf("opened %v, ran %v; want only the home made fresh", sb.opened, sb.commands())
+	// Its home made fresh, and any repos it had taken away (the team may have
+	// had some): nothing checked out.
+	cmds := sb.commands()
+	if len(sb.opened) != 1 || len(cmds) != 2 || !slices.Contains(cmds[1].Args, "forget") {
+		t.Errorf("opened %v, ran %v; want the home made fresh and repos no longer the team's taken away", sb.opened, cmds)
+	}
+	for _, c := range cmds {
+		if strings.Contains(strings.Join(c.Args, " "), "clone") || strings.Contains(strings.Join(c.Args, " "), "index-pack") {
+			t.Errorf("checked something out: %v", c.Args)
+		}
 	}
 }
 

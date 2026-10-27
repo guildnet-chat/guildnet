@@ -825,6 +825,21 @@ func (w *Workspace) Ready(ctx context.Context, p config.Persona) error {
 	case out.Exit != 0:
 		return fmt.Errorf("readying the desk: %s", strings.TrimSpace(out.Text))
 	}
+	// A repo taken away since (off the team, or the network) goes, code and
+	// all: the desk keeps the list of what the runner checked out there.
+	dirs := []string{}
+	for _, r := range repos {
+		dirs = append(dirs, r.dir)
+	}
+	out, err = w.sb.Run(ctx, p.Nick, Command{Args: append(append(shell(forgetGone), "forget", Root), dirs...), Dir: Root, Timeout: time.Minute})
+	switch {
+	case err != nil:
+		return err
+	case out.TimedOut:
+		return errors.New("taking away repos no longer the team's took too long")
+	case out.Exit != 0:
+		return fmt.Errorf("taking away repos no longer the team's: %s", strings.TrimSpace(out.Text))
+	}
 	for _, r := range repos {
 		if _, err := w.fetch(ctx, p, r); err != nil {
 			return err
@@ -832,6 +847,23 @@ func (w *Workspace) Ready(ctx context.Context, p config.Persona) error {
 	}
 	return nil
 }
+
+// forgetGone removes the checkouts the runner made at a desk that aren't
+// among its repos ($2...) any more, as the desk's list of them says, and
+// keeps the new list. Only folders directly in the workspace ($1) go, so a
+// list the agent changed can't reach anything else.
+const forgetGone = `set -eu
+root=$1; shift
+list="$root/.guildnet-checkouts"
+if [ -f "$list" ]; then
+  while IFS= read -r d; do
+    case "$d" in *..*|"$root"/*/*) continue ;; "$root"/?*) ;; *) continue ;; esac
+    keep=
+    for x in "$@"; do [ "$x" = "$d" ] && keep=1; done
+    [ -n "$keep" ] || rm -rf -- "$d"
+  done < "$list"
+fi
+printf '%s\n' "$@" > "$list"`
 
 // shell runs script in bash, which reads no startup files: what an agent's
 // desk runs is what was asked for, and only that.

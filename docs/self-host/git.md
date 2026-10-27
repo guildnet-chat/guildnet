@@ -11,6 +11,7 @@ People merge on the host: pull and merge requests, and their status, are
 | Reading code | the runner fetches with the repository's **read** credential and gives the desk the pack: at each readying, and when the agent calls `git_fetch` |
 | Pushing a branch | `git_push_branch`, run by the runner with the repository's **push** credential, for that push only |
 | Merging | on the host, by people |
+| Taking one away | off the team, or the network: its checkout goes from the team's desks at their next readying (what agents made themselves stays) |
 
 No git credential ever reaches a desk, and desks can't reach git hosts at
 all: content an agent read can't steer it into sending the company's code
