@@ -7,6 +7,32 @@
 # GuildServ to fill in with what the company is for (it writes
 # guildnet.motd and has Ergo reread it); until then it's left out.
 set -eu
+# The image's own config lets nobody in; a deployment gives Ergo what makes
+# it usable. Missing any of that, it would start a server nobody can use (or
+# one that can't ask the console about people's logins): say so instead.
+refuse() {
+  echo "start.sh: refusing to start: $*" >&2
+  exit 1
+}
+# set NAME: NAME is set and not empty.
+set_() { eval "[ -n \"\${$1:-}\" ]"; }
+# A JSON list with at least one string in it that isn't empty.
+printf '%s' "${ERGO__API__BEARER_TOKENS:-}" | grep -q '"[^"][^"]*"' ||
+  refuse "ERGO__API__BEARER_TOKENS is missing or empty (the console's and the runner's way in)"
+set_ GUILDNET_OPER_PASSWORD || set_ ERGO__OPERS__GUILDSERV__PASSWORD ||
+  refuse "GuildServ's operator password is missing (GUILDNET_OPER_PASSWORD, or its hash in ERGO__OPERS__GUILDSERV__PASSWORD)"
+if [ "${ERGO__ACCOUNTS__JWT_AUTH__ENABLED:-}" = true ]; then
+  printf '%s' "${ERGO__ACCOUNTS__JWT_AUTH__TOKENS:-}" | grep -q '"key": *"[^"]' ||
+    refuse "the web chat is on but ERGO__ACCOUNTS__JWT_AUTH__TOKENS has no key"
+fi
+if set_ GUILDNET_IRC_AUTH_URL || set_ GUILDNET_ERGO_TOKEN; then
+  set_ GUILDNET_IRC_AUTH_URL || refuse "GUILDNET_ERGO_TOKEN is set without GUILDNET_IRC_AUTH_URL (the console to ask about logins)"
+  set_ GUILDNET_ERGO_TOKEN || refuse "GUILDNET_IRC_AUTH_URL is set without GUILDNET_ERGO_TOKEN (Ergo's token for the console)"
+  case "$GUILDNET_IRC_AUTH_URL" in
+    https://*) set_ GUILDNET_BROKER_CA || set_ GUILDNET_BROKER_CA_FILE ||
+      refuse "GUILDNET_IRC_AUTH_URL is https but there's no GUILDNET_BROKER_CA or GUILDNET_BROKER_CA_FILE to check the console's certificate" ;;
+  esac
+fi
 cp /ircd-bin/guildnet.yaml /ircd/ircd.yaml
 network="${GUILDNET_NETWORK:-this network}"
 web="${GUILDNET_WEB_URL:-your network's own address}"

@@ -25,7 +25,6 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/yaml.v3"
 )
 
@@ -150,7 +149,8 @@ func Start(opts ...Option) (*Server, error) {
 	// Started the way deploy/ergo starts it, with this test's config in
 	// place of the committed one.
 	create := append([]string{"create", "-p", "127.0.0.1::6667", "-p", "127.0.0.1::8089", "-p", "127.0.0.1::8097",
-		"-e", "GUILDNET_NETWORK=" + s.network, "-e", "GUILDNET_WEB_URL=" + s.webURL}, s.console...)
+		"-e", "GUILDNET_NETWORK=" + s.network, "-e", "GUILDNET_WEB_URL=" + s.webURL,
+		"-e", `ERGO__API__BEARER_TOKENS=["` + s.APIToken + `"]`, "-e", "GUILDNET_OPER_PASSWORD=" + s.OperPassword}, s.console...)
 	out, err := docker(append(create, image)...)
 	if err != nil {
 		return nil, err
@@ -260,14 +260,11 @@ func (s *Server) config() ([]byte, error) {
 	if err := yaml.Unmarshal(raw, &conf); err != nil {
 		return nil, err
 	}
-	hash, err := bcrypt.GenerateFromPassword([]byte(s.OperPassword), bcrypt.MinCost)
-	if err != nil {
-		return nil, err
-	}
-	conf["api"] = map[string]any{"enabled": true, "listener": ":8089", "bearer-tokens": []string{s.APIToken}}
-	conf["opers"] = map[string]any{s.OperName: map[string]any{
-		"class": "guildserv", "hidden": true, "password": string(hash),
-	}}
+	// The API's token and GuildServ's operator password come as every
+	// deployment gives them, in the environment (Start), where start.sh
+	// checks them.
+	conf["api"] = map[string]any{"enabled": true, "listener": ":8089"}
+	conf["opers"] = map[string]any{s.OperName: map[string]any{"class": "guildserv", "hidden": true}}
 	// As in production: tokens from the platform, for existing accounts
 	// only, from pages on the platform's own addresses.
 	token := map[string]any{"algorithm": "hmac", "key": s.JWTKey, "account-claims": []string{"account"}}

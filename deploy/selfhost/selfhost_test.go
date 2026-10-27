@@ -747,6 +747,8 @@ func TestErgoTakesGuildServsPasswordAsItIs(t *testing.T) {
 	docker(t, "build", "--quiet", "--tag", image, "../ergo")
 	id := docker(t, "run", "-d", "--rm", "--user", "65534:65534", "-p", "127.0.0.1::6667",
 		"-e", "GUILDNET_OPER_PASSWORD=Gs-0per_pw", "-e", "ERGO__OPERS__GUILDSERV__CLASS=guildserv",
+		// start.sh won't start Ergo without one.
+		"-e", `ERGO__API__BEARER_TOKENS=["api-token"]`,
 		// Connecting without an account, to try OPER alone.
 		"-e", "ERGO__ACCOUNTS__REQUIRE_SASL__ENABLED=false", image)
 	t.Cleanup(func() { exec.Command("docker", "rm", "-f", id).Run() })

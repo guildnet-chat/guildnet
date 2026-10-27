@@ -24,7 +24,7 @@ Sentry or GlitchTip (`GUILDNET_SENTRY_DSN`, [configuration.md](configuration.md#
 | --- | --- |
 | The site doesn't load, or the certificate is invalid | Caddy has no certificate; `docker compose logs caddy` says why. Usually DNS (check both names with `dig`) or ports 80/443 closed. Let's Encrypt rate-limits failures: wait an hour after several |
 | The build fails, or the host freezes during it | out of memory (4 GB minimum). Add swap (e.g. 4 GB) and rebuild |
-| A service restarts repeatedly | `docker compose ps` names it; the end of its log says why. The console exits on invalid settings (a malformed email address, a stray file in `brand/`) and names the setting |
+| A service restarts repeatedly | `docker compose ps` names it; the end of its log says why. The console exits on invalid settings (a malformed email address, a stray file in `brand/`) and names the setting. Ergo refuses to start without its API token, GuildServ's operator password, the web chat's key, or the console's address, token and CA together, and names what's missing (`init.sh` makes them all) |
 | The runner logs that it's waiting for first-run setup | expected until setup is done ([install.md](install.md#5-first-run-setup)) |
 | IRC clients can't connect | they need TLS, port 6697, the network's hostname (`hq.chat.example.com`), and SASL with nick and password |
 
