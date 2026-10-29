@@ -3,10 +3,12 @@
 # A self-hosted install's runner: a database and login of its own, like the
 # platform's (10-platform.sh, which says how it runs), when
 # RUNNER_DB_PASSWORD is set. (On guildnet.chat each network's runner gets
-# its own from the host.)
+# its own from the host.) The image's entrypoint sources this unless it's
+# executable, so it never exits: that would end the entrypoint, and
+# Postgres would never start.
 set -eu
-[ -n "${RUNNER_DB_PASSWORD:-}" ] || exit 0
-psql -v ON_ERROR_STOP=1 -v pw="$RUNNER_DB_PASSWORD" --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<'SQL'
+if [ -n "${RUNNER_DB_PASSWORD:-}" ]; then
+  psql -v ON_ERROR_STOP=1 -v pw="$RUNNER_DB_PASSWORD" --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<'SQL'
 select 'create role runner login' where not exists (select from pg_roles where rolname = 'runner') \gexec
 alter role runner login password :'pw';
 grant runner to current_user;
@@ -17,3 +19,4 @@ revoke connect on database runner from public;
 reset role;
 revoke runner from current_user;
 SQL
+fi
