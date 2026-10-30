@@ -9,10 +9,13 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -149,6 +152,78 @@ func TestAServerReachedByAddressMustHaveIt(t *testing.T) {
 	fromFile := &http.Client{Transport: &http.Transport{TLSClientConfig: pki.ClientTLSFromFile(caFile)}, Timeout: 5 * time.Second}
 	if _, err := get(fromFile, "https://127.0.0.1:"+otherPort); err == nil {
 		t.Error("ClientTLSFromFile took a server reached by address without checking it")
+	}
+}
+
+// A server pinned by its key's hash is the only one trusted, even beside
+// another with a good certificate from the same CA for the same address
+// (sandboxd's old key, kept by whoever took a desks host). Checked as the
+// connection's made, before anything is sent; the pin is asked for at each
+// connection, so a new one is taken up; with none, the CA's word is enough.
+func TestAPinnedServerIsTheOnlyOneTrusted(t *testing.T) {
+	dir, real, old := t.TempDir(), t.TempDir(), t.TempDir()
+	ca, _ := pki.EnsureCA(dir)
+	caFile := filepath.Join(dir, "ca.crt")
+	for _, out := range []string{real, old} {
+		if err := ca.Issue(out, "sandboxd", []string{"127.0.0.1"}, time.Now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, port, _ := net.SplitHostPort(serve(t, filepath.Join(real, "sandboxd.crt"), filepath.Join(real, "sandboxd.key")))
+	_, oldPort, _ := net.SplitHostPort(serve(t, filepath.Join(old, "sandboxd.crt"), filepath.Join(old, "sandboxd.key")))
+	pin, err := pki.KeyPinFile(filepath.Join(real, "sandboxd.crt"))
+	if err != nil || !strings.HasPrefix(pin, "sha256/") {
+		t.Fatalf("pin %q, %v", pin, err)
+	}
+	var mu sync.Mutex
+	current := pin
+	client := &http.Client{Transport: pki.PinTransport(pki.ClientTransport(caFile), func() string {
+		mu.Lock()
+		defer mu.Unlock()
+		return current
+	}), Timeout: 5 * time.Second}
+
+	if body, err := get(client, "https://127.0.0.1:"+port); err != nil || body != "ok" {
+		t.Errorf("the pinned server: %q, %v", body, err)
+	}
+	var sent atomic.Bool
+	impostor := httptest.NewUnstartedServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { sent.Store(true) }))
+	impostor.TLS = pki.ServerTLS(filepath.Join(old, "sandboxd.crt"), filepath.Join(old, "sandboxd.key"))
+	impostor.StartTLS()
+	t.Cleanup(impostor.Close)
+	_, impostorPort, _ := net.SplitHostPort(strings.TrimPrefix(impostor.URL, "https://"))
+	for _, p := range []string{oldPort, impostorPort} {
+		if _, err := get(client, "https://127.0.0.1:"+p); err == nil {
+			t.Error("a server with another key was trusted")
+		}
+	}
+	if sent.Load() {
+		t.Error("a request reached the server with another key")
+	}
+	// A new pin (sandboxd given a new key) is taken up at the next connection.
+	mu.Lock()
+	current, _ = pki.KeyPinFile(filepath.Join(old, "sandboxd.crt"))
+	mu.Unlock()
+	client.CloseIdleConnections()
+	if _, err := get(client, "https://127.0.0.1:"+oldPort); err != nil {
+		t.Errorf("after the pin changed: %v", err)
+	}
+	// No pin: the CA's word.
+	mu.Lock()
+	current = ""
+	mu.Unlock()
+	client.CloseIdleConnections()
+	if _, err := get(client, "https://127.0.0.1:"+port); err != nil {
+		t.Errorf("with no pin: %v", err)
+	}
+	// Plain transports (a CA given as settings) are pinned too.
+	cfg, _ := pki.ClientTLS(ca.CertPEM())
+	plain := &http.Client{Transport: pki.PinTransport(&http.Transport{TLSClientConfig: cfg}, func() string { return pin }), Timeout: 5 * time.Second}
+	if _, err := get(plain, "https://127.0.0.1:"+port); err != nil {
+		t.Errorf("a plain transport, the pinned server: %v", err)
+	}
+	if _, err := get(plain, "https://127.0.0.1:"+oldPort); err == nil {
+		t.Error("a plain transport trusted a server with another key")
 	}
 }
 

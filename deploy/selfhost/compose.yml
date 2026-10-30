@@ -153,6 +153,9 @@ services:
       # Desks on a host of their own (docs/self-host/desks-host.md): the
       # names and addresses its certificate is for, which sandbox-cert signs.
       GUILDNET_SANDBOX_NAMES: ${GUILDNET_SANDBOX_NAMES:-}
+      # Its key's pin, which sandbox-cert prints: the console and the runner
+      # reach only the sandboxd with that key (docs/self-host/desks-host.md).
+      GUILDNET_SANDBOX_PIN: ${GUILDNET_SANDBOX_PIN:-}
       # Git servers on your own network that agents' repositories may be on
       # (docs/self-host/configuration.md).
       GUILDNET_GIT_PRIVATE_HOSTS: ${GUILDNET_GIT_PRIVATE_HOSTS:-}

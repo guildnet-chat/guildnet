@@ -14,9 +14,11 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -26,6 +28,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 )
@@ -341,6 +344,101 @@ func ClientTransport(caFile string) *http.Transport {
 			return d.DialContext(ctx, network, addr)
 		},
 	}
+}
+
+// KeyPin is a server's pin: the SHA-256 of its certificate's public key,
+// "sha256/" and base64. It stays the same when the certificate's renewed
+// for the same key, and changes when the server's given a new key.
+func KeyPin(cert *x509.Certificate) string {
+	sum := sha256.Sum256(cert.RawSubjectPublicKeyInfo)
+	return "sha256/" + base64.StdEncoding.EncodeToString(sum[:])
+}
+
+// KeyPinFile is the pin of the first certificate in certFile (PEM).
+func KeyPinFile(certFile string) (string, error) {
+	b, err := os.ReadFile(certFile)
+	if err != nil {
+		return "", err
+	}
+	pin, err := KeyPinPEM(b)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", certFile, err)
+	}
+	return pin, nil
+}
+
+// KeyPinPEM is the pin of the first certificate in certPEM.
+func KeyPinPEM(certPEM []byte) (string, error) {
+	block, _ := pem.Decode(certPEM)
+	if block == nil || block.Type != "CERTIFICATE" {
+		return "", errors.New("that isn't a certificate")
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return "", err
+	}
+	return KeyPin(cert), nil
+}
+
+// ValidPin says whether pin is one KeyPin could make.
+func ValidPin(pin string) bool {
+	b, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(pin, "sha256/"))
+	return strings.HasPrefix(pin, "sha256/") && err == nil && len(b) == sha256.Size
+}
+
+// PinTransport is t, also refusing a server whose key isn't pin's (asked
+// for at each connection; "" pins nothing): checked as the connection's
+// made, before anything is sent.
+func PinTransport(t *http.Transport, pin func() string) *http.Transport {
+	t = t.Clone()
+	check := func(cs tls.ConnectionState) error {
+		want := pin()
+		if want == "" {
+			return nil
+		}
+		if len(cs.PeerCertificates) == 0 || KeyPin(cs.PeerCertificates[0]) != want {
+			return errors.New("the server's key isn't the one pinned")
+		}
+		return nil
+	}
+	if dial := t.DialTLSContext; dial != nil {
+		t.DialTLSContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+			conn, err := dial(ctx, network, addr)
+			if err != nil {
+				return nil, err
+			}
+			tc, ok := conn.(*tls.Conn)
+			if !ok {
+				conn.Close()
+				return nil, errors.New("not a TLS connection")
+			}
+			if err := tc.HandshakeContext(ctx); err != nil {
+				conn.Close()
+				return nil, err
+			}
+			if err := check(tc.ConnectionState()); err != nil {
+				conn.Close()
+				return nil, err
+			}
+			return conn, nil
+		}
+		return t
+	}
+	cfg := &tls.Config{MinVersion: tls.VersionTLS13}
+	if t.TLSClientConfig != nil {
+		cfg = t.TLSClientConfig.Clone()
+	}
+	before := cfg.VerifyConnection
+	cfg.VerifyConnection = func(cs tls.ConnectionState) error {
+		if before != nil {
+			if err := before(cs); err != nil {
+				return err
+			}
+		}
+		return check(cs)
+	}
+	t.TLSClientConfig = cfg
+	return t
 }
 
 // clientTLSFromFile checks the server against host, or, if that's "", the

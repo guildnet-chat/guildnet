@@ -139,6 +139,7 @@ spec:
             - {name: GUILDNET_SANDBOX_URL, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_SANDBOX_URL, optional: true}}}
             - {name: GUILDNET_SANDBOX_KEY, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_SANDBOX_KEY, optional: true}}}
             - {name: GUILDNET_SANDBOX_NAMES, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_SANDBOX_NAMES, optional: true}}}
+            - {name: GUILDNET_SANDBOX_PIN, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_SANDBOX_PIN, optional: true}}}
             - {name: GUILDNET_GIT_PRIVATE_HOSTS, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_GIT_PRIVATE_HOSTS, optional: true}}}
             - {name: GUILDNET_SENTRY_DSN, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_SENTRY_DSN, optional: true}}}
             - {name: GUILDNET_ENVIRONMENT, valueFrom: {secretKeyRef: {name: guildnet, key: GUILDNET_ENVIRONMENT, optional: true}}}

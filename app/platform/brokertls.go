@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/guildnet-chat/guildnet/pki"
@@ -56,6 +57,21 @@ func sandboxCA(getenv func(string) string) (string, error) {
 		}
 	}
 	return "", errors.New("an https GUILDNET_SANDBOX_URL needs the CA sandboxd's certificate is from: GUILDNET_BROKER_TLS_DIR (the console's own) or GUILDNET_PKI_SHARED (a host's)")
+}
+
+// sandboxPin is GUILDNET_SANDBOX_PIN, the key sandboxd is held to: "" if
+// it's not set, an error if it isn't a pin or sandboxd isn't over TLS.
+func sandboxPin(getenv func(string) string) (string, error) {
+	pin := getenv("GUILDNET_SANDBOX_PIN")
+	switch {
+	case pin == "":
+		return "", nil
+	case !pki.ValidPin(pin):
+		return "", errors.New(`GUILDNET_SANDBOX_PIN isn't a pin: "sha256/" and the base64 of 32 bytes (platform sandbox-cert prints it)`)
+	case !strings.HasPrefix(getenv("GUILDNET_SANDBOX_URL"), "https://"):
+		return "", errors.New("GUILDNET_SANDBOX_PIN needs sandboxd over TLS: an https GUILDNET_SANDBOX_URL")
+	}
+	return pin, nil
 }
 
 // signSandboxCert signs sandboxd's request for a certificate (from in: a

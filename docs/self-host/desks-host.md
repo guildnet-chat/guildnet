@@ -73,7 +73,9 @@ docker compose exec -T platform /platform sandbox-cert < sandboxd.csr > sandboxd
 ```
 
 On GKE: `kubectl exec -i guildnet-0 -c platform -- /platform sandbox-cert < sandboxd.csr > sandboxd.crt`.
-The certificate is public; copy it to the desks host.
+The certificate is public; copy it to the desks host. `sandbox-cert` also
+prints the key's pin, `GUILDNET_SANDBOX_PIN=sha256/...`: see
+[Pinning its key](#pinning-its-key).
 
 ## 4. Start
 
@@ -100,6 +102,27 @@ picks it up without restarting:
 docker compose run --rm -T tls tls-request > sandboxd.csr
 docker compose run --rm -T tls tls-install < sandboxd.crt
 ```
+
+## Pinning its key
+
+A certificate from the console's CA lasts a year, and there's no revoking
+one. If the desks host were ever taken, its key, and a certificate for its
+address, would go with it. Pinning the key closes that: add the line
+`sandbox-cert` printed, `GUILDNET_SANDBOX_PIN=sha256/...`, to the console's
+settings and restart it. The console then reaches only the sandboxd with
+that key, and tells the runner to do the same before it sends a desk token.
+The pin stays the same when the certificate is renewed.
+
+To stop trusting the old key, give sandboxd a new one. On the desks host:
+
+```bash
+docker compose run --rm -T --entrypoint rm tls /tls/sandboxd.key
+docker compose run --rm -T tls tls-request > sandboxd.csr
+```
+
+Have it signed as in step 3, install it as in step 4, and set the new pin in
+the console's settings. Runners take up a new pin with their next desk token, within 15
+minutes.
 
 ## Upgrading
 

@@ -15,6 +15,7 @@ import (
 	"github.com/guildnet-chat/guildnet/internal/desk"
 	"github.com/guildnet-chat/guildnet/internal/sandbox"
 	"github.com/guildnet-chat/guildnet/monitor"
+	"github.com/guildnet-chat/guildnet/pki"
 )
 
 // Sandbox is where desks of GuildNet's own are: sandboxd on the sandbox VM.
@@ -29,6 +30,20 @@ type Sandbox struct {
 	// Through is how sandboxd is reached (over TLS from GuildNet's own CA,
 	// where it serves that); nil for plain HTTP.
 	Through http.RoundTripper
+	// Pin, if set, is sandboxd's key's (pki.KeyPin): the console reaches
+	// only the sandboxd with that key, and tells runners to hold it to it
+	// too. Giving sandboxd a new key and the console its pin stops the old
+	// key being trusted.
+	Pin string
+}
+
+// pinned is s with Through holding sandboxd to its pin.
+func (s Sandbox) pinned() Sandbox {
+	if t, ok := s.Through.(*http.Transport); ok && s.Pin != "" {
+		pin := s.Pin
+		s.Through = pki.PinTransport(t, func() string { return pin })
+	}
+	return s
 }
 
 // wakeEvery is how often the sandbox VM is asked to start, however many
@@ -89,6 +104,10 @@ func (p *Platform) brokerSandbox(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(hosts) > 0 {
 		out["egress"] = sandbox.PassFor(s.Key, n.Name, hosts, now, deskTokenTTL)
+	}
+	// The key the runner holds sandboxd to, before it sends it the token.
+	if s.Pin != "" {
+		out["pin"] = s.Pin
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSONResponse(w, http.StatusOK, out)

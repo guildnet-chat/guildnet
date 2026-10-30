@@ -125,6 +125,7 @@ encrypted or authenticated with them: never change them; keep `.env` private.
 | `GUILDNET_DESKS_HOST_ADDRESS` | on a desks host: its private address, the only one sandboxd is published on ([desks-host.md](desks-host.md)) |
 | `GUILDNET_SANDBOX_TLS_DIR` | where the console puts sandboxd's certificate (from its own CA), and sandboxd reads it: sandboxd serves TLS when it's set |
 | `GUILDNET_SANDBOX_NAMES` | the names and IP addresses sandboxd's certificate is for (default `sandboxd`), comma-separated; a desks host of its own reached by address needs its address here |
+| `GUILDNET_SANDBOX_PIN` | optional, for a desks host of its own: its key's pin (`sha256/...`, which `sandbox-cert` prints). The console and the runner then reach only the sandboxd with that key, even if another has a good certificate from the console's CA ([desks-host.md](desks-host.md#pinning-its-key)) |
 
 `desks.sh` also sets `COMPOSE_PROFILES=desks`, which starts sandboxd and egress
 with the stack.

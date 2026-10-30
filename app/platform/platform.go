@@ -126,8 +126,15 @@ func Run(cfg Config) {
 			logger.Fatal("sandbox-cert signs with the console's CA: set GUILDNET_BROKER_TLS_DIR")
 		}
 		names := strings.Split(env("GUILDNET_SANDBOX_NAMES", "sandboxd"), ",")
-		if err := signSandboxCert(dir, names, os.Stdin, os.Stdout, time.Now()); err != nil {
+		var cert bytes.Buffer
+		if err := signSandboxCert(dir, names, os.Stdin, &cert, time.Now()); err != nil {
 			logger.Fatalf("sandbox-cert: %v", err)
+		}
+		os.Stdout.Write(cert.Bytes())
+		// The key's pin, to hold sandboxd to (GUILDNET_SANDBOX_PIN): the same
+		// at each renewal, until sandboxd's given a new key.
+		if pin, err := pki.KeyPinPEM(cert.Bytes()); err == nil {
+			fmt.Fprintf(os.Stderr, "GUILDNET_SANDBOX_PIN=%s\n", pin)
 		}
 		return
 	}
@@ -387,6 +394,10 @@ func Run(cfg Config) {
 				logger.Fatal(err)
 			}
 			opts.Sandbox.Through = pki.ClientTransport(ca)
+		}
+		// And held to its key, when it's pinned (docs/self-host/desks-host.md).
+		if opts.Sandbox.Pin, err = sandboxPin(os.Getenv); err != nil {
+			logger.Fatal(err)
 		}
 		if dir := os.Getenv("GUILDNET_SANDBOX_TLS_DIR"); dir != "" {
 			if own == "" {

@@ -442,6 +442,7 @@ Resources:
             - {Name: GUILDNET_SANDBOX_URL, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_SANDBOX_URL::"}
             - {Name: GUILDNET_SANDBOX_KEY, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_SANDBOX_KEY::"}
             - {Name: GUILDNET_SANDBOX_NAMES, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_SANDBOX_NAMES::"}
+            - {Name: GUILDNET_SANDBOX_PIN, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_SANDBOX_PIN::"}
             - {Name: GUILDNET_GIT_PRIVATE_HOSTS, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_GIT_PRIVATE_HOSTS::"}
             - {Name: GUILDNET_SENTRY_DSN, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_SENTRY_DSN::"}
             - {Name: GUILDNET_ENVIRONMENT, ValueFrom: !Sub "${SettingsSecret}:GUILDNET_ENVIRONMENT::"}

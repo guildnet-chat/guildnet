@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -23,6 +24,17 @@ type Broker struct {
 	URL, Network, Secret string
 	// HTTP is how the broker is reached; nil means a plain client.
 	HTTP *http.Client
+	// pin is the key the broker last said sandboxd has.
+	pin atomic.Pointer[string]
+}
+
+// Pin is the key the broker last said sandboxd has (pki.KeyPin): "" if it
+// said none, or hasn't been asked.
+func (b *Broker) Pin() string {
+	if p := b.pin.Load(); p != nil {
+		return *p
+	}
+	return ""
 }
 
 var brokerClient = &http.Client{Timeout: 15 * time.Second}
@@ -110,6 +122,7 @@ type sandboxAnswer struct {
 	Token   string    `json:"token"`
 	Expires time.Time `json:"expires"`
 	Egress  string    `json:"egress"`
+	Pin     string    `json:"pin"`
 }
 
 func (b *Broker) sandbox(ctx context.Context) (sandboxAnswer, error) { return b.sandboxFor(ctx, nil) }
@@ -137,6 +150,7 @@ func (b *Broker) sandboxFor(ctx context.Context, hosts []string) (sandboxAnswer,
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<16)).Decode(&out); err != nil || out.URL == "" || out.Token == "" {
 		return sandboxAnswer{}, fmt.Errorf("the broker's answer wasn't a sandbox")
 	}
+	b.pin.Store(&out.Pin)
 	return out, nil
 }
 

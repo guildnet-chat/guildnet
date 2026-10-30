@@ -17,6 +17,30 @@ import (
 	"github.com/guildnet-chat/guildnet/pki"
 )
 
+// GUILDNET_SANDBOX_PIN is a pin, for sandboxd over TLS, or it's refused:
+// one mistyped would otherwise pin nothing, or keep desks from working at
+// all without saying why.
+func TestASandboxPinMustBeOne(t *testing.T) {
+	const pin = "sha256/47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU="
+	for _, c := range []struct {
+		url, pin string
+		ok       bool
+	}{
+		{"https://10.20.0.9:8443", pin, true},
+		{"https://10.20.0.9:8443", "", true},
+		{"https://10.20.0.9:8443", "47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=", false},
+		{"https://10.20.0.9:8443", "sha256/short", false},
+		{"http://10.20.0.9:8443", pin, false},
+	} {
+		got, err := sandboxPin(func(k string) string {
+			return map[string]string{"GUILDNET_SANDBOX_URL": c.url, "GUILDNET_SANDBOX_PIN": c.pin}[k]
+		})
+		if ok := err == nil; ok != c.ok || (ok && got != c.pin) {
+			t.Errorf("%s with pin %q: %q, %v; want ok %v", c.url, c.pin, got, err, c.ok)
+		}
+	}
+}
+
 // serveBroker answers "ok" over TLS with the broker's certificate in dir.
 func serveBroker(t *testing.T, dir string) string {
 	t.Helper()

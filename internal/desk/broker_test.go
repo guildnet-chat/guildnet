@@ -52,6 +52,33 @@ func TestTheBrokerSaysWhereTheSandboxIs(t *testing.T) {
 	}
 }
 
+// The broker says which key sandboxd has (its pin), with each answer: the
+// runner holds sandboxd to the latest it was told, so a new key is taken up
+// with the next token.
+func TestTheBrokerSaysWhichKeySandboxdHas(t *testing.T) {
+	var mu sync.Mutex
+	pin := "sha256/first"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		fmt.Fprintf(w, `{"url":"https://sandbox","token":"t","pin":%q,"expires":%q}`, pin, time.Now().Add(time.Minute).UTC().Format(time.RFC3339))
+	}))
+	defer srv.Close()
+	b := &desk.Broker{URL: srv.URL, Network: "initech", Secret: "s"}
+	if b.Pin() != "" {
+		t.Errorf("before asking: %q", b.Pin())
+	}
+	if _, _, err := b.Sandbox(context.Background()); err != nil || b.Pin() != "sha256/first" {
+		t.Fatalf("pin %q, %v", b.Pin(), err)
+	}
+	mu.Lock()
+	pin = "sha256/second"
+	mu.Unlock()
+	if _, err := b.Tokens()(context.Background(), true); err != nil || b.Pin() != "sha256/second" {
+		t.Errorf("after a fresh token: pin %q, %v", b.Pin(), err)
+	}
+}
+
 func TestWithoutASandboxThereAreNoDesks(t *testing.T) {
 	b, _ := broker(t, false)
 

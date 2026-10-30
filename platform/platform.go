@@ -259,6 +259,7 @@ func New(opts Options) *Platform {
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
+	opts.Sandbox = opts.Sandbox.pinned()
 	// A self-hosted install's one network is already running: its runner
 	// fetches its settings and keys from the broker.
 	if opts.FirstRun != nil && opts.Host == nil {

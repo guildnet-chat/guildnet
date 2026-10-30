@@ -378,9 +378,14 @@ func Run(build Config) {
 	useSandbox := func(sandboxURL string, tokens desk.TokenSource, wakeSandbox func(context.Context) error, deskBroker *desk.Broker, pass func(context.Context) (string, error)) {
 		sd := desk.NewRemoteFrom(sandboxURL, tokens)
 		// Over TLS, sandboxd's certificate is from the CA the broker's is:
-		// trusted the same way, and nothing else.
+		// trusted the same way, and nothing else; and with the key the broker
+		// last said it has, when it says one.
 		if strings.HasPrefix(sandboxURL, "https://") && brokerHTTP.Transport != nil {
-			sd.Through(brokerHTTP.Transport)
+			pin := func() string { return "" }
+			if deskBroker != nil {
+				pin = deskBroker.Pin
+			}
+			sd.Through(sandboxTransport(brokerHTTP.Transport, pin))
 		}
 		ws := desk.New(sd, repos)
 		ws.Wake = wakeSandbox
@@ -534,6 +539,19 @@ func brokerClient(getenv func(string) string) (*http.Client, error) {
 		client.Transport = tlsOnly{client.Transport}
 	}
 	return client, nil
+}
+
+// sandboxTransport is how sandboxd is reached: as the broker is (rt, from
+// brokerClient), holding it to the key pin says (pki.KeyPin; "" for any the
+// CA vouches for).
+func sandboxTransport(rt http.RoundTripper, pin func() string) http.RoundTripper {
+	switch t := rt.(type) {
+	case tlsOnly:
+		return tlsOnly{sandboxTransport(t.next, pin)}
+	case *http.Transport:
+		return pki.PinTransport(t, pin)
+	}
+	return rt
 }
 
 // tlsOnly refuses any request that isn't https.
